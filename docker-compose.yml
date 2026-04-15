@@ -1,0 +1,106 @@
+services:
+  flutter:
+    build:
+      context: .
+      dockerfile: Dockerfile.minimal
+    container_name: openim_flutter
+    # 使用宿主网络，使Shorebird可以监听宿主端口进行登录
+    network_mode: "host"
+    volumes:
+      - .:/app
+      # 缓存Flutter和Gradle依赖，减少重复下载
+      - flutter_cache:/root/.pub-cache
+      - gradle_cache:/root/.gradle
+    # 如果需要在容器内调试Web应用，取消下面的注释
+    # ports:
+    #   - "8080:8080"  # Web服务器端口
+    working_dir: /app
+    # 默认以交互模式启动shell
+    stdin_open: true
+    tty: true
+    # 资源限制，可根据您的机器性能调整
+    deploy:
+      resources:
+        limits:
+          memory: 20G
+        reservations:
+          memory: 19G
+    # 环境变量
+    environment:
+      - FLUTTER_HOME=/opt/flutter
+      - ANDROID_HOME=/opt/android
+      - ANDROID_SDK_ROOT=/opt/android
+      - GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx8g -XX:MaxMetaspaceSize=1024m"
+      - PUB_HOSTED_URL=https://pub.dev
+      - FLUTTER_STORAGE_BASE_URL=https://storage.googleapis.com
+      # 修复 apksigner/zipalign 找不到的问题：添加 build-tools 到 PATH
+      - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/flutter/bin:/opt/android/cmdline-tools/latest/bin:/opt/android/platform-tools:/opt/android/build-tools/30.0.3:/root/.shorebird/bin
+    # 如果需要特定的启动命令，可以取消下面的注释并修改
+    # command: flutter run -d web-server --web-port=8080 --web-hostname=0.0.0.0
+    # 或者用这个命令来构建Android APK
+    # command: flutter build apk --release
+
+  # 添加此服务以支持特定的环境变量和Flutter build选项
+  build_apk:
+    build:
+      context: .
+      dockerfile: Dockerfile.minimal
+    container_name: openim_flutter_build
+    # 使用宿主网络，使Shorebird可以监听宿主端口进行登录
+    network_mode: "host"
+    volumes:
+      - .:/app
+      - flutter_cache:/root/.pub-cache
+      - gradle_cache:/root/.gradle
+    working_dir: /app
+    # 资源限制，可根据您的机器性能调整
+    deploy:
+      resources:
+        limits:
+          memory: 20G
+        reservations:
+          memory: 19G
+    # 环境变量
+    environment:
+      - FLUTTER_HOME=/opt/flutter
+      - ANDROID_HOME=/opt/android
+      - ANDROID_SDK_ROOT=/opt/android
+      - GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx8g -XX:MaxMetaspaceSize=1024m"
+      - PUB_HOSTED_URL=https://pub.dev
+      - FLUTTER_STORAGE_BASE_URL=https://storage.googleapis.com
+      # 修复 apksigner/zipalign 找不到的问题：添加 build-tools 到 PATH
+      - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/flutter/bin:/opt/android/cmdline-tools/latest/bin:/opt/android/platform-tools:/opt/android/build-tools/30.0.3:/root/.shorebird/bin
+    command: bash -c "./setup-android-sdk.sh && flutter clean && flutter pub get && flutter build apk --release"
+
+  # 添加此服务以支持Flutter Web构建
+  build_web:
+    build:
+      context: .
+      dockerfile: Dockerfile.minimal
+    container_name: openim_flutter_web
+    # 使用宿主网络，使Shorebird可以监听宿主端口进行登录
+    network_mode: "host"
+    volumes:
+      - .:/app
+      - flutter_cache:/root/.pub-cache
+    working_dir: /app
+    # 资源限制，可根据您的机器性能调整
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    # 环境变量
+    environment:
+      - FLUTTER_HOME=/opt/flutter
+      - ANDROID_HOME=/opt/android
+      - ANDROID_SDK_ROOT=/opt/android
+    command: bash -c "flutter clean && flutter pub get && flutter build web --release"
+    # 取消下面的注释以在构建后启动Web服务器
+    # ports:
+    #   - "8080:8080"
+
+volumes:
+  flutter_cache:
+  gradle_cache:

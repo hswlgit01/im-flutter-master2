@@ -1,0 +1,6 @@
+# 复制为 brand.properties 后按需修改
+applicationId=com.example.app
+iosBundleId=
+getuiAppId=
+channelId=official
+shorebirdAppId=

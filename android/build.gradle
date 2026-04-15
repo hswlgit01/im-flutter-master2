@@ -1,0 +1,52 @@
+buildscript {
+    ext.kotlin_version = '1.9.23'
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+
+    dependencies {
+        classpath("com.android.tools:r8:8.3.37")
+        classpath 'com.android.tools.build:gradle:7.3.1'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+//        classpath 'com.google.gms:google-services:4.4.2'  // fcm
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()  // io.github.maitrungduc1410 在 Maven Central
+        maven { url 'https://jitpack.io' }
+        maven { url 'https://mvn.getui.com/nexus/content/repositories/releases/' }  // GeTui Maven 仓库
+        // FFmpeg Kit 官方仓库已不可用，使用 Maven Central 中的替代版本
+        // maven { url 'https://github.com/arthenica/ffmpeg-kit/releases' }
+    }
+
+    // 全局依赖替换：将所有 com.arthenica 替换为 io.github.maitrungduc1410
+    configurations.all {
+        resolutionStrategy {
+            eachDependency { details ->
+                if (details.requested.group == 'com.arthenica' && details.requested.name == 'ffmpeg-kit-https') {
+                    details.useTarget group: 'io.github.maitrungduc1410', name: 'ffmpeg-kit-https', version: '6.0.1'
+                    details.because 'com.arthenica package no longer available, using community fork'
+                }
+            }
+        }
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects { afterEvaluate { android { compileSdkVersion 34 } } }
+
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

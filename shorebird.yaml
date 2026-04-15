@@ -1,0 +1,21 @@
+# This file is used to configure the Shorebird updater used by your app.
+# Learn more at https://docs.shorebird.dev
+# This file does not contain any sensitive information and should be checked into version control.
+
+# Your app_id is the unique identifier assigned to your app.
+# It is used to identify your app when requesting patches from Shorebird's servers.
+# It is not a secret and can be shared publicly.
+app_id: af3b7de6-8fe4-4499-9fc8-a46c2bdd8f10
+
+# 使用自托管代理服务器 - 解决大陆网络访问问题
+# 参考: https://github.com/shorebirdtech/shorebird/issues/3358
+# 注意: base_url 不包含 /api，Shorebird CLI 会自动添加
+base_url: "https://api.cripqg.cn"
+
+# auto_update controls if Shorebird should automatically update in the background on launch.
+# If auto_update: false, you will need to use package:shorebird_code_push to trigger updates.
+# https://pub.dev/packages/shorebird_code_push
+#
+# 启用自动更新 - Shorebird SDK 在应用启动时自动检查并下载补丁
+# 同时保留手动更新功能 - 用户可在设置页面手动触发更新检查
+auto_update: true
