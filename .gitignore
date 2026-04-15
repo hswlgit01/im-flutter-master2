@@ -78,3 +78,4 @@ android/app/proguard
 migrate_working_dir/
 
 /ios/Flutter/flutter_export_environment.sh
+*:Zone.Identifier
