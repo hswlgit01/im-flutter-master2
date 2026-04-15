@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:get/get.dart';
+import 'package:openim/core/friend_conversation_helper.dart';
 import 'package:openim/core/controller/im_controller.dart';
 import 'package:openim/core/controller/org_controller.dart';
 import 'package:openim/core/wallet_controller.dart';
@@ -262,7 +263,8 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
         Get.lazyPut<WalletController>(() => WalletController());
 
         if (data.inviteUserId != null && data.inviteUserId!.isNotEmpty) {
-          OpenIM.iMManager.friendshipManager.addFriend(userID: data.inviteUserId!);
+          await Future.delayed(const Duration(milliseconds: 800));
+          await FriendConversationHelper.ensureConversationForFriend(data.inviteUserId!);
         }
         AppNavigator.startMain();
       } catch (e) {

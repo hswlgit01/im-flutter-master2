@@ -575,12 +575,39 @@ class _IdentityVerifyPageState extends State<IdentityVerifyPage> {
   /// 将相册/相机返回的临时文件复制到应用文档目录，避免 cache 下 scaled 文件在提交前被删除。
   Future<File?> _persistPickedImage(XFile xFile) async {
     try {
+      final dir = await getApplicationDocumentsDirectory();
+      final ext = xFile.name.contains('.')
+          ? xFile.name.substring(xFile.name.lastIndexOf('.'))
+          : '.jpg';
+      final name =
+          'identity_${DateTime.now().millisecondsSinceEpoch}_${xFile.name.hashCode & 0x7fffffff}$ext';
+      final dest = File('${dir.path}/$name');
+
+      // Android 某些机型上 xFile.path 指向的 scaled_mmexport 临时图无法直接 open，
+      // saveTo 由插件侧处理复制，成功率比 Dart 层 readAsBytes 更高。
+      try {
+        await xFile.saveTo(dest.path);
+        if (await dest.exists() && await dest.length() > 0) {
+          return dest;
+        }
+      } catch (e) {
+        Logger.print('identity_verify saveTo failed: $e');
+      }
+
+      try {
+        final source = File(xFile.path);
+        if (await source.exists()) {
+          final copied = await source.copy(dest.path);
+          if (await copied.exists() && await copied.length() > 0) {
+            return copied;
+          }
+        }
+      } catch (e) {
+        Logger.print('identity_verify file copy failed: $e');
+      }
+
       final bytes = await xFile.readAsBytes();
       if (bytes.isEmpty) return null;
-      final dir = await getApplicationDocumentsDirectory();
-      final name =
-          'identity_${DateTime.now().millisecondsSinceEpoch}_${xFile.name.hashCode & 0x7fffffff}.jpg';
-      final dest = File('${dir.path}/$name');
       await dest.writeAsBytes(bytes, flush: true);
       return dest;
     } catch (e) {
