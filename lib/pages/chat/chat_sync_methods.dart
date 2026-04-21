@@ -36,6 +36,22 @@ extension ChatSyncMethods on ChatLogic {
             continue;
           }
 
+          final clientMsgID = newMsg.clientMsgID;
+          final existingIndex = clientMsgID == null
+              ? -1
+              : messageList.indexWhere((msg) => msg.clientMsgID == clientMsgID);
+          if (existingIndex >= 0) {
+            if (newMsg.contentType == MessageType.revokeMessageNotification) {
+              final oldMsg = messageList[existingIndex];
+              oldMsg.contentType = MessageType.revokeMessageNotification;
+              oldMsg.notificationElem = newMsg.notificationElem;
+              oldMsg.status = newMsg.status;
+              oldMsg.seq = newMsg.seq;
+              oldMsg.serverMsgID = newMsg.serverMsgID;
+            }
+            continue;
+          }
+
           if (!messageList.contains(newMsg)) {
             customChatListViewController.insertToBottom(newMsg);
           }

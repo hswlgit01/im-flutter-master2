@@ -18,23 +18,43 @@ class MessageDeduplicator {
   // 使用锁保证线程安全
   final _lock = Lock();
 
+  String? _dedupeKey(Message msg) {
+    final serverMsgID = msg.serverMsgID;
+    if (serverMsgID != null && serverMsgID.isNotEmpty) {
+      return 'server:$serverMsgID';
+    }
+
+    final conversationID = msg.conversationID;
+    final seq = msg.seq;
+    if (conversationID != null && conversationID.isNotEmpty && seq != null && seq > 0) {
+      return 'seq:$conversationID:$seq';
+    }
+
+    final clientMsgID = msg.clientMsgID;
+    if (clientMsgID != null && clientMsgID.isNotEmpty) {
+      return 'client:$clientMsgID';
+    }
+    return null;
+  }
+
   /// 检查消息是否应该被处理
   /// 返回true表示消息需要处理，false表示消息已处理过应该跳过
   Future<bool> shouldProcessMessage(Message msg) async {
     return _lock.synchronized(() async {
-      // 无效消息ID仍然处理
-      if (msg.clientMsgID == null || msg.clientMsgID!.isEmpty) {
+      final key = _dedupeKey(msg);
+      // 无有效消息ID仍然处理
+      if (key == null) {
         return true;
       }
 
       // 检查消息是否已处理过
-      if (_processedMessages.containsKey(msg.clientMsgID!)) {
-        Logger.print('跳过重复消息: ${msg.clientMsgID}');
+      if (_processedMessages.containsKey(key)) {
+        Logger.print('跳过重复消息: $key');
         return false;
       }
 
       // 标记为已处理
-      _processedMessages.put(msg.clientMsgID!, true);
+      _processedMessages.put(key, true);
       return true;
     });
   }

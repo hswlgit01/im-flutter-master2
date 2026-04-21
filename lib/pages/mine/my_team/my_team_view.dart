@@ -17,15 +17,19 @@ class MyTeamPage extends StatelessWidget {
       body: SafeArea(
         child: Obx(() => logic.isLoading.value
             ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildTeamStatistics(),
-                    SizedBox(height: 8.h),
-                    _buildInvitationCodeSection(),
-                    SizedBox(height: 8.h),
-                    _buildDownloadSection(),
-                  ],
+            : RefreshIndicator(
+                onRefresh: logic.initializeData,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    children: [
+                      _buildTeamStatistics(),
+                      SizedBox(height: 8.h),
+                      _buildInvitationCodeSection(),
+                      SizedBox(height: 8.h),
+                      _buildDownloadSection(),
+                    ],
+                  ),
                 ),
               ),
         ),

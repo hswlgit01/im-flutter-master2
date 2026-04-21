@@ -13,35 +13,44 @@ class RegisterBgView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+        resizeToAvoidBottomInset: true,
         body: TouchCloseSoftKeyboard(
           isGradientBg: true,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                54.verticalSpace,
-                Row(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24.h,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: EdgeInsets.only(left: 22.w),
-                      child: ImageRes.backBlack.toImage
-                        ..width = 24.w
-                        ..height = 24.h
-                        ..onTap = () => Get.back(),
+                    54.verticalSpace,
+                    Row(
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.only(left: 22.w),
+                          child: ImageRes.backBlack.toImage
+                            ..width = 24.w
+                            ..height = 24.h
+                            ..onTap = () => Get.back(),
+                        ),
+                        if (backText != null) ...[
+                          8.horizontalSpace,
+                          backText!,
+                        ]
+                      ],
                     ),
-                    if (backText != null) ...[
-                      8.horizontalSpace,
-                      backText!
-                    ]
+                    38.verticalSpace,
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 32.w),
+                      child: child,
+                    ),
                   ],
                 ),
-                
-                38.verticalSpace,
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 32.w),
-                  child: child,
-                ),
-              ],
+              ),
             ),
           ),
         ),

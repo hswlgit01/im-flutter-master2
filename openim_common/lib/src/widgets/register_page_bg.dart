@@ -14,24 +14,33 @@ class RegisterBgView extends StatelessWidget {
   Widget build(BuildContext context) => Material(
         child: TouchCloseSoftKeyboard(
           isGradientBg: true,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                54.verticalSpace,
-                Padding(
-                  padding: EdgeInsets.only(left: 22.w),
-                  child: ImageRes.backBlack.toImage
-                    ..width = 24.w
-                    ..height = 24.h
-                    ..onTap = () => Get.back(),
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24.h,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    54.verticalSpace,
+                    Padding(
+                      padding: EdgeInsets.only(left: 22.w),
+                      child: ImageRes.backBlack.toImage
+                        ..width = 24.w
+                        ..height = 24.h
+                        ..onTap = () => Get.back(),
+                    ),
+                    38.verticalSpace,
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 32.w),
+                      child: child,
+                    ),
+                  ],
                 ),
-                38.verticalSpace,
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 32.w),
-                  child: child,
-                ),
-              ],
+              ),
             ),
           ),
         ),
