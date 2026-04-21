@@ -1,53 +1,179 @@
-# ============================================
-# free-im-server CI/CD 流水线配置
-# 功能：代码推送后自动构建镜像并部署到服务器
-# ============================================
-
-name: Build & Deploy Server
+name: Build Flutter App
 
 on:
   push:
-    branches: [master]        # 触发条件：maimastern 分支推送
-  workflow_dispatch:        # 支持手动触发
+    branches: [master, main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '构建环境'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+
+env:
+  FLUTTER_VERSION: '3.24.5'
+  JAVA_VERSION: '17'
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest  # 使用 GitHub 免费虚拟机
-    
+  # ========== 构建 Android APK ==========
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
     steps:
-      # ----- 1. 拉取代码 -----
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ----- 2. 构建镜像 -----
-      - name: Build Docker image
-        run: docker build -t free-im-server:latest .
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
 
-      # ----- 3. 压缩镜像（方便传输）-----
-      - name: Save image to file
-        run: docker save free-im-server:latest | gzip > free-im-server.tar.gz
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
 
-      # ----- 4. 上传到服务器 -----
-      - name: Copy to server
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: |
+          if [ "${{ github.event.inputs.environment }}" != "" ]; then
+            flutter build apk --release --dart-define=ENV=${{ github.event.inputs.environment }}
+          else
+            flutter build apk --release --dart-define=ENV=prod
+          fi
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          source: "free-im-server.tar.gz"
-          target: "/root/deploy/"
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "build/app/outputs/flutter-apk/app-release.apk"
+          target: "/var/www/downloads/android/"
+          strip_components: 5
 
-      # ----- 5. 服务器部署 -----
-      - name: Deploy on server
+  # ========== 构建 Web ==========
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Web
+        run: |
+          if [ "${{ github.event.inputs.environment }}" != "" ]; then
+            flutter build web --release --dart-define=ENV=${{ github.event.inputs.environment }}
+          else
+            flutter build web --release --dart-define=ENV=prod
+          fi
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/web/
+
+      - name: Deploy to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "build/web/"
+          target: "/var/www/flutter-web/"
+          strip_components: 2
+
+  # ========== 构建 iOS（需要 Mac Runner） ==========
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build iOS
+        run: |
+          cd ios
+          pod install
+          cd ..
+          flutter build ipa --release --dart-define=ENV=prod
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release.ipa
+          path: build/ios/ipa/*.ipa
+
+  # ========== 生成下载页面 ==========
+  update-index:
+    name: Update Download Page
+    runs-on: ubuntu-latest
+    needs: [build-android, build-web]
+    steps:
+      - name: Update index.html on server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            docker load < /root/deploy/free-im-server.tar.gz
-            rm -f /root/deploy/free-im-server.tar.gz
-            docker stop free-im-server 2>/dev/null || true
-            docker rm free-im-server 2>/dev/null || true
-            docker run -d --name free-im-server --network host --restart unless-stopped -v /data/app/server/config:/app/config -v /data/logs/server:/app/logs free-im-server:latest
-            docker ps | grep free-im-server
+            cd /var/www/downloads
+            cat > index.html << 'EOF'
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>App Downloads</title>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <style>
+                    body { font-family: Arial; text-align: center; padding: 50px; }
+                    a { display: inline-block; margin: 20px; padding: 15px 30px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; }
+                </style>
+            </head>
+            <body>
+                <h1>App Downloads</h1>
+                <a href="/android/app-release.apk">📱 Download Android APK</a>
+                <a href="/flutter-web/">🌐 Open Web App</a>
+            </body>
+            </html>
+            EOF
+            echo "Download page updated"
