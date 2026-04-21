@@ -126,12 +126,33 @@ class MyTeamLogic extends GetxController {
         }
       }
 
+      final fallbackLink = _firstNonEmptyDownloadUrl(remoteConfig);
+      if (fallbackLink != null) {
+        downloadUrl.value = fallbackLink;
+        print('从远程配置获取的通用下载链接: $fallbackLink');
+        return;
+      }
+
       // 如果无法从远程配置获取，链接保持为空
       print('未找到远程配置下载链接，链接为空');
     } catch (e) {
       // 异常情况下链接保持为空
       print('获取下载链接异常: $e，链接为空');
     }
+  }
+
+  String? _firstNonEmptyDownloadUrl(Map<String, dynamic>? remoteConfig) {
+    final appVersionConfig = remoteConfig?['app_version'];
+    if (appVersionConfig is! Map) return null;
+    for (final value in appVersionConfig.values) {
+      if (value is Map) {
+        final link = value['download_url'];
+        if (link is String && link.isNotEmpty) {
+          return link;
+        }
+      }
+    }
+    return null;
   }
 
   // 复制邀请码

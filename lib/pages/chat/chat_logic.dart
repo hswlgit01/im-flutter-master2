@@ -646,17 +646,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     });
 
     imLogic.onRecvMessageRevoked = (value) {
-      var isEdit = false;
-      for (var msg in messageList) {
-        if (msg.clientMsgID == value.clientMsgID &&
-            msg.contentType != MessageType.revokeMessageNotification) {
-          isEdit = true;
-          msg.contentType = MessageType.revokeMessageNotification;
-          msg.notificationElem =
-              NotificationElem(detail: json.encode(value.toJson()));
-        }
+      final updated = _applyRevokedInfo(value);
+      if (!updated) {
+        Future.microtask(_loadHistoryForSyncEnd);
       }
-      customChatListViewController.refresh(); // 刷新UI
     };
 
     imLogic.onSignalingMessage = (value) {
@@ -666,6 +659,43 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
     };
     super.onInit();
+  }
+
+  bool _applyRevokedInfo(RevokedInfo value) {
+    var updated = false;
+    for (var msg in messageList) {
+      if (msg.clientMsgID == value.clientMsgID &&
+          msg.contentType != MessageType.revokeMessageNotification) {
+        updated = true;
+        msg.contentType = MessageType.revokeMessageNotification;
+        msg.notificationElem = NotificationElem(detail: json.encode(value.toJson()));
+      }
+    }
+    if (updated) {
+      customChatListViewController.refresh();
+      update();
+    }
+    return updated;
+  }
+
+  bool _mergeSyncedMessage(Message newMsg) {
+    final clientMsgID = newMsg.clientMsgID;
+    if (clientMsgID == null || clientMsgID.isEmpty) {
+      return false;
+    }
+    final index = messageList.indexWhere((msg) => msg.clientMsgID == clientMsgID);
+    if (index < 0) {
+      return false;
+    }
+    if (newMsg.contentType == MessageType.revokeMessageNotification) {
+      final oldMsg = messageList[index];
+      oldMsg.contentType = MessageType.revokeMessageNotification;
+      oldMsg.notificationElem = newMsg.notificationElem;
+      oldMsg.status = newMsg.status;
+      oldMsg.seq = newMsg.seq;
+      oldMsg.serverMsgID = newMsg.serverMsgID;
+    }
+    return true;
   }
 
   // 检查是否为通话信令消息（需要过滤）
@@ -2126,6 +2156,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
               }
               // 过滤群通知类消息，不展示在聊天列表中
               if (isGroupChat && isNotificationType(newMsg)) {
+                continue;
+              }
+              if (_mergeSyncedMessage(newMsg)) {
+                if (newMsg.clientMsgID != null) {
+                  existingIds.add(newMsg.clientMsgID!);
+                }
                 continue;
               }
               // 用 clientMsgID 去重，避免服务端新对象导致 contains 恒为 false 而重复插入

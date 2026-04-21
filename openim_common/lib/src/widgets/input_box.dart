@@ -400,7 +400,7 @@ class _InputBoxState extends State<InputBox> {
         keyboardType = TextInputType.text;
         break;
       case InputBoxType.password:
-        keyboardType = TextInputType.text;
+        keyboardType = TextInputType.visiblePassword;
         break;
       case InputBoxType.verificationCode:
         keyboardType = TextInputType.number;
