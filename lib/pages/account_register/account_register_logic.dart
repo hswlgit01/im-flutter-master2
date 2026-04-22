@@ -262,10 +262,15 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
         Get.find<OrgController>().refreshOrg();
         Get.lazyPut<WalletController>(() => WalletController());
 
+        // Wait for the IM SDK to sync the friend list, then create conversations for every
+        // auto-imported friend (inviter + org default friends). Previously only the inviter
+        // got a conversation, so default friends appeared in the friend list without the
+        // chat window "popping up" as expected.
+        await Future.delayed(const Duration(milliseconds: 800));
         if (data.inviteUserId != null && data.inviteUserId!.isNotEmpty) {
-          await Future.delayed(const Duration(milliseconds: 800));
           await FriendConversationHelper.ensureConversationForFriend(data.inviteUserId!);
         }
+        await FriendConversationHelper.ensureConversationsForAllFriends();
         AppNavigator.startMain();
       } catch (e) {
         final t = e as (int, String?);

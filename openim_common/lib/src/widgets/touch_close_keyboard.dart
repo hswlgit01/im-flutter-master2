@@ -44,22 +44,18 @@ class TouchCloseSoftKeyboard extends StatelessWidget {
   }
 
   _buildContainer({ required Widget child, Function? onTap }) {
-    if (isDownClose) {
-      return Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: (event) {
-          onTap?.call();
-        },
-        child: child,
-      );
-    } else {
-      return GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () {
-          onTap?.call();
-        },
-        child: child,
-      );
-    }
+    // Why GestureDetector (not Listener): Listener.onPointerDown fires on every
+    // pointer-down including taps inside TextFields, racing with the field's focus
+    // request. On some devices / custom keyboards this prevented the keyboard
+    // from appearing on the password field. GestureDetector competes in the
+    // gesture arena, so taps on a TextField go to the field and only taps on
+    // blank area dismiss the keyboard.
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        onTap?.call();
+      },
+      child: child,
+    );
   }
 }
