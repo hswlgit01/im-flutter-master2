@@ -24,10 +24,21 @@ class MessageDeduplicator {
       return 'server:$serverMsgID';
     }
 
-    final conversationID = msg.conversationID;
+    // 使用 sendID, recvID, groupID 和 seq 组合来替代 conversationID
+    final sendID = msg.sendID;
+    final recvID = msg.recvID;
+    final groupID = msg.groupID;
     final seq = msg.seq;
-    if (conversationID != null && conversationID.isNotEmpty && seq != null && seq > 0) {
-      return 'seq:$conversationID:$seq';
+    
+    if (seq != null && seq > 0) {
+      // 群组消息
+      if (groupID != null && groupID.isNotEmpty) {
+        return 'seq:$groupID:$seq';
+      }
+      // 私聊消息
+      else if (sendID != null && sendID.isNotEmpty && recvID != null && recvID.isNotEmpty) {
+        return 'seq:${sendID}_$recvID:$seq';
+      }
     }
 
     final clientMsgID = msg.clientMsgID;

@@ -588,6 +588,7 @@ class _IdentityVerifyPageState extends State<IdentityVerifyPage> {
       try {
         await xFile.saveTo(dest.path);
         if (await dest.exists() && await dest.length() > 0) {
+          Logger.print('identity_verify [SUCCESS] saveTo: ${dest.path}');
           return dest;
         }
       } catch (e) {
@@ -599,6 +600,7 @@ class _IdentityVerifyPageState extends State<IdentityVerifyPage> {
         if (await source.exists()) {
           final copied = await source.copy(dest.path);
           if (await copied.exists() && await copied.length() > 0) {
+            Logger.print('identity_verify [SUCCESS] copy: ${copied.path}');
             return copied;
           }
         }
@@ -609,6 +611,7 @@ class _IdentityVerifyPageState extends State<IdentityVerifyPage> {
       final bytes = await xFile.readAsBytes();
       if (bytes.isEmpty) return null;
       await dest.writeAsBytes(bytes, flush: true);
+      Logger.print('identity_verify [SUCCESS] writeAsBytes: ${dest.path}');
       return dest;
     } catch (e) {
       Logger.print('identity_verify persist image failed: $e');
