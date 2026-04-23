@@ -21,7 +21,10 @@ class Config {
   /// 本地开发默认用 10.0.2.2（Android 模拟器访问宿主机）；真机请用 flutter run --dart-define=DEV_HOST=你的电脑局域网IP
   static const String _devHost = "";
   static const String _testHost = "57.180.51.222";   // 测试环境服务器
-  static const String _prodHost = "";   // 生产环境服务器
+  // 生产环境服务器：默认 fallback。Config.init() 仍会先尝试从 remoteConfigUrl
+  // 拉 servers.json 走 API 自动寻路，那份配置拉不到 / 里面没有可用节点时，
+  // 就退回这个默认值，避免 serverIp 为空导致 init 抛异常（白屏）。
+  static const String _prodHost = "8.148.66.77";   // 生产环境服务器
 
   // 从环境变量获取当前环境，默认为dev（本地开发）
   static final String _currentEnv = const String.fromEnvironment('ENV', defaultValue: 'dev');
