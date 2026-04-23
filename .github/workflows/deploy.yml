@@ -68,7 +68,10 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           source: "build/app/outputs/flutter-apk/app-release.apk"
           target: "/data/app/apk/public/"
-          strip_components: 5
+          # strip the 4 leading directories (build/app/outputs/flutter-apk), keep
+          # just the filename. Previous value 5 stripped the filename too and scp
+          # silently dropped the tarball, leaving the server with the old APK.
+          strip_components: 4
 
   # ========== 构建 iOS（仅在 tag 推送时触发，需要 Mac Runner） ==========
   build-ios:
