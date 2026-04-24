@@ -724,7 +724,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     oldMsg.seq = newMsg.seq ?? oldMsg.seq;
     oldMsg.serverMsgID = newMsg.serverMsgID ?? oldMsg.serverMsgID;
     oldMsg.status = newMsg.status ?? oldMsg.status;
-    oldMsg.sendTime = newMsg.sendTime ?? oldMsg.sendTime;
+    // Keep the optimistic sendTime if we already have one. Overwriting with the
+    // server value can cause the bubble to jump order when server-time drifts
+    // from the local clock by a few hundred ms.
+    oldMsg.sendTime ??= newMsg.sendTime;
     if (newMsg.contentType == MessageType.revokeMessageNotification) {
       oldMsg.contentType = MessageType.revokeMessageNotification;
       oldMsg.notificationElem = newMsg.notificationElem;

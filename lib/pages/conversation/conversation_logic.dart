@@ -71,7 +71,7 @@ class ConversationLogic extends GetxController {
       _friendUserIDs.remove(friend.userID!);
     });
     // 监听群信息变更,主动更新会话列表中的群名称和头像
-    imLogic.groupInfoUpdatedSubject.listen((groupInfo) {
+    imLogic.groupInfoUpdatedSubject.listen((groupInfo) async {
       print('[ConversationLogic] 群信息更新: groupID=${groupInfo.groupID}, 新名称: ${groupInfo.groupName}, status=${groupInfo.status}');
 
       // 构建会话ID (超级群格式: sg_groupID)
@@ -83,11 +83,14 @@ class ConversationLogic extends GetxController {
       // 清缓存后重新拉取，不负责清本地 DB。
       if (groupInfo.status == 2) {
         print('[ConversationLogic] 群已解散,清除本地会话与历史: $conversationID');
-        OpenIM.iMManager.conversationManager
-            .deleteConversationAndDeleteAllMsg(conversationID: conversationID)
-            .catchError((e, s) {
-          print('[ConversationLogic] 删除已解散群会话失败: $e');
-        });
+        try {
+          // Await the SDK deletion before touching the in-memory list so the two
+          // stay consistent even if the call throws.
+          await OpenIM.iMManager.conversationManager
+              .deleteConversationAndDeleteAllMsg(conversationID: conversationID);
+        } catch (e, s) {
+          print('[ConversationLogic] 删除已解散群会话失败: $e\n$s');
+        }
         list.removeWhere((c) => c.conversationID == conversationID);
         return;
       }
