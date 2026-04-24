@@ -583,6 +583,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     groupInfoUpdatedSub = imLogic.groupInfoUpdatedSubject.listen((value) {
       if (groupID == value.groupID) {
         groupInfo = value;
+        // 群解散 (status == 2): 清空当前聊天的内存列表，让用户在退出前就看不到
+        // 老的历史。conversation_logic 的同名监听会删本地 DB 的会话与消息，
+        // 再次进入时从空 DB 载入，符合 bug 1 的期望——对方不应继续看到历史。
+        if ((value.status ?? 0) == 2) {
+          messageList.clear();
+          customChatListViewController.clear();
+          update();
+          return;
+        }
         // 禁言状态以服务端拉取为准：若 3 秒内刚执行过 _queryGroupInfo，不采用 SDK 推送的 status，避免过期缓存覆盖正确结果
         final nowMs = DateTime.now().millisecondsSinceEpoch;
         if (_lastGroupMutedFromServerMs == null ||
@@ -678,6 +687,29 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     return updated;
   }
 
+  /// Called when a revoke event arrives as a regular notification message (the
+  /// "ReliableNotificationMsg" path on the server). The message's own
+  /// clientMsgID is brand new — the original revoked clientMsgID is inside
+  /// notificationElem.detail. We apply the revoke to the original message and
+  /// return true so the caller skips inserting the bare notification row,
+  /// otherwise the receiver would see both the revoked placeholder AND the
+  /// original message still sitting there.
+  bool _applyRevokeNotificationMessage(Message message) {
+    final detail = message.notificationElem?.detail;
+    if (detail == null || detail.isEmpty) return false;
+    try {
+      final info = RevokedInfo.fromJson(json.decode(detail));
+      return _applyRevokedInfo(info);
+    } catch (e, s) {
+      ILogger.d('parse revoke notification failed: $e\n$s');
+      return false;
+    }
+  }
+
+  /// 如果 [newMsg] 对应的 clientMsgID 已经存在于列表里（说明是乐观发送后 SDK 回
+  /// 显的同一条），就把服务端赋值的字段（seq/serverMsgID/status 等）写回旧对象
+  /// 并返回 true 让调用方跳过再次 insert，避免出现「发送方自己看到两条一模一样
+  /// 的消息」这种幻影。
   bool _mergeSyncedMessage(Message newMsg) {
     final clientMsgID = newMsg.clientMsgID;
     if (clientMsgID == null || clientMsgID.isEmpty) {
@@ -687,13 +719,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (index < 0) {
       return false;
     }
+    final oldMsg = messageList[index];
+    // Always sync the server-assigned fields back into the optimistic copy.
+    oldMsg.seq = newMsg.seq ?? oldMsg.seq;
+    oldMsg.serverMsgID = newMsg.serverMsgID ?? oldMsg.serverMsgID;
+    oldMsg.status = newMsg.status ?? oldMsg.status;
+    oldMsg.sendTime = newMsg.sendTime ?? oldMsg.sendTime;
     if (newMsg.contentType == MessageType.revokeMessageNotification) {
-      final oldMsg = messageList[index];
       oldMsg.contentType = MessageType.revokeMessageNotification;
       oldMsg.notificationElem = newMsg.notificationElem;
-      oldMsg.status = newMsg.status;
-      oldMsg.seq = newMsg.seq;
-      oldMsg.serverMsgID = newMsg.serverMsgID;
     }
     return true;
   }
@@ -732,8 +766,55 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   /// 过滤后用于聊天列表展示的消息：去掉通话信令；群聊时去掉群通知类消息
   List<Message> _filterMessagesForChat(List<Message> messages) {
     var list = _filterCallSignalingMessages(messages);
+
+    // Fold standalone revoke-notification rows into their target messages. The
+    // server now sends revoke events as queueable messages (ReliableNotificationMsg)
+    // — without this, on receiver-side history load you'd see both the original
+    // AND a separate "xxx 撤回了一条消息" line, OR in group chat the revoke would
+    // be dropped by the notification filter and the original would stay as if
+    // nothing happened (bug 3 symptom).
+    final revokes = <String, RevokedInfo>{}; // target clientMsgID -> info
+    final standaloneRevokeRows = <String>{}; // clientMsgIDs of the notif rows themselves
+    for (final m in list) {
+      if (m.contentType == MessageType.revokeMessageNotification) {
+        final detail = m.notificationElem?.detail;
+        if (detail == null || detail.isEmpty) continue;
+        try {
+          final info = RevokedInfo.fromJson(json.decode(detail));
+          final target = info.clientMsgID;
+          if (target != null && target.isNotEmpty && target != m.clientMsgID) {
+            revokes[target] = info;
+            final self = m.clientMsgID;
+            if (self != null && self.isNotEmpty) standaloneRevokeRows.add(self);
+          }
+        } catch (_) {}
+      }
+    }
+    if (revokes.isNotEmpty) {
+      for (final m in list) {
+        final info = revokes[m.clientMsgID];
+        if (info != null &&
+            m.contentType != MessageType.revokeMessageNotification) {
+          m.contentType = MessageType.revokeMessageNotification;
+          m.notificationElem =
+              NotificationElem(detail: json.encode(info.toJson()));
+        }
+      }
+    }
+    if (standaloneRevokeRows.isNotEmpty) {
+      list = list
+          .where((m) => !standaloneRevokeRows.contains(m.clientMsgID))
+          .toList();
+    }
+
     if (isGroupChat) {
-      list = list.where((msg) => !isNotificationType(msg)).toList();
+      // Keep revoke placeholders visible (they are the mutated originals);
+      // strip everything else above the notification range.
+      list = list
+          .where((msg) =>
+              !isNotificationType(msg) ||
+              msg.contentType == MessageType.revokeMessageNotification)
+          .toList();
     }
     return list;
   }
@@ -840,13 +921,29 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         return;
       }
 
+      // Revoke notifications arrive here now that the server uses ReliableNotificationMsg
+      // (see pkg/notification/msg.go). Apply the revoke to the matching original
+      // message in the list and stop — we don't want to insert a separate
+      // "你撤回了一条消息" row alongside the still-visible original.
+      if (message.contentType == MessageType.revokeMessageNotification) {
+        _applyRevokeNotificationMessage(message);
+        return;
+      }
+
       // 过滤群通知类消息（入群、退群、邀请、群资料变更、禁言通知等），不展示在聊天列表中
       if (isGroupChat && isNotificationType(message)) {
         print('[ChatLogic] ⚠️ 群通知消息已过滤，不加入列表: ${message.contentType}');
         return;
       }
 
-      if (!messageList.contains(message)) {
+      // Dedupe by clientMsgID: the optimistic send path inserted the message object
+      // earlier. The SDK returns a brand-new Message instance via onRecvNewMessage
+      // for the server echo, so `List.contains` (identity) misses it and we insert
+      // the same logical message twice. _mergeSyncedMessage syncs the server-side
+      // fields into the existing row and returns true so we skip the duplicate.
+      if (_mergeSyncedMessage(message)) {
+        customChatListViewController.refresh();
+      } else {
         _isReceivedMessageWhenSyncing = true;
         customChatListViewController.insertToBottom(message);
 
@@ -895,8 +992,6 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         } else {
           ILogger.d('非自定义消息,类型: ${message.contentType}');
         }
-      } else {
-        ILogger.d('消息已存在于列表中,忽略重复添加');
       }
     } else {
       ILogger.d('消息不属于当前聊天,忽略处理');

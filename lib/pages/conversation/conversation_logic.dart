@@ -72,10 +72,25 @@ class ConversationLogic extends GetxController {
     });
     // 监听群信息变更,主动更新会话列表中的群名称和头像
     imLogic.groupInfoUpdatedSubject.listen((groupInfo) {
-      print('[ConversationLogic] 群信息更新: groupID=${groupInfo.groupID}, 新名称: ${groupInfo.groupName}');
+      print('[ConversationLogic] 群信息更新: groupID=${groupInfo.groupID}, 新名称: ${groupInfo.groupName}, status=${groupInfo.status}');
 
       // 构建会话ID (超级群格式: sg_groupID)
       final conversationID = 'sg_${groupInfo.groupID}';
+
+      // 群被解散 (status == 2): 服务端已不再推送该群的消息，我们这里主动把本地
+      // 会话连同历史消息一起删掉。否则即便已经退出该群，非群主成员仍能在聊天
+      // 列表里点进去看到全部历史（bug 1 的症状）。服务端的 GetMaxSeq 过滤只防
+      // 清缓存后重新拉取，不负责清本地 DB。
+      if (groupInfo.status == 2) {
+        print('[ConversationLogic] 群已解散,清除本地会话与历史: $conversationID');
+        OpenIM.iMManager.conversationManager
+            .deleteConversationAndDeleteAllMsg(conversationID: conversationID)
+            .catchError((e, s) {
+          print('[ConversationLogic] 删除已解散群会话失败: $e');
+        });
+        list.removeWhere((c) => c.conversationID == conversationID);
+        return;
+      }
 
       // 查找对应的会话
       final index = list.indexWhere((c) => c.conversationID == conversationID);
