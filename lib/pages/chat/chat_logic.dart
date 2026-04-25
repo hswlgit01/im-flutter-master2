@@ -1369,7 +1369,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       id: oldMsg.clientMsgID!,
       value: true,
     ));
-    // 发送成功后，只需要通过状态流通知UI更新，不需要刷新整个列表
+    // 必须刷新列表：bubble 渲染读的是 message.status 这个静态字段，
+    // 仅 mutate Message 对象本身、列表不重建，发送中的小圈圈就不会消失。
+    // sendStatusSub 只驱动 ChatSendFailedView，不管 sending 态的展示。
+    customChatListViewController.refresh();
   }
 
   void _senFailed(
