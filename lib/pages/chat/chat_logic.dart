@@ -236,6 +236,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   final announcement = ''.obs;
   late StreamSubscription conversationSub;
   late StreamSubscription newMessageSub;  // 新增：订阅新消息Subject
+  late StreamSubscription revokedMessageSub;
   late StreamSubscription memberAddSub;
   late StreamSubscription memberDelSub;
   late StreamSubscription joinedGroupAddedSub;
@@ -484,6 +485,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       _handleNewMessage(message);
     });
 
+    revokedMessageSub = imLogic.revokedMessageSubject.listen((RevokedInfo value) {
+      final updated = _applyRevokedInfo(value);
+      if (!updated) {
+        Future.microtask(_loadHistoryForSyncEnd);
+      }
+    });
+
     // 取消设置直接回调，防止双重监听
     // imLogic.onRecvNewMessage = null; // 无法设为null，这是SDK中定义的回调
     // 为了清晰起见，我们仍然设置回调，但在回调中什么也不做
@@ -654,13 +662,6 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       });
     });
 
-    imLogic.onRecvMessageRevoked = (value) {
-      final updated = _applyRevokedInfo(value);
-      if (!updated) {
-        Future.microtask(_loadHistoryForSyncEnd);
-      }
-    };
-
     imLogic.onSignalingMessage = (value) {
       if (value.userID == userID) {
         customChatListViewController.insertToBottom(value.message);
@@ -673,7 +674,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   bool _applyRevokedInfo(RevokedInfo value) {
     var updated = false;
     for (var msg in messageList) {
-      if (msg.clientMsgID == value.clientMsgID &&
+      if (_matchesRevokedMessage(msg, value) &&
           msg.contentType != MessageType.revokeMessageNotification) {
         updated = true;
         msg.contentType = MessageType.revokeMessageNotification;
@@ -685,6 +686,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       update();
     }
     return updated;
+  }
+
+  bool _matchesRevokedMessage(Message msg, RevokedInfo value) {
+    final clientMsgID = value.clientMsgID;
+    return clientMsgID != null &&
+        clientMsgID.isNotEmpty &&
+        msg.clientMsgID == clientMsgID;
   }
 
   /// Called when a revoke event arrives as a regular notification message (the
@@ -929,7 +937,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       // message in the list and stop — we don't want to insert a separate
       // "你撤回了一条消息" row alongside the still-visible original.
       if (message.contentType == MessageType.revokeMessageNotification) {
-        _applyRevokeNotificationMessage(message);
+        final updated = _applyRevokeNotificationMessage(message);
+        if (!updated) {
+          Future.microtask(_loadHistoryForSyncEnd);
+        }
         return;
       }
 
@@ -2184,6 +2195,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     forceCloseToolbox.close();
     conversationSub.cancel();
     newMessageSub.cancel();  // 取消新消息订阅
+    revokedMessageSub.cancel();
     sendStatusSub.close();
     memberAddSub.cancel();
     memberDelSub.cancel();
@@ -2202,7 +2214,6 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
     // 清理消息回调，避免内存泄漏和回调混乱（已读回执改由 c2cReadReceiptSubject 订阅，此处不再覆盖全局回调）
     imLogic.onRecvNewMessage = null;
-    imLogic.onRecvMessageRevoked = null;
     imLogic.onSignalingMessage = null;
 
     _muteTimer?.cancel();
@@ -2245,45 +2256,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           );
 
           if (result.messageList != null && result.messageList!.isNotEmpty) {
-            // 按 sendTime 升序排列，避免 API 返回「新→旧」时 insertToBottom 导致顺序错乱
-            final sorted = List<Message>.from(result.messageList!)
-              ..sort((a, b) => (a.sendTime ?? 0).compareTo(b.sendTime ?? 0));
-            final existingIds = messageList.map((m) => m.clientMsgID).whereType<String>().toSet();
-
-            for (var newMsg in sorted) {
-              if (_isCallSignalingMessage(newMsg)) {
-                print('[ChatLogic] ⚠️ 历史消息中跳过通话信令消息');
-                continue;
-              }
-              // 过滤群通知类消息，不展示在聊天列表中
-              if (isGroupChat && isNotificationType(newMsg)) {
-                continue;
-              }
-              if (_mergeSyncedMessage(newMsg)) {
-                if (newMsg.clientMsgID != null) {
-                  existingIds.add(newMsg.clientMsgID!);
-                }
-                continue;
-              }
-              // 用 clientMsgID 去重，避免服务端新对象导致 contains 恒为 false 而重复插入
-              if (newMsg.clientMsgID != null && !existingIds.contains(newMsg.clientMsgID)) {
-                customChatListViewController.insertToBottom(newMsg);
-                existingIds.add(newMsg.clientMsgID!);
-              }
-            }
-
-            // 恢复前台后对完整列表按 sendTime 做一次排序并写回，避免历史乱序（含首次加载未排序等）
-            final fullList = messageList;
-            if (fullList.isNotEmpty) {
-              final sortedFull = _sortMessagesBySendTimeAsc(fullList);
-              customChatListViewController.clear();
-              customChatListViewController.insertAllToBottom(sortedFull);
-            }
-
-            // 强制同步 rxList 与 messageList
-            _syncRxListWithMessageList();
-            customChatListViewController.refresh();
-            update();
+            _mergeHistoryMessages(result.messageList!);
           } else {
             // 即使没有新消息，也对当前列表做一次排序，保证顺序一致
             final fullList = messageList;
@@ -3090,11 +3063,40 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       startMsg: null,
     );
     if (result.messageList == null || result.messageList!.isEmpty) return;
-    final list = result.messageList!;
+    _mergeHistoryMessages(result.messageList!);
+  }
 
-    // final offset = scrollController.offset;
-    // messageList.assignAll(list);
-    // scrollController.jumpTo(offset);
+  void _mergeHistoryMessages(List<Message> messages) {
+    final incoming = _sortMessagesBySendTimeAsc(_filterMessagesForChat(messages));
+    final existingIds =
+        messageList.map((m) => m.clientMsgID).whereType<String>().toSet();
+
+    for (final newMsg in incoming) {
+      if (_mergeSyncedMessage(newMsg)) {
+        final clientMsgID = newMsg.clientMsgID;
+        if (clientMsgID != null && clientMsgID.isNotEmpty) {
+          existingIds.add(clientMsgID);
+        }
+        continue;
+      }
+
+      final clientMsgID = newMsg.clientMsgID;
+      if (clientMsgID == null || clientMsgID.isEmpty) {
+        customChatListViewController.insertToBottom(newMsg);
+        continue;
+      }
+      if (!existingIds.contains(clientMsgID)) {
+        customChatListViewController.insertToBottom(newMsg);
+        existingIds.add(clientMsgID);
+      }
+    }
+
+    final fullList = _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList));
+    customChatListViewController.clear();
+    customChatListViewController.insertAllToBottom(fullList);
+    _syncRxListWithMessageList();
+    customChatListViewController.refresh();
+    update();
   }
 
   void _getGroupInfoAfterLoadMessage() {

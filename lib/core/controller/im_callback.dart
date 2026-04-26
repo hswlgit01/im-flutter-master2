@@ -9,6 +9,7 @@ import 'package:openim_live/openim_live.dart';
 import 'package:rxdart/rxdart.dart';
 
 import 'app_controller.dart';
+import '../friend_conversation_helper.dart';
 
 enum IMSdkStatus {
   connectionFailed,
@@ -40,6 +41,9 @@ mixin IMCallback {
 
   // 新增：消息Subject，用于向所有订阅者广播新消息
   final newMessageSubject = PublishSubject<Message>();
+
+  /// 撤回事件广播，避免单个页面回调被切换会话覆盖导致双方/多端状态不同步。
+  final revokedMessageSubject = PublishSubject<RevokedInfo>();
 
   /// 已读回执广播，供各会话页订阅以实现实时已读同步（不依赖当前打开的会话）
   final c2cReadReceiptSubject = PublishSubject<List<ReadReceiptInfo>>();
@@ -139,6 +143,7 @@ mixin IMCallback {
 
   void recvMessageRevoked(RevokedInfo info) {
     onRecvMessageRevoked?.call(info);
+    revokedMessageSubject.addSafely(info);
   }
 
   void recvC2CMessageReadReceipt(List<ReadReceiptInfo> list) {
@@ -687,7 +692,7 @@ mixin IMCallback {
     Logger.print('[IMCallback] friendAdded: userID=${u.userID}, nickname=${u.nickname}');
     friendAddSubject.addSafely(u);
 
-    // 确保会话存在（对于接受者一方）
+    // 确保会话存在且在聊天列表可见（默认好友/邀请人自动互加也走这里）
     _ensureConversationExists(u.userID!);
 
     // 延迟刷新会话列表,确保新好友的会话能显示
@@ -710,7 +715,7 @@ mixin IMCallback {
     try {
       Logger.print('[IMCallback] 正在确保会话存在: friendUserID=$friendUserID');
 
-      // 主动创建会话
+      await FriendConversationHelper.ensureConversationForFriend(friendUserID);
       final conversation = await OpenIM.iMManager.conversationManager.getOneConversation(
         sourceID: friendUserID,
         sessionType: ConversationType.single,

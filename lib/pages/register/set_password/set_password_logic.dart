@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:get/get.dart';
 import 'package:openim/core/controller/org_controller.dart';
 import 'package:openim/core/wallet_controller.dart';
@@ -8,6 +7,7 @@ import 'package:openim_common/openim_common.dart';
 import 'package:sprintf/sprintf.dart';
 
 import '../../../core/controller/im_controller.dart';
+import '../../../core/friend_conversation_helper.dart';
 import '../../../routes/app_navigator.dart';
 
 class SetPasswordLogic extends GetxController {
@@ -110,9 +110,11 @@ class SetPasswordLogic extends GetxController {
       Get.find<OrgController>().refreshOrg();
       Get.lazyPut<WalletController>(() => WalletController());
 
+      await Future.delayed(const Duration(milliseconds: 800));
       if (data.inviteUserId != null && data.inviteUserId!.isNotEmpty) {
-        OpenIM.iMManager.friendshipManager.addFriend(userID: data.inviteUserId!);
+        await FriendConversationHelper.ensureConversationForFriend(data.inviteUserId!);
       }
+      await FriendConversationHelper.ensureConversationsForAllFriends();
     });
     AppNavigator.startMain();
   }

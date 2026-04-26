@@ -20,7 +20,11 @@ class FriendConversationHelper {
   /// already have a conversation with at least one message are skipped.
   static Future<void> ensureConversationsForAllFriends() async {
     try {
-      final friends = await OpenIM.iMManager.friendshipManager.getFriendList();
+      var friends = await OpenIM.iMManager.friendshipManager.getFriendList();
+      for (var i = 0; friends.isEmpty && i < 5; i++) {
+        await Future.delayed(const Duration(milliseconds: 600));
+        friends = await OpenIM.iMManager.friendshipManager.getFriendList();
+      }
       if (friends.isEmpty) return;
       for (final f in friends) {
         final uid = f.userID;
