@@ -74,8 +74,11 @@ dependencies:
   chewie: 1.8.5
   video_player: ^2.9.1
   flutter_cache_manager: ^3.3.0
-  syncfusion_flutter_core: ^33.1.49
-  syncfusion_flutter_sliders: ^33.1.49
+  # syncfusion 33.x 需要 Dart >=3.7（对应 Flutter 3.27+），但 CI 还固定在
+  # Flutter 3.24.5（Dart 3.5），所以保持 25.x。等 CI workflow 升 Flutter
+  # 版本之后可以再考虑往上升。
+  syncfusion_flutter_core: ^25.2.7
+  syncfusion_flutter_sliders: ^25.2.7
   flutter_map: ^6.0.1
   mobile_device_identifier: ^0.0.3
   # ffmpeg_kit_flutter_full_gpl: 6.0.3
