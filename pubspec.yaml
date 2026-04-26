@@ -121,7 +121,7 @@ dependencies:
   pasteboard: ^0.4.0
   shorebird_code_push: ^2.0.5
   flutter_inappwebview: ^6.0.0
-  collection: ^1.19.0
+  collection: ^1.18.0  # 必须 1.18 起步：Flutter 3.24.5 ship 的 flutter_test pin 在 1.18.0，写 ^1.19.0 会让 pub 在 CI 上解不出来
   permission_handler: ^11.0.1
   intl: '>=0.19.0 <0.21.0'
 
