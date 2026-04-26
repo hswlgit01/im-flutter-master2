@@ -1,11 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:collection/collection.dart';
 import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:get/get.dart';
 import 'package:openim_common/openim_common.dart';
-import 'package:openim_live/openim_live.dart';
 import 'package:rxdart/rxdart.dart';
 
 import 'controller/app_controller.dart';
@@ -89,6 +87,26 @@ mixin IMCallback {
   final groupApplicationChangedSubject = BehaviorSubject<GroupApplicationInfo>();
 
   final initializedSubject = PublishSubject<bool>();
+
+  final Map<String, int> _conversationEnsureMarks = {};
+
+  final Map<String, int> _friendRelationshipNotifyMarks = {};
+
+  bool _markRecent(Map<String, int> marks, String key,
+      {int windowMs = 5000}) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = marks[key];
+    if (last != null && now - last < windowMs) {
+      return false;
+    }
+    marks[key] = now;
+    Future.delayed(Duration(milliseconds: windowMs), () {
+      if (marks[key] == now) {
+        marks.remove(key);
+      }
+    });
+    return true;
+  }
 
   final memberAddedSubject = BehaviorSubject<GroupMembersInfo>();
 
@@ -293,6 +311,7 @@ mixin IMCallback {
       if (!isSentByMe) {
         print('[IMCallback] ✅ 好友关系已建立');
         Logger.print('[IMCallback] ✅ 好友关系已建立');
+        _ensureConversationExists(msg.sendID!);
         _showFriendAddedNotification(msg.sendID!);  // 显示通知
       }
     }
@@ -373,6 +392,7 @@ mixin IMCallback {
       print('[IMCallback] 主动创建与新好友的会话');
       Logger.print('[IMCallback] 主动创建与新好友的会话: $friendUserID');
       try {
+        await FriendConversationHelper.ensureConversationForFriend(friendUserID);
         final conversation = await OpenIM.iMManager.conversationManager.getOneConversation(
           sourceID: friendUserID,
           sessionType: ConversationType.single,
@@ -412,6 +432,10 @@ mixin IMCallback {
   /// 当对方通过我的好友申请时触发
   void _showFriendApprovedNotification(String friendUserID) async {
     try {
+      if (!_markRecent(_friendRelationshipNotifyMarks, friendUserID)) {
+        Logger.print('[IMCallback] 跳过重复好友关系通知: $friendUserID');
+        return;
+      }
       Logger.print('[IMCallback] 准备显示好友申请通过通知');
 
       // 始终播放声音
@@ -448,6 +472,10 @@ mixin IMCallback {
   /// 当成功添加好友后触发(contentType=1204)
   void _showFriendAddedNotification(String friendUserID) async {
     try {
+      if (!_markRecent(_friendRelationshipNotifyMarks, friendUserID)) {
+        Logger.print('[IMCallback] 跳过重复好友关系通知: $friendUserID');
+        return;
+      }
       Logger.print('[IMCallback] 准备显示好友添加成功通知');
 
       // 始终播放声音
@@ -608,6 +636,7 @@ mixin IMCallback {
       if (!isSentByMe) {
         print('[IMCallback] ✅ 好友关系已建立(离线)');
         Logger.print('[IMCallback] ✅ 好友关系已建立(离线)');
+        _ensureConversationExists(msg.sendID!);
         _showFriendAddedNotification(msg.sendID!);  // 显示通知
       }
     }
@@ -697,6 +726,10 @@ mixin IMCallback {
   /// 确保会话存在
   /// 当成为好友时，主动创建会话（如果不存在）
   void _ensureConversationExists(String friendUserID) async {
+    if (!_markRecent(_conversationEnsureMarks, friendUserID)) {
+      Logger.print('[IMCallback] 跳过重复会话确保任务: friendUserID=$friendUserID');
+      return;
+    }
     try {
       Logger.print('[IMCallback] 正在确保会话存在: friendUserID=$friendUserID');
 

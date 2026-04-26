@@ -74,8 +74,8 @@ dependencies:
   chewie: 1.8.5
   video_player: ^2.9.1
   flutter_cache_manager: ^3.3.0
-  syncfusion_flutter_core: ^25.2.7
-  syncfusion_flutter_sliders: ^25.2.7
+  syncfusion_flutter_core: ^33.1.49
+  syncfusion_flutter_sliders: ^33.1.49
   flutter_map: ^6.0.1
   mobile_device_identifier: ^0.0.3
   # ffmpeg_kit_flutter_full_gpl: 6.0.3
@@ -88,7 +88,7 @@ dependencies:
   geolocator: ^12.0.0
   fixnum: ^1.1.0
   protobuf: ^3.0.0
-  intl: ^0.19.0
+  intl: '>=0.19.0 <0.21.0'
   focus_detector_v2:
   flutter_background_service:
   flutter_local_notifications:

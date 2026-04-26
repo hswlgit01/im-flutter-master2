@@ -672,13 +672,16 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   bool _applyRevokedInfo(RevokedInfo value) {
+    final detail = value.toJson();
     var updated = false;
     for (var msg in messageList) {
       if (_matchesRevokedMessage(msg, value) &&
           msg.contentType != MessageType.revokeMessageNotification) {
         updated = true;
         msg.contentType = MessageType.revokeMessageNotification;
-        msg.notificationElem = NotificationElem(detail: json.encode(value.toJson()));
+        msg.notificationElem = NotificationElem(
+          detail: json.encode(_normalizeRevokeDetail(detail, msg)),
+        );
       }
     }
     if (updated) {
@@ -695,6 +698,114 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         msg.clientMsgID == clientMsgID;
   }
 
+  String? _stringFromMap(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return null;
+    return value.toString();
+  }
+
+  int? _intFromMap(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  String? _revokeTargetClientMsgID(Map<String, dynamic> detail) {
+    final clientMsgID = _stringFromMap(detail, 'clientMsgID') ??
+        _stringFromMap(detail, 'client_msg_id');
+    return clientMsgID == null || clientMsgID.isEmpty ? null : clientMsgID;
+  }
+
+  Map<String, dynamic> _decodeRevokeDetail(String detail) {
+    final decoded = json.decode(detail);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    if (decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    ILogger.d('revoke notification detail is not a map: $detail');
+    return <String, dynamic>{};
+  }
+
+  String _cachedNicknameForUser(String? userID) {
+    if (userID == null || userID.isEmpty) return '';
+    if (userID == OpenIM.iMManager.userID) {
+      return OpenIM.iMManager.userInfo.nickname ?? '';
+    }
+    if (isSingleChat && userID == conversationInfo.userID) {
+      return conversationInfo.showName ?? nickname.value;
+    }
+    final member = memberUpdateInfoMap[userID] ??
+        ownerAndAdmin.firstWhereOrNull((member) => member.userID == userID);
+    return member?.nickname ?? '';
+  }
+
+  Map<String, dynamic> _normalizeRevokeDetail(
+    Map<String, dynamic> detail,
+    Message sourceMessage,
+  ) {
+    final revokerID = _stringFromMap(detail, 'revokerID') ??
+        _stringFromMap(detail, 'revokerUserID');
+    final sourceSendID =
+        _stringFromMap(detail, 'sourceMessageSendID') ?? sourceMessage.sendID;
+    final sourceNickname = _stringFromMap(detail, 'sourceMessageSenderNickname') ??
+        sourceMessage.senderNickname ??
+        '';
+    var revokerNickname = _stringFromMap(detail, 'revokerNickname');
+    if ((revokerNickname == null || revokerNickname.isEmpty) &&
+        revokerID != null &&
+        revokerID == sourceSendID) {
+      revokerNickname = sourceNickname;
+    } else if ((revokerNickname == null || revokerNickname.isEmpty) &&
+        revokerID == OpenIM.iMManager.userID) {
+      revokerNickname = OpenIM.iMManager.userInfo.nickname ?? '';
+    } else if (revokerNickname == null || revokerNickname.isEmpty) {
+      revokerNickname = _cachedNicknameForUser(revokerID);
+    }
+    return <String, dynamic>{
+      'revokerID': revokerID ?? sourceSendID ?? OpenIM.iMManager.userID,
+      'revokerRole': _intFromMap(detail, 'revokerRole') ?? 0,
+      'clientMsgID':
+          _revokeTargetClientMsgID(detail) ?? sourceMessage.clientMsgID,
+      'revokerNickname': revokerNickname ?? '',
+      'revokeTime': _intFromMap(detail, 'revokeTime') ??
+          sourceMessage.sendTime ??
+          0,
+      'sourceMessageSendTime': _intFromMap(detail, 'sourceMessageSendTime') ??
+          sourceMessage.sendTime ??
+          0,
+      'sourceMessageSendID': sourceSendID ?? '',
+      'sourceMessageSenderNickname': sourceNickname,
+      'sessionType': _intFromMap(detail, 'sessionType') ??
+          _intFromMap(detail, 'sesstionType') ??
+          sourceMessage.sessionType ??
+          0,
+      'seq': _intFromMap(detail, 'seq') ?? sourceMessage.seq ?? 0,
+      'ex': _stringFromMap(detail, 'ex') ?? sourceMessage.ex ?? '',
+    };
+  }
+
+  bool _applyRevokeDetail(Map<String, dynamic> detail) {
+    final targetClientMsgID = _revokeTargetClientMsgID(detail);
+    if (targetClientMsgID == null) return false;
+    var updated = false;
+    for (final msg in messageList) {
+      if (msg.clientMsgID != targetClientMsgID) continue;
+      updated = true;
+      msg.contentType = MessageType.revokeMessageNotification;
+      msg.notificationElem = NotificationElem(
+        detail: json.encode(_normalizeRevokeDetail(detail, msg)),
+      );
+    }
+    if (updated) {
+      customChatListViewController.refresh();
+      update();
+    }
+    return updated;
+  }
+
   /// Called when a revoke event arrives as a regular notification message (the
   /// "ReliableNotificationMsg" path on the server). The message's own
   /// clientMsgID is brand new — the original revoked clientMsgID is inside
@@ -706,8 +817,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final detail = message.notificationElem?.detail;
     if (detail == null || detail.isEmpty) return false;
     try {
-      final info = RevokedInfo.fromJson(json.decode(detail));
-      return _applyRevokedInfo(info);
+      return _applyRevokeDetail(_decodeRevokeDetail(detail));
     } catch (e, s) {
       ILogger.d('parse revoke notification failed: $e\n$s');
       return false;
@@ -784,15 +894,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // AND a separate "xxx 撤回了一条消息" line, OR in group chat the revoke would
     // be dropped by the notification filter and the original would stay as if
     // nothing happened (bug 3 symptom).
-    final revokes = <String, RevokedInfo>{}; // target clientMsgID -> info
+    final revokes = <String, Map<String, dynamic>>{}; // target clientMsgID -> detail
     final standaloneRevokeRows = <String>{}; // clientMsgIDs of the notif rows themselves
     for (final m in list) {
       if (m.contentType == MessageType.revokeMessageNotification) {
         final detail = m.notificationElem?.detail;
         if (detail == null || detail.isEmpty) continue;
         try {
-          final info = RevokedInfo.fromJson(json.decode(detail));
-          final target = info.clientMsgID;
+          final info = _decodeRevokeDetail(detail);
+          final target = _revokeTargetClientMsgID(info);
           if (target != null && target.isNotEmpty && target != m.clientMsgID) {
             revokes[target] = info;
             final self = m.clientMsgID;
@@ -807,8 +917,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         if (info != null &&
             m.contentType != MessageType.revokeMessageNotification) {
           m.contentType = MessageType.revokeMessageNotification;
-          m.notificationElem =
-              NotificationElem(detail: json.encode(info.toJson()));
+          m.notificationElem = NotificationElem(
+            detail: json.encode(_normalizeRevokeDetail(info, m)),
+          );
         }
       }
     }
@@ -3648,6 +3759,18 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             conversationID: conversationInfo.conversationID,
             clientMsgID: message.clientMsgID!,
           );
+          _applyRevokeDetail(<String, dynamic>{
+            'revokerID': OpenIM.iMManager.userID,
+            'clientMsgID': message.clientMsgID,
+            'revokerNickname': OpenIM.iMManager.userInfo.nickname,
+            'revokeTime': DateTime.now().millisecondsSinceEpoch,
+            'sourceMessageSendTime': message.sendTime,
+            'sourceMessageSendID': message.sendID,
+            'sourceMessageSenderNickname': message.senderNickname,
+            'sessionType': message.sessionType,
+            'seq': message.seq,
+            'ex': message.ex,
+          });
         } catch (e) {
           IMViews.showToast(StrRes.revokeFailed);
         }
