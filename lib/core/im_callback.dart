@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:openim_common/openim_common.dart';
 import 'package:rxdart/rxdart.dart';
 
+import '../utils/debug_log_uploader.dart';
 import 'controller/app_controller.dart';
 import 'friend_conversation_helper.dart';
 
@@ -160,6 +161,13 @@ mixin IMCallback {
   }
 
   void recvMessageRevoked(RevokedInfo info) {
+    // dawn 2026-04-27 临时排查：SDK 调到 Dart 入口立即上报，确认 server 是否
+    // 把撤回通知投递到了 zz1 那台手机。
+    DebugLogUploader.send('sdk_recv_message_revoked', {
+      'targetClientMsgID': info.clientMsgID,
+      'revokerID': info.revokerID,
+      'sourceMessageSendID': info.sourceMessageSendID,
+    });
     onRecvMessageRevoked?.call(info);
     revokedMessageSubject.addSafely(info);
   }
@@ -168,6 +176,11 @@ mixin IMCallback {
     if (list.isNotEmpty) {
       print('[IMController] 📬 收到已读回执: ${list.length} 条, userIDs=${list.map((r) => r.userID).toList()}, msgIDList长度=${list.map((r) => r.msgIDList?.length ?? 0).toList()}');
     }
+    // dawn 2026-04-27 临时排查：SDK 已读回调入口上报
+    DebugLogUploader.send('sdk_recv_c2c_read_receipt', {
+      'count': list.length,
+      'userIDs': list.map((r) => r.userID).toList(),
+    });
     for (var r in list) {
       final key = r.userID ?? '';
       if (key.isEmpty) continue;
@@ -181,6 +194,13 @@ mixin IMCallback {
     Logger.print('[IMCallback] ===== recvNewMessage START =====');
     Logger.print('[IMCallback] contentType=${msg.contentType}, sendID=${msg.sendID}, recvID=${msg.recvID}');
     Logger.print('[IMCallback] isRunningBackground=${initLogic.isRunningBackground}');
+    // dawn 2026-04-27 临时排查：SDK 给 Dart 的新消息入口上报，重点关注 2101
+    DebugLogUploader.send('sdk_recv_new_msg', {
+      'contentType': msg.contentType,
+      'clientMsgID': msg.clientMsgID,
+      'sendID': msg.sendID,
+      'recvID': msg.recvID,
+    });
 
     final currentUserID = OpenIM.iMManager.userID;
     final isSentByMe = msg.sendID == currentUserID;
@@ -518,6 +538,13 @@ mixin IMCallback {
     print('[IMCallback] ===== recvOfflineMessage START =====');
     print('[IMCallback] contentType=${msg.contentType}, sendID=${msg.sendID}, recvID=${msg.recvID}');
     print('[IMCallback] isRunningBackground=${initLogic.isRunningBackground}');
+    // dawn 2026-04-27 临时排查：离线消息入口也打上报
+    DebugLogUploader.send('sdk_recv_offline_msg', {
+      'contentType': msg.contentType,
+      'clientMsgID': msg.clientMsgID,
+      'sendID': msg.sendID,
+      'recvID': msg.recvID,
+    });
 
     final currentUserID = OpenIM.iMManager.userID;
     final isSentByMe = msg.sendID == currentUserID;
