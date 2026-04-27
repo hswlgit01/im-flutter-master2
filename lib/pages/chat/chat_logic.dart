@@ -994,7 +994,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         try {
           final info = _decodeRevokeDetail(detail);
           final target = _revokeTargetClientMsgID(info);
-          final hasTarget = target != null && target.isNotEmpty && target != m.clientMsgID;
+          // dawn 2026-04-27 移除 `target != m.clientMsgID`：从 /debug/log 上报数据
+          // 看到 SDK 的 2101 通知消息复用原文 clientMsgID（in-place mutation 语义）。
+          // 真实 bug 场景是 list 里同 clientMsgID 同时出现 (text 旧的内存残留) 和
+          // (2101 重新加载的)，此时旧逻辑 target==self 会跳过 fold 导致两条并存。
+          // 现改为只要 target 有值就建立索引；后面再做"同 clientMsgID 去重保 2101"。
+          final hasTarget = target != null && target.isNotEmpty;
           if (hasTarget) {
             revokes[target] = info;
           }
@@ -1012,8 +1017,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
               'rawDetailString': detail,
             });
           }
+          // standaloneRevokeRows 只收 self != target 的真"独立通知"。in-place
+          // mutation 那条 (self == target) 不能加进去，否则它会被自己的 target
+          // 索引覆盖、被剔除掉。
           final self = m.clientMsgID;
-          if (self != null && self.isNotEmpty &&
+          if (self != null && self.isNotEmpty && self != target &&
               (hasTarget || (srcID != null && srcTime != null))) {
             standaloneRevokeRows.add(self);
           }
@@ -1050,6 +1058,36 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       list = list
           .where((m) => !standaloneRevokeRows.contains(m.clientMsgID))
           .toList();
+    }
+
+    // dawn 2026-04-27 同 clientMsgID 去重，保留 2101 那条：
+    // 真实 bug 场景下 list 里会同时存在 (X, text 旧的内存残留) 和 (X, 2101
+    // 后来加载的)，此时上一阶段的 fold 已经把 X 这一条按需 mutate 成了 2101，
+    // 但 list 里仍可能残留另一条同 ID 的 text，因此再做一次"同 clientMsgID
+    // 优先保 2101"的去重，确保 UI 不会同时画原文和撤回提示。
+    {
+      final byID = <String, Message>{};
+      for (final m in list) {
+        final id = m.clientMsgID;
+        if (id == null || id.isEmpty) continue;
+        final existing = byID[id];
+        if (existing == null) {
+          byID[id] = m;
+        } else {
+          final existingIsRevoke =
+              existing.contentType == MessageType.revokeMessageNotification;
+          final mIsRevoke =
+              m.contentType == MessageType.revokeMessageNotification;
+          if (mIsRevoke && !existingIsRevoke) {
+            byID[id] = m;
+          }
+        }
+      }
+      list = list.where((m) {
+        final id = m.clientMsgID;
+        if (id == null || id.isEmpty) return true; // 没 ID 的不参与去重
+        return identical(byID[id], m);
+      }).toList();
     }
 
     if (isGroupChat) {
