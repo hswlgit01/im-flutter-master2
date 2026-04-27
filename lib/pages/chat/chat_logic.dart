@@ -514,12 +514,19 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         if (list.isNotEmpty) {
           print('[ChatLogic] 📬 已读回执广播: 当前会话userID=$userID, 回执userIDs=${list.map((r) => r.userID).toList()}');
         }
+        // dawn 2026-04-27 修已读不更新：和撤回/sending 状态同因——message.isRead
+        // 只是被 mutate 在原对象上，customChatListViewController.refresh() 不会让
+        // SliverList 现有 item 重建。改成收集 touched clientMsgID 走 _rebuildItemsByClientMsgID
+        // 强制 itemBuilder rebuild，已读勾标和阅读时间立刻在气泡边上更新。
+        final touched = <String>{};
         for (var readInfo in list) {
           if (readInfo.userID != userID) continue;
           print('[ChatLogic] ✅ 已读回执匹配当前会话, 应用已读 userID=$userID');
-          _applyOneReadReceipt(readInfo);
+          _applyOneReadReceipt(readInfo, touched);
         }
-        customChatListViewController.refresh();
+        if (touched.isNotEmpty) {
+          _rebuildItemsByClientMsgID(touched);
+        }
       } catch (e) {
         ILogger.d('c2cReadReceiptSubject error: $e');
       }
@@ -1800,7 +1807,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   /// 应用一条已读回执到当前 messageList（支持 msgIDList 为 clientMsgID 或 seq）
   /// 单聊且无 msgIDList 时：将本会话内自己发出的全部消息标为已读，保证双方已读状态一致刷新
-  void _applyOneReadReceipt(ReadReceiptInfo readInfo) {
+  /// dawn 2026-04-27 加 touched 出参：把被改的 clientMsgID 收集起来供调用方走
+  /// _rebuildItemsByClientMsgID，否则 SliverList item 不会因为 isRead 变化重建。
+  void _applyOneReadReceipt(ReadReceiptInfo readInfo, [Set<String>? touched]) {
     final msgIDs = readInfo.msgIDList;
     var anyUpdated = false;
     if (msgIDs != null && msgIDs.isNotEmpty) {
@@ -1811,6 +1820,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           e.isRead = true;
           e.hasReadTime = _timestamp;
           anyUpdated = true;
+          if (touched != null && e.clientMsgID != null) {
+            touched.add(e.clientMsgID!);
+          }
         }
       }
     }
@@ -1820,6 +1832,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         if (e.sendID == OpenIM.iMManager.userID && e.isRead != true) {
           e.isRead = true;
           e.hasReadTime = _timestamp;
+          if (touched != null && e.clientMsgID != null) {
+            touched.add(e.clientMsgID!);
+          }
         }
       }
     }
@@ -1830,9 +1845,14 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (!isSingleChat || userID == null) return;
     final pending = imLogic.getPendingReadReceiptsForUser(userID);
     if (pending.isEmpty) return;
-    for (var readInfo in pending) _applyOneReadReceipt(readInfo);
+    // dawn 2026-04-27 同因修复：refresh() 不会让 SliverList item 重建，改成
+    // 收集 touched 走 _rebuildItemsByClientMsgID。
+    final touched = <String>{};
+    for (var readInfo in pending) _applyOneReadReceipt(readInfo, touched);
     imLogic.clearPendingReadReceiptsForUser(userID);
-    customChatListViewController.refresh();
+    if (touched.isNotEmpty) {
+      _rebuildItemsByClientMsgID(touched);
+    }
   }
 
   _clearUnreadCount() {
