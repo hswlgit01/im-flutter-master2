@@ -10,15 +10,17 @@ class DebugLogUploader {
     connectTimeout: const Duration(seconds: 5),
     sendTimeout: const Duration(seconds: 5),
     receiveTimeout: const Duration(seconds: 5),
+    // dawn 2026-04-27 chat-api 全局中间件要求 operationID header，否则 400
+    headers: {'operationID': 'flutter-debug'},
   ));
 
   static int _lastSentMs = 0;
 
   /// 异步上报，永远不抛异常，永远不阻塞调用方。
-  /// 同 tag 60s 内最多上报一次以避免狂刷。
+  /// 全局最快每秒一条，多余直接丢，避免狂刷服务端。
   static void send(String tag, Map<String, dynamic> data) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastSentMs < 1000) return; // 全局最快每秒一条，多余直接丢
+    if (now - _lastSentMs < 1000) return;
     _lastSentMs = now;
     final url = '${Config.appAuthUrl}/debug/log';
     Future.microtask(() async {
