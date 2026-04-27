@@ -519,11 +519,21 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         // SliverList 现有 item 重建。改成收集 touched clientMsgID 走 _rebuildItemsByClientMsgID
         // 强制 itemBuilder rebuild，已读勾标和阅读时间立刻在气泡边上更新。
         final touched = <String>{};
+        var matchedAny = false;
         for (var readInfo in list) {
           if (readInfo.userID != userID) continue;
+          matchedAny = true;
           print('[ChatLogic] ✅ 已读回执匹配当前会话, 应用已读 userID=$userID');
           _applyOneReadReceipt(readInfo, touched);
         }
+        // dawn 2026-04-27 临时排查：上报每次回执处理结果
+        DebugLogUploader.send('read_receipt', {
+          'broadcastCount': list.length,
+          'currentUserID': userID,
+          'matched': matchedAny,
+          'touchedCount': touched.length,
+          'broadcastUserIDs': list.map((r) => r.userID).toList(),
+        });
         if (touched.isNotEmpty) {
           _rebuildItemsByClientMsgID(touched);
         }
@@ -699,6 +709,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         if (msg.clientMsgID != null) touched.add(msg.clientMsgID!);
       }
     }
+    // dawn 2026-04-27 临时：每次 _applyRevokedInfo 结束都上报一下命中情况
+    DebugLogUploader.send('apply_revoked_info', {
+      'targetClientMsgID': value.clientMsgID,
+      'matched': updated,
+      'touchedCount': touched.length,
+      'messageListLen': messageList.length,
+    });
     if (updated) {
       // dawn 2026-04-27 修撤回不同步：仅 mutate Message + refresh() 时，由于 SliverList
       // 的既有 item 不会被 markNeedsBuild，bubble 仍显示原文。把 rxList 中对应 index
@@ -879,11 +896,30 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   /// original message still sitting there.
   bool _applyRevokeNotificationMessage(Message message) {
     final detail = message.notificationElem?.detail;
-    if (detail == null || detail.isEmpty) return false;
+    if (detail == null || detail.isEmpty) {
+      // dawn 2026-04-27 临时：跟踪 newMessage 路径上的 2101 处理
+      DebugLogUploader.send('apply_notif_msg', {
+        'reason': 'detail_empty',
+        'notificationClientMsgID': message.clientMsgID,
+      });
+      return false;
+    }
     try {
-      return _applyRevokeDetail(_decodeRevokeDetail(detail));
+      final ok = _applyRevokeDetail(_decodeRevokeDetail(detail));
+      DebugLogUploader.send('apply_notif_msg', {
+        'reason': ok ? 'ok' : 'no_match',
+        'notificationClientMsgID': message.clientMsgID,
+        'rawDetailString': detail,
+        'messageListLen': messageList.length,
+      });
+      return ok;
     } catch (e, s) {
       ILogger.d('parse revoke notification failed: $e\n$s');
+      DebugLogUploader.send('apply_notif_msg', {
+        'reason': 'exception',
+        'err': e.toString(),
+        'rawDetailString': detail,
+      });
       return false;
     }
   }
@@ -949,27 +985,38 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   /// 过滤后用于聊天列表展示的消息：去掉通话信令；群聊时去掉群通知类消息
-  // dawn 2026-04-27 临时排查标志：本次 app 启动是否已经上报过一次 revoke detail 样本
-  static bool _revokeSampleSent = false;
-
   List<Message> _filterMessagesForChat(List<Message> messages) {
     var list = _filterCallSignalingMessages(messages);
-    // dawn 2026-04-27 临时：每次 app 启动后，第一条遇到的 2101 通知，把它的 raw
-    // detail 整段上报一次到 chat-api，方便我从外网看 SDK 实际给的字段名格式。
-    // 整批撤回排查完成后整段删除。
-    if (!_revokeSampleSent) {
-      for (final m in list) {
-        if (m.contentType == MessageType.revokeMessageNotification) {
-          _revokeSampleSent = true;
-          DebugLogUploader.send('revoke_sample', {
-            'rawDetailString': m.notificationElem?.detail,
-            'notificationClientMsgID': m.clientMsgID,
-            'notificationSendID': m.sendID,
-            'notificationSendTime': m.sendTime,
-          });
-          break;
-        }
+    // dawn 2026-04-27 临时调查：每次进入 fold 都统计一下 list 形态，看是否有
+    // 同 clientMsgID 同时出现 text 和 2101 的真实证据；以及 fold 跑完最后剩多少条。
+    var revokeCount = 0;
+    var textCount = 0;
+    final sameIdConflict = <String>[];
+    final byIdContentType = <String, Set<int>>{};
+    for (final m in list) {
+      final id = m.clientMsgID ?? '';
+      if (id.isEmpty) continue;
+      byIdContentType.putIfAbsent(id, () => <int>{}).add(m.contentType ?? 0);
+      if (m.contentType == MessageType.revokeMessageNotification) revokeCount++;
+      else textCount++;
+    }
+    byIdContentType.forEach((id, types) {
+      if (types.contains(MessageType.revokeMessageNotification) && types.length > 1) {
+        sameIdConflict.add(id);
       }
+    });
+    if (revokeCount > 0) {
+      DebugLogUploader.send('filter_input_summary', {
+        'inListLen': list.length,
+        'revokeCount': revokeCount,
+        'textCount': textCount,
+        'sameIdConflict': sameIdConflict,
+        'firstRevokeRawDetail': list
+            .firstWhere(
+                (m) => m.contentType == MessageType.revokeMessageNotification,
+                orElse: () => Message())
+            .notificationElem?.detail,
+      });
     }
 
     // Fold standalone revoke-notification rows into their target messages. The
@@ -1216,6 +1263,14 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       // message in the list and stop — we don't want to insert a separate
       // "你撤回了一条消息" row alongside the still-visible original.
       if (message.contentType == MessageType.revokeMessageNotification) {
+        // dawn 2026-04-27 临时：标记 newMessage 路径上 2101 进入处理
+        DebugLogUploader.send('newmsg_2101_received', {
+          'clientMsgID': message.clientMsgID,
+          'sendID': message.sendID,
+          'recvID': message.recvID,
+          'currentChatUserID': userID,
+          'isCurrent': isCurrentChat(message),
+        });
         final updated = _applyRevokeNotificationMessage(message);
         if (!updated) {
           Future.microtask(_loadHistoryForSyncEnd);
