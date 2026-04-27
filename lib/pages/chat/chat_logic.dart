@@ -743,8 +743,17 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   String? _revokeTargetClientMsgID(Map<String, dynamic> detail) {
+    // dawn 2026-04-27 增强：原版只看 clientMsgID/client_msg_id；不同 SDK / 序列化
+    // 路径里也可能用 sourceClientMsgID / sourceMessageClientMsgID / clientMessageID
+    // / msgID 等命名。多挂几个备胎，命中一个就行。
     final clientMsgID = _stringFromMap(detail, 'clientMsgID') ??
-        _stringFromMap(detail, 'client_msg_id');
+        _stringFromMap(detail, 'client_msg_id') ??
+        _stringFromMap(detail, 'sourceClientMsgID') ??
+        _stringFromMap(detail, 'sourceMessageClientMsgID') ??
+        _stringFromMap(detail, 'sourceMessageId') ??
+        _stringFromMap(detail, 'clientMessageID') ??
+        _stringFromMap(detail, 'msgID') ??
+        _stringFromMap(detail, 'messageID');
     return clientMsgID == null || clientMsgID.isEmpty ? null : clientMsgID;
   }
 
@@ -820,19 +829,31 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   bool _applyRevokeDetail(Map<String, dynamic> detail) {
     final targetClientMsgID = _revokeTargetClientMsgID(detail);
-    if (targetClientMsgID == null) return false;
+    // dawn 2026-04-27 增强：clientMsgID 命中不到时，按 sourceMessageSendID +
+    // sourceMessageSendTime 双键再扫一遍，应对 SDK 偶尔不带回 clientMsgID 的情况。
+    final srcID = _stringFromMap(detail, 'sourceMessageSendID');
+    final srcTime = _intFromMap(detail, 'sourceMessageSendTime');
+    if (targetClientMsgID == null && (srcID == null || srcTime == null)) {
+      ILogger.w('[ChatLogic] _applyRevokeDetail: 无法定位目标消息 detail=$detail');
+      return false;
+    }
     var updated = false;
+    final touched = <String>{};
     for (final msg in messageList) {
-      if (msg.clientMsgID != targetClientMsgID) continue;
+      final byID = targetClientMsgID != null && msg.clientMsgID == targetClientMsgID;
+      final byPair = srcID != null && srcTime != null &&
+          msg.sendID == srcID && msg.sendTime == srcTime;
+      if (!byID && !byPair) continue;
+      if (msg.contentType == MessageType.revokeMessageNotification) continue;
       updated = true;
       msg.contentType = MessageType.revokeMessageNotification;
       msg.notificationElem = NotificationElem(
         detail: json.encode(_normalizeRevokeDetail(detail, msg)),
       );
+      if (msg.clientMsgID != null) touched.add(msg.clientMsgID!);
     }
     if (updated) {
-      // dawn 2026-04-27 修撤回不同步：同 _applyRevokedInfo，refresh() 不一定让 item 重建
-      _rebuildItemsByClientMsgID({targetClientMsgID});
+      _rebuildItemsByClientMsgID(touched);
       update();
     }
     return updated;
@@ -926,28 +947,60 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // AND a separate "xxx 撤回了一条消息" line, OR in group chat the revoke would
     // be dropped by the notification filter and the original would stay as if
     // nothing happened (bug 3 symptom).
+    // dawn 2026-04-27 增强：原版仅按 detail.clientMsgID 匹配；用户截图显示接收方
+    // 仍出现 "原文 + 撤回提示" 并存，说明部分 SDK 给的 detail 字段名/结构在我们的
+    // 取值里命中不了。增加：a) 多个备用字段名；b) sourceMessageSendID +
+    // sourceMessageSendTime 双键回退；c) 命中失败时打 ILogger.w 把 detail 摆出
+    // 来，便于下个 build 用户回报时排查。
     final revokes = <String, Map<String, dynamic>>{}; // target clientMsgID -> detail
+    final revokeBySender = <String, Map<String, dynamic>>{}; // "sendID|sendTime" -> detail
     final standaloneRevokeRows = <String>{}; // clientMsgIDs of the notif rows themselves
     for (final m in list) {
       if (m.contentType == MessageType.revokeMessageNotification) {
         final detail = m.notificationElem?.detail;
-        if (detail == null || detail.isEmpty) continue;
+        if (detail == null || detail.isEmpty) {
+          ILogger.w('[ChatLogic] revoke notification with empty detail: clientMsgID=${m.clientMsgID}');
+          continue;
+        }
         try {
           final info = _decodeRevokeDetail(detail);
           final target = _revokeTargetClientMsgID(info);
-          if (target != null && target.isNotEmpty && target != m.clientMsgID) {
+          final hasTarget = target != null && target.isNotEmpty && target != m.clientMsgID;
+          if (hasTarget) {
             revokes[target] = info;
-            final self = m.clientMsgID;
-            if (self != null && self.isNotEmpty) standaloneRevokeRows.add(self);
           }
-        } catch (_) {}
+          // 兜底：sourceMessageSendID + sourceMessageSendTime 也做一份索引
+          final srcID = _stringFromMap(info, 'sourceMessageSendID');
+          final srcTime = _intFromMap(info, 'sourceMessageSendTime');
+          if (srcID != null && srcID.isNotEmpty && srcTime != null && srcTime > 0) {
+            revokeBySender['$srcID|$srcTime'] = info;
+          }
+          if (!hasTarget && (srcID == null || srcTime == null)) {
+            ILogger.w('[ChatLogic] revoke detail missing target: detail=$detail');
+          }
+          final self = m.clientMsgID;
+          if (self != null && self.isNotEmpty &&
+              (hasTarget || (srcID != null && srcTime != null))) {
+            standaloneRevokeRows.add(self);
+          }
+        } catch (e) {
+          ILogger.w('[ChatLogic] revoke detail decode failed: $e detail=$detail');
+        }
       }
     }
-    if (revokes.isNotEmpty) {
+    if (revokes.isNotEmpty || revokeBySender.isNotEmpty) {
       for (final m in list) {
-        final info = revokes[m.clientMsgID];
-        if (info != null &&
-            m.contentType != MessageType.revokeMessageNotification) {
+        if (m.contentType == MessageType.revokeMessageNotification) continue;
+        var info = revokes[m.clientMsgID];
+        if (info == null) {
+          // 按发送者+sendTime 兜底匹配
+          final sendID = m.sendID;
+          final sendTime = m.sendTime;
+          if (sendID != null && sendTime != null) {
+            info = revokeBySender['$sendID|$sendTime'];
+          }
+        }
+        if (info != null) {
           m.contentType = MessageType.revokeMessageNotification;
           m.notificationElem = NotificationElem(
             detail: json.encode(_normalizeRevokeDetail(info, m)),
