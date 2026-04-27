@@ -115,11 +115,30 @@ class ConversationLogic extends GetxController {
     // dawn 2026-04-26 修复解散群成员侧残留：
     // 仅监听 groupInfoUpdatedSubject status==2 不可靠——SDK 在群被解散时优先
     // 触发 joinedGroupDeletedSubject（自己已被剔出群），groupInfo 后续才同步。
-    // 这里加兜底：joinedGroupDeleted 也走相同的清本地会话流程，确保普通成员
-    // 不会再在会话列表点进去看到历史消息。
+    // 这里加兜底：joinedGroupDeleted 时主动 getGroupsInfo 确认 status==2
+    // 才清本地会话，否则只是普通的退群/被踢，按原行为不动。
+    // dawn 2026-04-27 codex 回归修复：原版无条件 deleteConversationAndDeleteAllMsg，
+    // 在 normal leave/kick 场景会误把不该删的群历史也清掉。增加 status==2 校验。
     imLogic.joinedGroupDeletedSubject.listen((groupInfo) async {
-      final conversationID = 'sg_${groupInfo.groupID}';
-      print('[ConversationLogic] joinedGroupDeleted 兜底清本地: $conversationID');
+      final groupID = groupInfo.groupID;
+      final conversationID = 'sg_$groupID';
+      var dismissed = groupInfo.status == 2;
+      if (!dismissed) {
+        try {
+          final fresh = await OpenIM.iMManager.groupManager
+              .getGroupsInfo(groupIDList: [groupID]);
+          dismissed = fresh.firstOrNull?.status == 2;
+        } catch (e, s) {
+          // 群已经查不到也视为解散
+          print('[ConversationLogic] joinedGroupDeleted 查群信息失败,按解散处理: $e\n$s');
+          dismissed = true;
+        }
+      }
+      if (!dismissed) {
+        print('[ConversationLogic] joinedGroupDeleted 非解散(普通退群/被踢),保留本地会话: $conversationID');
+        return;
+      }
+      print('[ConversationLogic] joinedGroupDeleted 确认解散,清本地: $conversationID');
       try {
         await OpenIM.iMManager.conversationManager
             .deleteConversationAndDeleteAllMsg(conversationID: conversationID);

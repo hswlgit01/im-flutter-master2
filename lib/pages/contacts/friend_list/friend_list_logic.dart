@@ -92,6 +92,10 @@ class FriendListLogic extends GetxController {
 
   void _addUser(Map<String, dynamic> json) {
     final info = ISUserInfo.fromJson(json);
+    // dawn 2026-04-27 codex 回归修复：im_callback 在 1204 收到时主动 push 了 friendAddSubject，
+    // SDK 的 friendAdded 也会再触发一次，原版 _addUser 直接 add 没去重，会让同一好友
+    // 在通讯录里重复出现两条。先按 userID 把旧记录剔掉再 add，等于"插入或替换"。
+    friendList.removeWhere((e) => e.userID == info.userID);
     friendList.add(IMUtils.setAzPinyinAndTag(info) as ISUserInfo);
 
     SuspensionUtil.sortListBySuspensionTag(friendList);
