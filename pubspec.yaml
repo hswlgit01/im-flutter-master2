@@ -17,11 +17,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 # dawn 2026-04-26 版本号升级：用户要求小版本号 0.8.3 -> 0.8.4，便于区分新构建
-# dawn 2026-04-27 版本号升级：本批修撤回/发送状态/邀请好友/解散群/进群即退 5 个 bug
-# dawn 2026-04-27 版本号再升：codex review 回归修复（不误删非解散群历史 + 好友列表去重）
-# dawn 2026-04-27 版本号再升：撤回折叠加 sender+sendTime 兜底匹配 + 多备用字段名
-# dawn 2026-04-27 版本号再升：撤回 detail 自动上报到 chat-api /debug/log（排查通道）
-version: 0.8.8
+# dawn 2026-04-27 用户要求：所有迭代统一定为 0.8.6，不再每次小升一档
+version: 0.8.6
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
