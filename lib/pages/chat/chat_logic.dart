@@ -417,6 +417,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     );
     if (isGroupChat) {
       _groupMutedRetryScheduled = false; // 进入群聊允许一次“status=3 时延迟再拉”
+      // dawn 2026-04-26 修复进群即显示"已退出群聊"：
+      // joinedGroupDeletedSubject 是 BehaviorSubject，订阅时会回放上一次 leave 事件，
+      // 若 groupID 恰好命中（再次被加入同一个群、或 sub 缓存窜场），会把 isInGroup
+      // 误置成 false。onReady 主动调 SDK 拿真实成员状态覆盖回去。
+      _isJoinedGroup();
       _queryMyGroupMemberInfo();
       _queryGroupInfo();
       _groupMutedRefreshTimer?.cancel();
@@ -674,6 +679,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   bool _applyRevokedInfo(RevokedInfo value) {
     final detail = value.toJson();
     var updated = false;
+    final touched = <String>{};
     for (var msg in messageList) {
       if (_matchesRevokedMessage(msg, value) &&
           msg.contentType != MessageType.revokeMessageNotification) {
@@ -682,13 +688,38 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         msg.notificationElem = NotificationElem(
           detail: json.encode(_normalizeRevokeDetail(detail, msg)),
         );
+        if (msg.clientMsgID != null) touched.add(msg.clientMsgID!);
       }
     }
     if (updated) {
-      customChatListViewController.refresh();
+      // dawn 2026-04-27 修撤回不同步：仅 mutate Message + refresh() 时，由于 SliverList
+      // 的既有 item 不会被 markNeedsBuild，bubble 仍显示原文。把 rxList 中对应 index
+      // 重新赋同一个引用，触发 GetX list 元素变更事件，强制 itemBuilder rebuild。
+      _rebuildItemsByClientMsgID(touched);
       update();
     }
     return updated;
+  }
+
+  /// dawn 2026-04-27 撤回 / 状态变更后，把 rxList 中对应 clientMsgID 的元素重新赋值，
+  /// 触发 GetX 的索引变更事件，让 SliverChildBuilderDelegate 把对应 item rebuild。
+  void _rebuildItemsByClientMsgID(Set<String> clientMsgIDs) {
+    if (clientMsgIDs.isEmpty) {
+      customChatListViewController.refresh();
+      return;
+    }
+    final rxList = customChatListViewController.rxList;
+    var hit = false;
+    for (var i = 0; i < rxList.length; i++) {
+      final id = rxList[i].clientMsgID;
+      if (id != null && clientMsgIDs.contains(id)) {
+        rxList[i] = rxList[i];
+        hit = true;
+      }
+    }
+    if (!hit) {
+      rxList.refresh();
+    }
   }
 
   bool _matchesRevokedMessage(Message msg, RevokedInfo value) {
@@ -800,7 +831,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       );
     }
     if (updated) {
-      customChatListViewController.refresh();
+      // dawn 2026-04-27 修撤回不同步：同 _applyRevokedInfo，refresh() 不一定让 item 重建
+      _rebuildItemsByClientMsgID({targetClientMsgID});
       update();
     }
     return updated;
@@ -1067,7 +1099,16 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       // the same logical message twice. _mergeSyncedMessage syncs the server-side
       // fields into the existing row and returns true so we skip the duplicate.
       if (_mergeSyncedMessage(message)) {
-        customChatListViewController.refresh();
+        // dawn 2026-04-27 修撤回/状态不刷新：和 _sendSucceeded 同样的逻辑——
+        // 仅 refresh() 不一定触发 SliverList item 重建。把对应 clientMsgID 的
+        // rxList 元素重新赋值，强制 itemBuilder rebuild，保证 status/contentType
+        // 等字段变化能在 bubble 里立刻反映出来。
+        final id = message.clientMsgID;
+        if (id != null) {
+          _rebuildItemsByClientMsgID({id});
+        } else {
+          customChatListViewController.refresh();
+        }
       } else {
         _isReceivedMessageWhenSyncing = true;
         customChatListViewController.insertToBottom(message);
@@ -1487,14 +1528,26 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   void _sendSucceeded(Message oldMsg, Message newMsg) {
     oldMsg.update(newMsg);
+    // dawn 2026-04-27 修发送成功小圈圈不消失：
+    // 1) Message.update 只在 newMsg.status 非 null 时才覆盖；为了兜底 SDK 偶发
+    //    回 null 的情况，手动把 status 钉死成 succeeded（2）。
+    // 2) 仅 mutate Message + RxList.refresh() 在某些场景下 SliverList 不会让
+    //    既有 item 的 State.build 重跑（CustomChatListView 是 StatefulWidget，
+    //    didUpdateWidget 不自动触发 setState），导致小圈圈视图保留。把 rxList
+    //    里对应 index 重新赋值，触发 GetX 的 element 变化事件，让 itemBuilder
+    //    被强制 rebuild。
+    oldMsg.status = MessageStatus.succeeded;
+    final rxList = customChatListViewController.rxList;
+    final idx = rxList.indexWhere((m) => m.clientMsgID == oldMsg.clientMsgID);
+    if (idx >= 0) {
+      rxList[idx] = oldMsg;
+    } else {
+      rxList.refresh();
+    }
     sendStatusSub.addSafely(MsgStreamEv<bool>(
       id: oldMsg.clientMsgID!,
       value: true,
     ));
-    // 必须刷新列表：bubble 渲染读的是 message.status 这个静态字段，
-    // 仅 mutate Message 对象本身、列表不重建，发送中的小圈圈就不会消失。
-    // sendStatusSub 只驱动 ChatSendFailedView，不管 sending 态的展示。
-    customChatListViewController.refresh();
   }
 
   void _senFailed(

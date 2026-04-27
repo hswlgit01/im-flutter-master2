@@ -112,6 +112,22 @@ class ConversationLogic extends GetxController {
         print('[ConversationLogic] 未找到会话: $conversationID');
       }
     });
+    // dawn 2026-04-26 修复解散群成员侧残留：
+    // 仅监听 groupInfoUpdatedSubject status==2 不可靠——SDK 在群被解散时优先
+    // 触发 joinedGroupDeletedSubject（自己已被剔出群），groupInfo 后续才同步。
+    // 这里加兜底：joinedGroupDeleted 也走相同的清本地会话流程，确保普通成员
+    // 不会再在会话列表点进去看到历史消息。
+    imLogic.joinedGroupDeletedSubject.listen((groupInfo) async {
+      final conversationID = 'sg_${groupInfo.groupID}';
+      print('[ConversationLogic] joinedGroupDeleted 兜底清本地: $conversationID');
+      try {
+        await OpenIM.iMManager.conversationManager
+            .deleteConversationAndDeleteAllMsg(conversationID: conversationID);
+      } catch (e, s) {
+        print('[ConversationLogic] joinedGroupDeleted 删除会话失败: $e\n$s');
+      }
+      list.removeWhere((c) => c.conversationID == conversationID);
+    });
     imLogic.imSdkStatusSubject.listen((value) async {
       final status = value.status;
       final appReInstall = value.reInstall;

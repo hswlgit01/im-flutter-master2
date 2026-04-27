@@ -496,6 +496,13 @@ mixin IMCallback {
             await initLogic.showFriendAddedSystemNotification(friend);
           }
 
+          // dawn 2026-04-26 修复邀请人看不到新好友：
+          // SDK 的 friendAdded 回调在邀请码注册场景不一定触发，主动把 1204 推到
+          // friendAddSubject，让 friend_list_logic 的 _addFriend 也能收到，
+          // 邀请人 zz 列表里立刻出现 zz5。
+          friendAddSubject.addSafely(friend);
+          Logger.print('[IMCallback] ✅ 已主动推送 friendAddSubject: ${friend.nickname}');
+
           Logger.print('[IMCallback] ✅ 好友添加通知处理完成: ${friend.nickname}');
         }
       } catch (e) {
