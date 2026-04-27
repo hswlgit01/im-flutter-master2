@@ -413,6 +413,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   @override
   void onReady() {
     _resetGroupAtType();
+    // dawn 2026-04-27 临时排查：进入会话即上报一次，确认 zz1 这台手机的上报
+    // 通路是否通，以及它的版本是否真是 0.8.8。
+    DebugLogUploader.send('chat_opened', {
+      'me': OpenIM.iMManager.userID,
+      'peerUserID': userID,
+      'peerGroupID': groupID,
+      'conversationID': conversationInfo.conversationID,
+      'apkVersion': '0.8.8',
+    });
     appLogic.setActiveConversation(
       conversationInfo.conversationID,
     );

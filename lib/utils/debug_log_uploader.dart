@@ -14,14 +14,16 @@ class DebugLogUploader {
     headers: {'operationID': 'flutter-debug'},
   ));
 
-  static int _lastSentMs = 0;
+  // dawn 2026-04-27 改成按 tag 限频：每个 tag 1s 内最多一条，不同 tag 不互
+  // 阻挡。原全局 1s 一条会让快速串发的 newmsg/apply_revoked_info 被吞掉。
+  static final Map<String, int> _lastSentPerTag = {};
 
   /// 异步上报，永远不抛异常，永远不阻塞调用方。
-  /// 全局最快每秒一条，多余直接丢，避免狂刷服务端。
   static void send(String tag, Map<String, dynamic> data) {
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastSentMs < 1000) return;
-    _lastSentMs = now;
+    final last = _lastSentPerTag[tag] ?? 0;
+    if (now - last < 1000) return;
+    _lastSentPerTag[tag] = now;
     final url = '${Config.appAuthUrl}/debug/log';
     Future.microtask(() async {
       try {
