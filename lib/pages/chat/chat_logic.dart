@@ -18,6 +18,7 @@ import 'package:openim/core/controller/org_controller.dart';
 import 'package:openim/core/wallet_controller.dart';
 import 'package:openim/pages/chat/chat_merge.dart';
 import 'package:openim/pages/discover/Live/meeting_view.dart';
+import 'package:openim/utils/debug_log_uploader.dart';
 import 'package:openim/utils/logger.dart';
 import 'package:openim_common/openim_common.dart';
 import 'package:openim_live/openim_live.dart';
@@ -835,6 +836,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final srcTime = _intFromMap(detail, 'sourceMessageSendTime');
     if (targetClientMsgID == null && (srcID == null || srcTime == null)) {
       ILogger.w('[ChatLogic] _applyRevokeDetail: 无法定位目标消息 detail=$detail');
+      DebugLogUploader.send('apply_revoke_no_locator', {
+        'detail': detail,
+      });
       return false;
     }
     var updated = false;
@@ -938,8 +942,28 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   /// 过滤后用于聊天列表展示的消息：去掉通话信令；群聊时去掉群通知类消息
+  // dawn 2026-04-27 临时排查标志：本次 app 启动是否已经上报过一次 revoke detail 样本
+  static bool _revokeSampleSent = false;
+
   List<Message> _filterMessagesForChat(List<Message> messages) {
     var list = _filterCallSignalingMessages(messages);
+    // dawn 2026-04-27 临时：每次 app 启动后，第一条遇到的 2101 通知，把它的 raw
+    // detail 整段上报一次到 chat-api，方便我从外网看 SDK 实际给的字段名格式。
+    // 整批撤回排查完成后整段删除。
+    if (!_revokeSampleSent) {
+      for (final m in list) {
+        if (m.contentType == MessageType.revokeMessageNotification) {
+          _revokeSampleSent = true;
+          DebugLogUploader.send('revoke_sample', {
+            'rawDetailString': m.notificationElem?.detail,
+            'notificationClientMsgID': m.clientMsgID,
+            'notificationSendID': m.sendID,
+            'notificationSendTime': m.sendTime,
+          });
+          break;
+        }
+      }
+    }
 
     // Fold standalone revoke-notification rows into their target messages. The
     // server now sends revoke events as queueable messages (ReliableNotificationMsg)
@@ -960,6 +984,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         final detail = m.notificationElem?.detail;
         if (detail == null || detail.isEmpty) {
           ILogger.w('[ChatLogic] revoke notification with empty detail: clientMsgID=${m.clientMsgID}');
+          DebugLogUploader.send('revoke_empty_detail', {
+            'clientMsgID': m.clientMsgID,
+            'sendID': m.sendID,
+            'sendTime': m.sendTime,
+          });
           continue;
         }
         try {
@@ -977,6 +1006,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           }
           if (!hasTarget && (srcID == null || srcTime == null)) {
             ILogger.w('[ChatLogic] revoke detail missing target: detail=$detail');
+            DebugLogUploader.send('revoke_no_target', {
+              'notificationClientMsgID': m.clientMsgID,
+              'detail': info,
+              'rawDetailString': detail,
+            });
           }
           final self = m.clientMsgID;
           if (self != null && self.isNotEmpty &&
@@ -985,6 +1019,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           }
         } catch (e) {
           ILogger.w('[ChatLogic] revoke detail decode failed: $e detail=$detail');
+          DebugLogUploader.send('revoke_decode_failed', {
+            'err': e.toString(),
+            'rawDetailString': detail,
+          });
         }
       }
     }

@@ -20,7 +20,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # dawn 2026-04-27 版本号升级：本批修撤回/发送状态/邀请好友/解散群/进群即退 5 个 bug
 # dawn 2026-04-27 版本号再升：codex review 回归修复（不误删非解散群历史 + 好友列表去重）
 # dawn 2026-04-27 版本号再升：撤回折叠加 sender+sendTime 兜底匹配 + 多备用字段名
-version: 0.8.7
+# dawn 2026-04-27 版本号再升：撤回 detail 自动上报到 chat-api /debug/log（排查通道）
+version: 0.8.8
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
