@@ -21,7 +21,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # dawn 2026-04-27 用户要求升到 0.8.7（带撤回根因修复 + 已读勾标 rebuild 修复）
 # dawn 2026-04-27 用户要求升到 0.8.8（多埋点版本，定位撤回/已读不刷根因用）
 # dawn 2026-04-27 用户要求升到 0.8.9（chat_opened beacon + 按 tag 限频）
-version: 0.8.9
+# dawn 2026-04-27 用户要求升到 0.9.0（SDK 入口埋点 + 自动带 me 字段）
+version: 0.9.0
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

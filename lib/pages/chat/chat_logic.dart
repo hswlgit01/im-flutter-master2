@@ -420,7 +420,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       'peerUserID': userID,
       'peerGroupID': groupID,
       'conversationID': conversationInfo.conversationID,
-      'apkVersion': '0.8.9',
+      'apkVersion': '0.9.0',
     });
     appLogic.setActiveConversation(
       conversationInfo.conversationID,
