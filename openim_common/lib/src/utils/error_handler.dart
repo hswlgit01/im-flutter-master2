@@ -73,7 +73,6 @@ class ErrorHandler {
     20011: 'errCode.invitationCodeNotExist',
     20012: 'errCode.operationRestriction',
     20014: 'errCode.accountRegistered',
-
   };
 
   // 获取错误信息
@@ -96,7 +95,7 @@ class ErrorHandler {
           IMViews.showToast('errCode.timeout'.tr);
           break;
         default:
-          // IMViews.showToast('errCode.serviceUnavailable'.tr);
+        // IMViews.showToast('errCode.serviceUnavailable'.tr);
       }
     } else {
       IMViews.showToast('errCode.unknown'.tr);
@@ -123,12 +122,24 @@ class ErrorHandler {
 
   // 处理业务错误
   void handleBusinessError(int errorCode, {String? customMessage}) {
+    if (errorCode == 10090 &&
+        customMessage != null &&
+        customMessage.trim().isNotEmpty) {
+      var message = customMessage.trim();
+      const prefix = 'api error: ';
+      if (message.toLowerCase().startsWith(prefix)) {
+        message = message.substring(prefix.length).trim();
+      }
+      IMViews.showToast(message);
+      return;
+    }
+
     final message = getErrorMessage(errorCode);
 
     if ('errCode.unknown'.tr == message) {
       if (customMessage != null) {
-          IMViews.showToast(customMessage);
-          return;
+        IMViews.showToast(customMessage);
+        return;
       }
     }
     IMViews.showToast(message);
