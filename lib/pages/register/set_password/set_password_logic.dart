@@ -47,8 +47,9 @@ class SetPasswordLogic extends GetxController {
   }
 
   _onChanged() {
-    enabled.value =
-        nicknameCtrl.text.trim().isNotEmpty && pwdCtrl.text.trim().isNotEmpty && pwdAgainCtrl.text.trim().isNotEmpty;
+    enabled.value = nicknameCtrl.text.trim().isNotEmpty &&
+        pwdCtrl.text.trim().isNotEmpty &&
+        pwdAgainCtrl.text.trim().isNotEmpty;
   }
 
   bool _checkingInput() {
@@ -63,7 +64,7 @@ class SetPasswordLogic extends GetxController {
       IMViews.showToast(StrRes.twicePwdNoSame);
       return false;
     }
-    if ( invitationCodeCtrl.text.trim().isEmpty) {
+    if (invitationCodeCtrl.text.trim().isEmpty) {
       IMViews.showToast(sprintf(StrRes.plsEnterInvitationCode, ['']));
       return false;
     }
@@ -90,11 +91,16 @@ class SetPasswordLogic extends GetxController {
         invitationCode: invitationCode,
         orgInvitationCode: invitationCodeCtrl.text.trim(),
       );
-      if (null == IMUtils.emptyStrToNull(data.imToken) || null == IMUtils.emptyStrToNull(data.chatToken)) {
+      if (null == IMUtils.emptyStrToNull(data.imToken) ||
+          null == IMUtils.emptyStrToNull(data.chatToken)) {
         AppNavigator.startLogin();
         return;
       }
-      final account = {"areaCode": areaCode, "phoneNumber": phoneNumber, 'email': email};
+      final account = {
+        "areaCode": areaCode,
+        "phoneNumber": phoneNumber,
+        'email': email
+      };
       await DataSp.putLoginCertificate(LoginCertificate(
         userID: data.userId,
         imToken: data.imToken,
@@ -110,12 +116,11 @@ class SetPasswordLogic extends GetxController {
       Get.find<OrgController>().refreshOrg();
       Get.lazyPut<WalletController>(() => WalletController());
 
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (data.inviteUserId != null && data.inviteUserId!.isNotEmpty) {
-        await FriendConversationHelper.ensureConversationForFriend(data.inviteUserId!);
-      }
-      await FriendConversationHelper.ensureConversationsForAllFriends();
+      final conversations =
+          await FriendConversationHelper.ensureRegistrationConversations(
+        inviteUserID: data.inviteUserId,
+      );
+      AppNavigator.startMain(conversations: conversations);
     });
-    AppNavigator.startMain();
   }
 }

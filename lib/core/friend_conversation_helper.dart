@@ -15,6 +15,30 @@ class FriendConversationHelper {
   /// It is NOT sent to the server; purely a local hint to surface the session.
   static const _greeting = '你们已经成为好友，打个招呼吧～';
 
+  /// Registration imports inviter/default friends on the server, then logs the
+  /// new user in. This waits briefly for SDK sync, creates visible local
+  /// conversations for those friends, and returns the first chat-list page so
+  /// the home screen can render them immediately on first load.
+  static Future<List<ConversationInfo>> ensureRegistrationConversations({
+    String? inviteUserID,
+  }) async {
+    try {
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (inviteUserID != null && inviteUserID.isNotEmpty) {
+        await ensureConversationForFriend(inviteUserID);
+      }
+      await ensureConversationsForAllFriends();
+      return OpenIM.iMManager.conversationManager.getConversationListSplit(
+        offset: 0,
+        count: 400,
+      );
+    } catch (e, s) {
+      Logger.print(
+          '[FriendConversationHelper] ensureRegistrationConversations error: $e\n$s');
+      return <ConversationInfo>[];
+    }
+  }
+
   /// Ensure conversations exist (and are visible) for every friend in the
   /// logged-in user's friend list. Safe to call multiple times — friends that
   /// already have a conversation with at least one message are skipped.
@@ -32,7 +56,8 @@ class FriendConversationHelper {
         await ensureConversationForFriend(uid);
       }
     } catch (e, s) {
-      Logger.print('[FriendConversationHelper] ensureConversationsForAllFriends error: $e\n$s');
+      Logger.print(
+          '[FriendConversationHelper] ensureConversationsForAllFriends error: $e\n$s');
     }
   }
 

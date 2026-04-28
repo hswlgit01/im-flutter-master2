@@ -11,7 +11,8 @@ import 'package:openim/routes/app_navigator.dart';
 import 'package:openim_common/openim_common.dart';
 import 'package:sprintf/sprintf.dart';
 
-class AccountRegisterLogic extends GetxController with GetTickerProviderStateMixin {
+class AccountRegisterLogic extends GetxController
+    with GetTickerProviderStateMixin {
   final loginController = Get.find<LoginLogic>();
   late Rx<LoginType> operateType;
 
@@ -67,6 +68,7 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
     imageInvitationCodeCtrl.dispose();
     super.onClose();
   }
+
   _onChanged() {
     if (operateType.value == LoginType.email) {
       // 邮箱注册需要昵称、邮箱、账户、验证码
@@ -89,7 +91,8 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
   }
 
   void _onTabChange() {
-    operateType.value = tabController.index == 0 ? LoginType.account : LoginType.email;
+    operateType.value =
+        tabController.index == 0 ? LoginType.account : LoginType.email;
   }
 
   reGetCaptcha() async {
@@ -113,7 +116,8 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
       asyncFunction: () => Apis.requestVerificationCode(
         areaCode: areaCode.value,
         phoneNumber: null,
-        email: operateType.value == LoginType.email ? emailCtrl.text.trim() : null,
+        email:
+            operateType.value == LoginType.email ? emailCtrl.text.trim() : null,
         usedFor: 1,
         invitationCode: invitationCodeCtrl.text.trim(),
       ),
@@ -129,25 +133,27 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
     final regex = RegExp(r'^[a-zA-Z0-9_-]+$');
     return regex.hasMatch(nickname);
   }
+
   bool _isValidPhone(String phone) {
     if (phone.isEmpty) return false;
-    
+
     // 1. 必须是11位
     if (phone.length != 11) return false;
-    
+
     // 2. 必须是纯数字
     if (!RegExp(r'^\d+$').hasMatch(phone)) return false;
-    
+
     // 3. 必须符合中国手机号格式：1开头，第二位是3-9
     final phoneRegExp = RegExp(r'^1[3-9]\d{9}$');
     return phoneRegExp.hasMatch(phone);
   }
+
   bool _checkingInput() {
     if (nicknameCtrl.text.trim().isEmpty) {
       IMViews.showToast(StrRes.plsEnterYourNickname);
       return false;
     }
-    
+
     if (operateType.value == LoginType.email) {
       // 邮箱注册验证
       if (emailCtrl.text.trim().isEmpty) {
@@ -181,7 +187,7 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
         return false;
       }
     }
-    
+
     if (!IMUtils.isValidPassword(pwdCtrl.text)) {
       IMViews.showToast(StrRes.wrongPasswordFormat);
       return false;
@@ -206,7 +212,7 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
     LoadingView.singleton.wrap(asyncFunction: () async {
       try {
         dynamic data;
-        
+
         if (operateType.value == LoginType.email) {
           // 邮箱注册
           data = await Apis.userRegister(
@@ -233,20 +239,22 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
             deviceCode: mobileDeviceIdentifier,
           );
         }
-        
+
         if (null == IMUtils.emptyStrToNull(data.imToken) ||
             null == IMUtils.emptyStrToNull(data.chatToken)) {
           AppNavigator.startLogin();
           return;
         }
-        
+
         final accountInfo = {
-          "areaCode": areaCode.value, 
-          "phoneNumber": null, 
-          'email': operateType.value == LoginType.email ? emailCtrl.text.trim() : null,
+          "areaCode": areaCode.value,
+          "phoneNumber": null,
+          'email': operateType.value == LoginType.email
+              ? emailCtrl.text.trim()
+              : null,
           'account': accountCtrl.text.trim(),
         };
-        
+
         await DataSp.putLoginCertificate(LoginCertificate(
           userID: data.userId,
           imToken: data.imToken,
@@ -262,16 +270,11 @@ class AccountRegisterLogic extends GetxController with GetTickerProviderStateMix
         Get.find<OrgController>().refreshOrg();
         Get.lazyPut<WalletController>(() => WalletController());
 
-        // Wait for the IM SDK to sync the friend list, then create conversations for every
-        // auto-imported friend (inviter + org default friends). Previously only the inviter
-        // got a conversation, so default friends appeared in the friend list without the
-        // chat window "popping up" as expected.
-        await Future.delayed(const Duration(milliseconds: 800));
-        if (data.inviteUserId != null && data.inviteUserId!.isNotEmpty) {
-          await FriendConversationHelper.ensureConversationForFriend(data.inviteUserId!);
-        }
-        await FriendConversationHelper.ensureConversationsForAllFriends();
-        AppNavigator.startMain();
+        final conversations =
+            await FriendConversationHelper.ensureRegistrationConversations(
+          inviteUserID: data.inviteUserId,
+        );
+        AppNavigator.startMain(conversations: conversations);
       } catch (e) {
         final t = e as (int, String?);
         final errCode = t.$1;
