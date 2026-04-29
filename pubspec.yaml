@@ -25,7 +25,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # dawn 2026-04-27 用户要求升到 0.9.1（配合服务端 ReliableNotificationMsg 修复）
 # dawn 2026-04-28 用户要求升到 0.9.2（邀请码注册后首屏带出邀请人/默认好友会话）
 # dawn 2026-04-29 用户要求升到 0.9.3（App 日志本地采集与后台上传）
-version: 0.9.3
+# dawn 2026-04-29 用户要求升到 0.9.4（修复 App 日志上传触发与我的团队下载链接状态）
+version: 0.9.4
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

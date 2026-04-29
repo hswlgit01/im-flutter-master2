@@ -99,6 +99,7 @@ export 'src/widgets/chat/chat_at_view.dart';
 export 'src/widgets/chat/chat_video_view.dart';
 export 'src/widgets/rich_ext_sprintf.dart';
 export 'src/models/token_info.dart';
+export 'src/models/team_info.dart';
 export 'src/models/balance_detail.dart';
 export 'src/models/exchage_rate_info.dart';
 export 'src/models/group_card.dart';

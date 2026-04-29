@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:openim/core/im_callback.dart';
-import 'package:openim/pages/home/home_logic.dart';
 import 'package:openim_common/openim_common.dart';
 
 import '../../core/controller/im_controller.dart';
@@ -12,11 +11,11 @@ import '../../core/security_service.dart';
 import '../../utils/log_util.dart';
 import '../../routes/app_navigator.dart';
 import '../../routes/app_pages.dart';
-import '../wallet/wallet_view.dart';
+import '../../utils/user_util.dart';
 import 'my_info/identity_verify/identity_verify_view.dart';
 
 class MineLogic extends GetxController with GetxServiceMixin {
-  static const String TAG = "MineLogic";
+  static const _tag = 'MineLogic';
 
   final imLogic = Get.find<IMController>();
   final _securityService = SecurityService();
@@ -42,12 +41,11 @@ class MineLogic extends GetxController with GetxServiceMixin {
     IMUtils.copy(text: imLogic.userInfo.value.userID!);
   }
 
-
   void toSignIn() async {
     if (identityInfo?.status != 2) {
       final confirm = await Get.dialog(
         CustomDialog(
-          title: StrRes.identityVerify ?? '身份认证',
+          title: StrRes.identityVerify,
           content: StrRes.verifyBeforeCheckin,
         ),
       );
@@ -58,7 +56,8 @@ class MineLogic extends GetxController with GetxServiceMixin {
     }
     AppNavigator.startCheckin();
   }
- void viewPaymentMethod() => AppNavigator.startPaymentMethod();
+
+  void viewPaymentMethod() => AppNavigator.startPaymentMethod();
   void accountSetup() => AppNavigator.startAccountSetup();
 
   void aboutUs() => AppNavigator.startAboutUs();
@@ -67,19 +66,9 @@ class MineLogic extends GetxController with GetxServiceMixin {
     var confirm = await Get.dialog(CustomDialog(title: StrRes.logoutHint));
     if (confirm == true) {
       try {
-        await LoadingView.singleton.wrap(asyncFunction: () async {
-          // 清除RSA相关数据
-          await _securityService.clearSecurityData();
-          
-          // 执行原有的登出逻辑
-          await imLogic.logout();
-          await DataSp.removeLoginCertificate();
-          PushController.logout();
-          Get.find<HomeLogic>().conversationsAtFirstPage.clear();
-        });
-        AppNavigator.startLogin();
+        await UserUtil.logout();
       } catch (e) {
-        LogUtil.e(TAG, '登出失败: $e');
+        LogUtil.e(_tag, '登出失败: $e');
         IMViews.showToast('e:$e');
       }
     }
@@ -90,14 +79,14 @@ class MineLogic extends GetxController with GetxServiceMixin {
       EasyLoading.dismiss();
     }
     Get.snackbar(StrRes.accountWarn, tips ?? StrRes.accountException);
-    
+
     try {
       // 清除RSA相关数据
       await _securityService.clearSecurityData();
     } catch (e) {
-      LogUtil.e(TAG, '清除RSA数据失败: $e');
+      LogUtil.e(_tag, '清除RSA数据失败: $e');
     }
-    
+
     await DataSp.removeLoginCertificate();
     PushController.logout();
     AppNavigator.startLogin();
@@ -131,13 +120,13 @@ class MineLogic extends GetxController with GetxServiceMixin {
   @override
   void onReady() {
     super.onReady();
-    LogUtil.i(TAG, '我的页面已准备好');
+    LogUtil.i(_tag, '我的页面已准备好');
     refreshIdentityInfoIfNeeded();
   }
 
   // 页面每次获得焦点时调用
   void onPageEnter() {
-    LogUtil.i(TAG, '进入我的页面');
+    LogUtil.i(_tag, '进入我的页面');
     refreshIdentityInfoIfNeeded();
   }
 
@@ -146,12 +135,12 @@ class MineLogic extends GetxController with GetxServiceMixin {
     final currentTime = DateTime.now().millisecondsSinceEpoch;
     // 限制刷新频率：30秒内只刷新一次
     if (currentTime - _lastRefreshTime < 30000) {
-      LogUtil.i(TAG, '短时间内已刷新过身份信息，跳过');
+      LogUtil.i(_tag, '短时间内已刷新过身份信息，跳过');
       return;
     }
 
     // 强制刷新身份认证状态，无论当前状态如何
-    LogUtil.i(TAG, '强制刷新身份认证信息');
+    LogUtil.i(_tag, '强制刷新身份认证信息');
     await getIdentityInfo();
     _lastRefreshTime = currentTime;
   }
@@ -159,8 +148,8 @@ class MineLogic extends GetxController with GetxServiceMixin {
   // 使用直接HTTP请求绕过可能的缓存，强制从服务器获取最新身份认证状态
   Future<IdentityVerifyInfo?> forceRefreshIdentityInfo() async {
     try {
-      LogUtil.i(TAG, '开始强制刷新身份认证信息');
-      LogUtil.i(TAG, '直接请求URL: ${Urls.identityInfo}');
+      LogUtil.i(_tag, '开始强制刷新身份认证信息');
+      LogUtil.i(_tag, '直接请求URL: ${Urls.identityInfo}');
 
       // 创建一个包含随机参数的URL以避免缓存
       final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -179,7 +168,7 @@ class MineLogic extends GetxController with GetxServiceMixin {
         ),
       );
 
-      LogUtil.i(TAG, '强制刷新返回数据: $data');
+      LogUtil.i(_tag, '强制刷新返回数据: $data');
 
       if (data != null) {
         final info = IdentityVerifyInfo.fromJson(data);
@@ -188,12 +177,13 @@ class MineLogic extends GetxController with GetxServiceMixin {
         _identityInfo.value = info;
         _lastRefreshTime = DateTime.now().millisecondsSinceEpoch;
 
-        LogUtil.i(TAG, '强制刷新成功: status=${info.status}, verifyTime=${info.verifyTime}');
+        LogUtil.i(_tag,
+            '强制刷新成功: status=${info.status}, verifyTime=${info.verifyTime}');
         return info;
       }
       return null;
     } catch (e) {
-      LogUtil.e(TAG, '强制刷新身份认证信息失败: $e');
+      LogUtil.e(_tag, '强制刷新身份认证信息失败: $e');
       return null;
     }
   }
@@ -205,9 +195,9 @@ class MineLogic extends GetxController with GetxServiceMixin {
   // 获取身份认证信息
   Future<void> getIdentityInfo() async {
     try {
-      LogUtil.i(TAG, '开始获取身份认证信息');
-      LogUtil.i(TAG, '请求URL: ${Urls.identityInfo}');
-      LogUtil.i(TAG, '请求Headers: ${Apis.chatTokenOptions.headers}');
+      LogUtil.i(_tag, '开始获取身份认证信息');
+      LogUtil.i(_tag, '请求URL: ${Urls.identityInfo}');
+      LogUtil.i(_tag, '请求Headers: ${Apis.chatTokenOptions.headers}');
 
       final info = await Apis.getIdentityInfo();
 
@@ -215,22 +205,23 @@ class MineLogic extends GetxController with GetxServiceMixin {
       final oldStatus = _identityInfo.value?.status;
       final newStatus = info?.status;
 
-      LogUtil.i(TAG, '当前身份认证信息: $info');
-      LogUtil.i(TAG, '旧状态: $oldStatus, 新状态: $newStatus');
+      LogUtil.i(_tag, '当前身份认证信息: $info');
+      LogUtil.i(_tag, '旧状态: $oldStatus, 新状态: $newStatus');
 
       if (oldStatus != null && newStatus != null && oldStatus != newStatus) {
-        LogUtil.i(TAG, '身份认证状态已变更: $oldStatus -> $newStatus');
+        LogUtil.i(_tag, '身份认证状态已变更: $oldStatus -> $newStatus');
       }
 
       if (info != null) {
         _identityInfo.value = info;
-        LogUtil.i(TAG, '获取身份认证信息成功: status=${info.status}, applyTime=${info.applyTime}, verifyTime=${info.verifyTime}');
+        LogUtil.i(_tag,
+            '获取身份认证信息成功: status=${info.status}, applyTime=${info.applyTime}, verifyTime=${info.verifyTime}');
       } else {
-        LogUtil.i(TAG, '获取身份认证信息成功但返回为null');
+        LogUtil.i(_tag, '获取身份认证信息成功但返回为null');
         _identityInfo.value = IdentityVerifyInfo(status: 0);
       }
     } catch (e) {
-      LogUtil.e(TAG, '获取身份认证信息失败: $e');
+      LogUtil.e(_tag, '获取身份认证信息失败: $e');
       // 失败时设置为待认证状态
       _identityInfo.value = IdentityVerifyInfo(status: 0);
     }

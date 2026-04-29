@@ -75,8 +75,88 @@ class ChatListViewController<E> extends CustomChatListViewController<E> {
     _rxList.refresh(); // 触发UI更新
   }
 
+  Set<String> _messageKeys(Object? data) {
+    if (data is! Message) return {};
+
+    final keys = <String>{};
+    final serverMsgID = data.serverMsgID;
+    if (serverMsgID != null && serverMsgID.isNotEmpty) {
+      keys.add('server:$serverMsgID');
+    }
+
+    final seq = data.seq;
+    final groupID = data.groupID;
+    if (seq != null && seq > 0 && groupID != null && groupID.isNotEmpty) {
+      keys.add('seq:g:$groupID:$seq');
+    }
+
+    final sendID = data.sendID;
+    final recvID = data.recvID;
+    if (seq != null &&
+        seq > 0 &&
+        sendID != null &&
+        sendID.isNotEmpty &&
+        recvID != null &&
+        recvID.isNotEmpty) {
+      keys.add('seq:p:$sendID:$recvID:$seq');
+    }
+
+    final clientMsgID = data.clientMsgID;
+    if (clientMsgID != null && clientMsgID.isNotEmpty) {
+      keys.add('client:$clientMsgID');
+    }
+
+    final sendTime = data.sendTime;
+    if (sendTime != null && sendTime > 0) {
+      keys.add(
+        'time:${data.sessionType}:${data.contentType}:$sendID:$recvID:$groupID:$sendTime:${_messagePayload(data)}',
+      );
+    }
+    return keys;
+  }
+
+  String _messagePayload(Message message) {
+    if (message.textElem?.content != null) {
+      return message.textElem!.content!;
+    }
+    if (message.customElem?.data != null) {
+      return message.customElem!.data!;
+    }
+    if (message.notificationElem?.detail != null) {
+      return message.notificationElem!.detail!;
+    }
+    return '';
+  }
+
+  Set<String> _existingMessageKeys() => list.expand(_messageKeys).toSet();
+
+  bool _hasExistingMessage(E data) {
+    final keys = _messageKeys(data);
+    if (keys.isEmpty) return false;
+    return keys.any(_existingMessageKeys().contains);
+  }
+
+  List<E> _dedupeMessages(Iterable<E> iterable) {
+    final keys = _existingMessageKeys();
+    final result = <E>[];
+    for (final item in iterable) {
+      final itemKeys = _messageKeys(item);
+      final duplicateKey = itemKeys.firstWhereOrNull(keys.contains);
+      if (duplicateKey != null) {
+        ILogger.w('[ChatList] skip duplicate message: $duplicateKey');
+        continue;
+      }
+      keys.addAll(itemKeys);
+      result.add(item);
+    }
+    return result;
+  }
+
   @override
   void insertToBottom(E data) {
+    if (_hasExistingMessage(data)) {
+      return;
+    }
     super.insertToBottom(data);
 
     // 只有当用户在底部附近且是新接收的消息时才自动滚动
@@ -93,21 +173,28 @@ class ChatListViewController<E> extends CustomChatListViewController<E> {
 
   @override
   void insertToTop(E data) {
+    if (_hasExistingMessage(data)) {
+      return;
+    }
     super.insertToTop(data);
     _rxList.insert(0, data); // 触发UI更新
   }
 
   @override
   void insertAllToBottom(Iterable<E> iterable) {
-    super.insertAllToBottom(iterable);
-    _rxList.addAll(iterable); // 触发UI更新
+    final deduped = _dedupeMessages(iterable);
+    if (deduped.isEmpty) return;
+    super.insertAllToBottom(deduped);
+    _rxList.addAll(deduped); // 触发UI更新
     // 批量插入时不自动滚动，避免删除消息后意外滚动到底部
   }
 
   @override
   void insertAllToTop(Iterable<E> iterable) {
-    super.insertAllToTop(iterable);
-    _rxList.insertAll(0, iterable); // 触发UI更新
+    final deduped = _dedupeMessages(iterable);
+    if (deduped.isEmpty) return;
+    super.insertAllToTop(deduped);
+    _rxList.insertAll(0, deduped); // 触发UI更新
   }
 
   @override
@@ -186,10 +273,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   final isReadyToShow = false.obs;
   final enabledBottomLoad = false.obs;
   final enabledTopLoad = true.obs;
+
   /// 首次加载时本地无消息（如同步未拉取到该会话），用于展示空状态与重试
   final firstLoadEmpty = false.obs;
+
   /// 正在执行“重试加载历史”（同步+拉取）时为 true，用于界面显示“正在同步…”
   final retryingLoadHistory = false.obs;
+
   /// 红包状态缓存（msg_id -> status），会话内从本地恢复后写入，供 item 用 Obx 订阅，避免重启后仍显示待领取
   final redPacketStatusMap = <String, String>{}.obs;
   late final ChatListViewController<Message> customChatListViewController;
@@ -236,7 +326,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   final announcement = ''.obs;
   late StreamSubscription conversationSub;
-  late StreamSubscription newMessageSub;  // 新增：订阅新消息Subject
+  late StreamSubscription newMessageSub; // 新增：订阅新消息Subject
   late StreamSubscription revokedMessageSub;
   late StreamSubscription memberAddSub;
   late StreamSubscription memberDelSub;
@@ -293,6 +383,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   final isMute = false.obs;
   Timer? _muteTimer;
+
   /// 仅作兜底：长间隔轮询（秒），0=关闭。实时主要靠 1514/1515 推送 + 收到群通知时防抖拉取，避免高并发下短周期轮询压垮服务端
   static const int _kGroupMutedFallbackPollSeconds = 60;
   Timer? _groupMutedRefreshTimer;
@@ -300,8 +391,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   /// 群禁言状态（status == 3），单独提为响应式，方便根据通知/GroupInfo 变更实时刷新 UI
   final _groupMuted = false.obs;
+
   /// 最近一次由 _queryGroupInfo（服务端）设置禁言状态的时间（ms），用于避免 SDK 推送的过期 GroupInfo 覆盖正确结果
   int? _lastGroupMutedFromServerMs;
+
   /// 当首次拉取到 status==3 时，延迟再拉一次以绕过 SDK 缓存（仅一次）
   Timer? _groupMutedRetryTimer;
   bool _groupMutedRetryScheduled = false;
@@ -334,8 +427,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     print('[ChatLogic] message.sendID=$senderId');
     print('[ChatLogic] message.recvID=$receiverId');
     print('[ChatLogic] this.userID=$userID');
-    print('[ChatLogic] this.conversationInfo.userID=${conversationInfo.userID}');
-    print('[ChatLogic] this.conversationInfo.conversationID=${conversationInfo.conversationID}');
+    print(
+        '[ChatLogic] this.conversationInfo.userID=${conversationInfo.userID}');
+    print(
+        '[ChatLogic] this.conversationInfo.conversationID=${conversationInfo.conversationID}');
     print('[ChatLogic] myUserID=$myUserID');
     print('[ChatLogic] message.isSingleChat=${message.isSingleChat}');
     print('[ChatLogic] this.isSingleChat=$isSingleChat');
@@ -393,20 +488,20 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     _clearUnreadCount();
     customChatListViewController.jumpToElement(customChatListViewController.list
         .firstWhere((e) =>
-    e.sendID != OpenIM.iMManager.userID &&
-        !e.isRead! &&
-        isShowReadStatus(e) &&
-        e.sendTime! < inTime));
+            e.sendID != OpenIM.iMManager.userID &&
+            !e.isRead! &&
+            isShowReadStatus(e) &&
+            e.sendTime! < inTime));
   }
 
   Future<List<Message>> searchMediaMessage() async {
     final messageList = await OpenIM.iMManager.messageManager
         .searchLocalMessages(
-        conversationID: conversationInfo.conversationID,
-        messageTypeList: [MessageType.picture, MessageType.video],
-        count: 500);
+            conversationID: conversationInfo.conversationID,
+            messageTypeList: [MessageType.picture, MessageType.video],
+            count: 500);
     return messageList.searchResultItems?.first.messageList?.reversed
-        .toList() ??
+            .toList() ??
         [];
   }
 
@@ -438,7 +533,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       if (_kGroupMutedFallbackPollSeconds > 0) {
         _groupMutedRefreshTimer = Timer.periodic(
           Duration(seconds: _kGroupMutedFallbackPollSeconds),
-              (_) => _queryGroupInfo(),
+          (_) => _queryGroupInfo(),
         );
       }
     }
@@ -469,7 +564,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
     conversationSub = imLogic.conversationChangedSubject.listen((value) {
       final obj = value.firstWhereOrNull(
-              (e) => e.conversationID == conversationInfo.conversationID);
+          (e) => e.conversationID == conversationInfo.conversationID);
 
       if (obj != null) {
         conversationInfo = obj;
@@ -500,7 +595,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       _handleNewMessage(message);
     });
 
-    revokedMessageSub = imLogic.revokedMessageSubject.listen((RevokedInfo value) {
+    revokedMessageSub =
+        imLogic.revokedMessageSubject.listen((RevokedInfo value) {
       final updated = _applyRevokedInfo(value);
       if (!updated) {
         Future.microtask(_loadHistoryForSyncEnd);
@@ -511,17 +607,20 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // imLogic.onRecvNewMessage = null; // 无法设为null，这是SDK中定义的回调
     // 为了清晰起见，我们仍然设置回调，但在回调中什么也不做
     imLogic.onRecvNewMessage = (Message message) async {
-      print('[ChatLogic] ⚠️ onRecvNewMessage回调收到消息，但已被禁用: ${message.contentType}');
+      print(
+          '[ChatLogic] ⚠️ onRecvNewMessage回调收到消息，但已被禁用: ${message.contentType}');
       // 不再调用_handleNewMessage，避免重复处理
     };
 
     print('[ChatLogic] ✅ 消息监听设置完成');
 
     // 使用全局已读回执广播订阅，实现实时同步（不覆盖全局回调，避免切会话时丢失）
-    c2cReadReceiptSub = imLogic.c2cReadReceiptSubject.listen((List<ReadReceiptInfo> list) {
+    c2cReadReceiptSub =
+        imLogic.c2cReadReceiptSubject.listen((List<ReadReceiptInfo> list) {
       try {
         if (list.isNotEmpty) {
-          print('[ChatLogic] 📬 已读回执广播: 当前会话userID=$userID, 回执userIDs=${list.map((r) => r.userID).toList()}');
+          print(
+              '[ChatLogic] 📬 已读回执广播: 当前会话userID=$userID, 回执userIDs=${list.map((r) => r.userID).toList()}');
         }
         // dawn 2026-04-27 修已读不更新：和撤回/sending 状态同因——message.isRead
         // 只是被 mutate 在原对象上，customChatListViewController.refresh() 不会让
@@ -824,9 +923,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         _stringFromMap(detail, 'revokerUserID');
     final sourceSendID =
         _stringFromMap(detail, 'sourceMessageSendID') ?? sourceMessage.sendID;
-    final sourceNickname = _stringFromMap(detail, 'sourceMessageSenderNickname') ??
-        sourceMessage.senderNickname ??
-        '';
+    final sourceNickname =
+        _stringFromMap(detail, 'sourceMessageSenderNickname') ??
+            sourceMessage.senderNickname ??
+            '';
     var revokerNickname = _stringFromMap(detail, 'revokerNickname');
     if ((revokerNickname == null || revokerNickname.isEmpty) &&
         revokerID != null &&
@@ -844,9 +944,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       'clientMsgID':
           _revokeTargetClientMsgID(detail) ?? sourceMessage.clientMsgID,
       'revokerNickname': revokerNickname ?? '',
-      'revokeTime': _intFromMap(detail, 'revokeTime') ??
-          sourceMessage.sendTime ??
-          0,
+      'revokeTime':
+          _intFromMap(detail, 'revokeTime') ?? sourceMessage.sendTime ?? 0,
       'sourceMessageSendTime': _intFromMap(detail, 'sourceMessageSendTime') ??
           sourceMessage.sendTime ??
           0,
@@ -877,9 +976,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     var updated = false;
     final touched = <String>{};
     for (final msg in messageList) {
-      final byID = targetClientMsgID != null && msg.clientMsgID == targetClientMsgID;
-      final byPair = srcID != null && srcTime != null &&
-          msg.sendID == srcID && msg.sendTime == srcTime;
+      final byID =
+          targetClientMsgID != null && msg.clientMsgID == targetClientMsgID;
+      final byPair = srcID != null &&
+          srcTime != null &&
+          msg.sendID == srcID &&
+          msg.sendTime == srcTime;
       if (!byID && !byPair) continue;
       if (msg.contentType == MessageType.revokeMessageNotification) continue;
       updated = true;
@@ -942,7 +1044,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (clientMsgID == null || clientMsgID.isEmpty) {
       return false;
     }
-    final index = messageList.indexWhere((msg) => msg.clientMsgID == clientMsgID);
+    final index =
+        messageList.indexWhere((msg) => msg.clientMsgID == clientMsgID);
     if (index < 0) {
       return false;
     }
@@ -1006,11 +1109,14 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       final id = m.clientMsgID ?? '';
       if (id.isEmpty) continue;
       byIdContentType.putIfAbsent(id, () => <int>{}).add(m.contentType ?? 0);
-      if (m.contentType == MessageType.revokeMessageNotification) revokeCount++;
-      else textCount++;
+      if (m.contentType == MessageType.revokeMessageNotification)
+        revokeCount++;
+      else
+        textCount++;
     }
     byIdContentType.forEach((id, types) {
-      if (types.contains(MessageType.revokeMessageNotification) && types.length > 1) {
+      if (types.contains(MessageType.revokeMessageNotification) &&
+          types.length > 1) {
         sameIdConflict.add(id);
       }
     });
@@ -1024,7 +1130,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             .firstWhere(
                 (m) => m.contentType == MessageType.revokeMessageNotification,
                 orElse: () => Message())
-            .notificationElem?.detail,
+            .notificationElem
+            ?.detail,
       });
     }
 
@@ -1039,14 +1146,18 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // 取值里命中不了。增加：a) 多个备用字段名；b) sourceMessageSendID +
     // sourceMessageSendTime 双键回退；c) 命中失败时打 ILogger.w 把 detail 摆出
     // 来，便于下个 build 用户回报时排查。
-    final revokes = <String, Map<String, dynamic>>{}; // target clientMsgID -> detail
-    final revokeBySender = <String, Map<String, dynamic>>{}; // "sendID|sendTime" -> detail
-    final standaloneRevokeRows = <String>{}; // clientMsgIDs of the notif rows themselves
+    final revokes =
+        <String, Map<String, dynamic>>{}; // target clientMsgID -> detail
+    final revokeBySender =
+        <String, Map<String, dynamic>>{}; // "sendID|sendTime" -> detail
+    final standaloneRevokeRows =
+        <String>{}; // clientMsgIDs of the notif rows themselves
     for (final m in list) {
       if (m.contentType == MessageType.revokeMessageNotification) {
         final detail = m.notificationElem?.detail;
         if (detail == null || detail.isEmpty) {
-          ILogger.w('[ChatLogic] revoke notification with empty detail: clientMsgID=${m.clientMsgID}');
+          ILogger.w(
+              '[ChatLogic] revoke notification with empty detail: clientMsgID=${m.clientMsgID}');
           DebugLogUploader.send('revoke_empty_detail', {
             'clientMsgID': m.clientMsgID,
             'sendID': m.sendID,
@@ -1069,11 +1180,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           // 兜底：sourceMessageSendID + sourceMessageSendTime 也做一份索引
           final srcID = _stringFromMap(info, 'sourceMessageSendID');
           final srcTime = _intFromMap(info, 'sourceMessageSendTime');
-          if (srcID != null && srcID.isNotEmpty && srcTime != null && srcTime > 0) {
+          if (srcID != null &&
+              srcID.isNotEmpty &&
+              srcTime != null &&
+              srcTime > 0) {
             revokeBySender['$srcID|$srcTime'] = info;
           }
           if (!hasTarget && (srcID == null || srcTime == null)) {
-            ILogger.w('[ChatLogic] revoke detail missing target: detail=$detail');
+            ILogger.w(
+                '[ChatLogic] revoke detail missing target: detail=$detail');
             DebugLogUploader.send('revoke_no_target', {
               'notificationClientMsgID': m.clientMsgID,
               'detail': info,
@@ -1084,12 +1199,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           // mutation 那条 (self == target) 不能加进去，否则它会被自己的 target
           // 索引覆盖、被剔除掉。
           final self = m.clientMsgID;
-          if (self != null && self.isNotEmpty && self != target &&
+          if (self != null &&
+              self.isNotEmpty &&
+              self != target &&
               (hasTarget || (srcID != null && srcTime != null))) {
             standaloneRevokeRows.add(self);
           }
         } catch (e) {
-          ILogger.w('[ChatLogic] revoke detail decode failed: $e detail=$detail');
+          ILogger.w(
+              '[ChatLogic] revoke detail decode failed: $e detail=$detail');
           DebugLogUploader.send('revoke_decode_failed', {
             'err': e.toString(),
             'rawDetailString': detail,
@@ -1187,14 +1305,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     }
 
     // 拦截红包领取通知（单聊消息），如果是当前群组的红包通知，则转换为群组系统消息显示
-    if (isGroupChat && message.isSingleChat && message.contentType == MessageType.text) {
+    if (isGroupChat &&
+        message.isSingleChat &&
+        message.contentType == MessageType.text) {
       try {
         if (message.ex != null && message.ex!.isNotEmpty) {
           final extraData = json.decode(message.ex!);
           // 检查是否为红包领取通知且目标群ID匹配当前群ID
           if (extraData['type'] == 'red_packet_claimed' &&
               extraData['target_id'] == groupID) {
-
             print('[ChatLogic] 🧧 拦截到红包领取通知，转换为群消息显示');
 
             // 解析原始内容（SDK Message 无 content，文本在 textElem.content）
@@ -1202,7 +1321,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             try {
               final rawContent = message.textElem?.content ?? '';
               if (rawContent.isNotEmpty) {
-                final contentMap = json.decode(rawContent) as Map<String, dynamic>?;
+                final contentMap =
+                    json.decode(rawContent) as Map<String, dynamic>?;
                 if (contentMap != null && contentMap['content'] != null) {
                   notificationContent = contentMap['content'] as String;
                 }
@@ -1368,7 +1488,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (searchMessage != null) {
       final topMessageRes = await _fetchHistoryMessages(searchMessage);
       final bottomMessageRes =
-      await _fetchReverseHistoryMessages(searchMessage);
+          await _fetchReverseHistoryMessages(searchMessage);
       if (topMessageRes.isEnd == true) {
         enabledTopLoad.value = false;
       }
@@ -1391,8 +1511,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         ]);
         customChatListViewController.insertAllToBottom(
             _sortMessagesBySendTimeAsc(
-                _filterMessagesForChat(bottomMessageRes.messageList ?? []))
-        );
+                _filterMessagesForChat(bottomMessageRes.messageList ?? [])));
       }
     }
     // 非搜索：仅拉一页（本地或群聊服务端最近一页），上滑时 onScrollToTopLoad 再按需拉更早历史
@@ -1431,7 +1550,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     return regExp.allMatches(text).map((match) => match.group(1)!).toList();
   }
 
-  Future sendTextMsg(value, { required List<Uint8List> images }) async {
+  Future sendTextMsg(value, {required List<Uint8List> images}) async {
     try {
       if (images.isNotEmpty) {
         // 如果有图片，先发送图片消息
@@ -1499,8 +1618,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         try {
           // 尝试从消息列表中找出最近的转账消息
           for (int i = messageList.length - 1;
-          i >= 0 && i >= messageList.length - 10;
-          i--) {
+              i >= 0 && i >= messageList.length - 10;
+              i--) {
             final msg = messageList[i];
 
             // 检查是否为转账消息
@@ -1544,7 +1663,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final file = await IMUtils.compressImageAndGetFile(File(path));
 
     var message =
-    await OpenIM.iMManager.messageManager.createImageMessageFromFullPath(
+        await OpenIM.iMManager.messageManager.createImageMessageFromFullPath(
       imagePath: file!.path,
     );
 
@@ -1558,17 +1677,17 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   Future sendVideo(
       {required String path,
-        bool sendNow = true,
-        required String mimeType,
-        required int duration,
-        required String snapshotPath}) async {
+      bool sendNow = true,
+      required String mimeType,
+      required int duration,
+      required String snapshotPath}) async {
     final file = await IMUtils.compressVideoAndGetFile(File(path));
     var message = await OpenIM.iMManager.messageManager
         .createVideoMessageFromFullPath(
-        videoPath: file!.path,
-        videoType: mimeType,
-        duration: duration,
-        snapshotPath: snapshotPath);
+            videoPath: file!.path,
+            videoType: mimeType,
+            duration: duration,
+            snapshotPath: snapshotPath);
 
     if (sendNow) {
       return _sendMessage(message);
@@ -1579,10 +1698,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   sendForwardRemarkMsg(
-      String content, {
-        String? userId,
-        String? groupId,
-      }) async {
+    String content, {
+    String? userId,
+    String? groupId,
+  }) async {
     final message = await OpenIM.iMManager.messageManager.createTextMessage(
       text: content,
     );
@@ -1590,10 +1709,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   sendForwardMsg(
-      Message originalMessage, {
-        String? userId,
-        String? groupId,
-      }) async {
+    Message originalMessage, {
+    String? userId,
+    String? groupId,
+  }) async {
     var message = await OpenIM.iMManager.messageManager.createForwardMessage(
       message: originalMessage,
     );
@@ -1680,11 +1799,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   Future _sendMessage(
-      Message message, {
-        String? userId,
-        String? groupId,
-        bool addToUI = true,
-      }) {
+    Message message, {
+    String? userId,
+    String? groupId,
+    bool addToUI = true,
+  }) {
     // 群聊场景下，在本地先做禁言/全员禁言前置校验，避免发出无效请求：
     // - isMute.value 为 true：当前用户已被单独禁言
     // - isGroupMute 为 true：已开启全员禁言（管理员/群主除外）
@@ -1715,11 +1834,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
     return OpenIM.iMManager.messageManager
         .sendMessage(
-      message: message,
-      userID: recvUserID,
-      groupID: useOuterValue ? groupId : groupID,
-      offlinePushInfo: Config.offlinePushInfo,
-    )
+          message: message,
+          userID: recvUserID,
+          groupID: useOuterValue ? groupId : groupID,
+          offlinePushInfo: Config.offlinePushInfo,
+        )
         .then((value) => _sendSucceeded(message, value))
         .catchError(
             (error, _) => _senFailed(message, groupId, userId, error, _))
@@ -1792,14 +1911,14 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         }
       } else {
         if ((code == SDKErrorCode.userIsNotInGroup ||
-            code == SDKErrorCode.groupDisbanded) &&
+                code == SDKErrorCode.groupDisbanded) &&
             null == groupId) {
           final status = groupInfo?.status;
           final hintMessage = (await OpenIM.iMManager.messageManager
               .createFailedHintMessage(
-              type: status == 2
-                  ? CustomMessageType.groupDisbanded
-                  : CustomMessageType.removedFromGroup))
+                  type: status == 2
+                      ? CustomMessageType.groupDisbanded
+                      : CustomMessageType.removedFromGroup))
             ..status = 2
             ..isRead = true;
           customChatListViewController.insertToBottom(hintMessage);
@@ -1854,7 +1973,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (!message.isRead! && message.sendID != OpenIM.iMManager.userID) {
       try {
         message.isRead = true;
-        print('[ChatLogic] 📤 上报已读(单条) conversationID=${conversationInfo.conversationID} clientMsgID=${message.clientMsgID}');
+        print(
+            '[ChatLogic] 📤 上报已读(单条) conversationID=${conversationInfo.conversationID} clientMsgID=${message.clientMsgID}');
         await OpenIM.iMManager.messageManager.markMessagesAsReadByMsgID(
             conversationID: conversationInfo.conversationID,
             messageIDList: [message.clientMsgID!]);
@@ -1922,7 +2042,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   _clearUnreadCount() {
     // OpenIM.CustomElem({})
     if (conversationInfo.unreadCount > 0) {
-      print('[ChatLogic] 📤 上报已读(会话) conversationID=${conversationInfo.conversationID} unreadCount=${conversationInfo.unreadCount}');
+      print(
+          '[ChatLogic] 📤 上报已读(会话) conversationID=${conversationInfo.conversationID} unreadCount=${conversationInfo.unreadCount}');
       OpenIM.iMManager.conversationManager.markConversationMessageAsRead(
           conversationID: conversationInfo.conversationID);
     }
@@ -2243,7 +2364,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           break;
         case AssetType.video:
           final thumb =
-          await asset.thumbnailDataWithSize(const ThumbnailSize(300, 300));
+              await asset.thumbnailDataWithSize(const ThumbnailSize(300, 300));
           if (thumb != null) {
             final file = await IMUtils.saveThumbToFile(thumb, asset.id);
             await sendVideo(
@@ -2348,7 +2469,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     try {
       // 使用正则表达式提取房间ID（支持中英文）
       final RegExp roomIdRegex =
-      RegExp(r'(?:Room ID|房间ID):\s*([a-zA-Z0-9_-]+)');
+          RegExp(r'(?:Room ID|房间ID):\s*([a-zA-Z0-9_-]+)');
       final match = roomIdRegex.firstMatch(text);
       if (match != null) {
         String roomId = match.group(1)!;
@@ -2417,7 +2538,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         final wsUrl = connectionDetails['ws_url'];
 
         Get.off(
-              () => MeetingPage(),
+          () => MeetingPage(),
           arguments: {
             'wsUrl': wsUrl,
             'token': token,
@@ -2571,7 +2692,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     focusNode.dispose();
     forceCloseToolbox.close();
     conversationSub.cancel();
-    newMessageSub.cancel();  // 取消新消息订阅
+    newMessageSub.cancel(); // 取消新消息订阅
     revokedMessageSub.cancel();
     sendStatusSub.close();
     memberAddSub.cancel();
@@ -2626,7 +2747,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       Future.delayed(Duration(milliseconds: 300), () async {
         try {
           // 从服务器拉取最新消息
-          final result = await OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
+          final result = await OpenIM.iMManager.messageManager
+              .getAdvancedHistoryMessageList(
             conversationID: conversationInfo.conversationID,
             startMsg: null,
             count: 50,
@@ -2659,17 +2781,17 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         _clearUnreadCount();
         // 标记未读消息为已读
         try {
-          final unreadMsgs = messageList.where((m) =>
-          !m.isRead! && m.sendID != OpenIM.iMManager.userID
-          ).toList();
+          final unreadMsgs = messageList
+              .where((m) => !m.isRead! && m.sendID != OpenIM.iMManager.userID)
+              .toList();
 
           if (unreadMsgs.isNotEmpty) {
             final msgIds = unreadMsgs.map((m) => m.clientMsgID!).toList();
-            print('[ChatLogic] 📤 上报已读(批量) conversationID=${conversationInfo.conversationID} count=${msgIds.length}');
+            print(
+                '[ChatLogic] 📤 上报已读(批量) conversationID=${conversationInfo.conversationID} count=${msgIds.length}');
             await OpenIM.iMManager.messageManager.markMessagesAsReadByMsgID(
                 conversationID: conversationInfo.conversationID,
-                messageIDList: msgIds
-            );
+                messageIDList: msgIds);
           }
         } catch (e) {
           // 忽略标记已读失败
@@ -2849,8 +2971,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       if (msg.groupID != groupID) continue;
       if (msg.contentType != MessageType.groupMutedNotification &&
           msg.contentType != MessageType.groupCancelMutedNotification) continue;
-      if (latest == null ||
-          (msg.sendTime ?? 0) > (latest.sendTime ?? 0)) {
+      if (latest == null || (msg.sendTime ?? 0) > (latest.sendTime ?? 0)) {
         latest = msg;
       }
     }
@@ -2863,11 +2984,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   bool get havePermissionMute =>
       isGroupChat &&
-          (groupInfo?.ownerUserID ==
-              OpenIM.iMManager
-                  .userID /*||
+      (groupInfo?.ownerUserID ==
+          OpenIM.iMManager
+              .userID /*||
           groupMembersInfo?.roleLevel == 2*/
-          );
+      );
 
   bool isNotificationType(Message message) => message.contentType! >= 1000;
 
@@ -2950,7 +3071,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
     // 检查对方是否拥有官方账号保护权限
     if (isSingleChat && userID != null) {
-      final hasProtection = await core.ApiService().checkUserHasProtection(userID!);
+      final hasProtection =
+          await core.ApiService().checkUserHasProtection(userID!);
       if (hasProtection) {
         IMViews.showToast('此用户为官方客服，暂不支持通话');
         return;
@@ -3028,14 +3150,17 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   /// 将服务端 PullMessageBySeqs 返回的单条 MsgData（Map）转为 SDK Message 并写入本地
-  Future<void> _insertServerMsgToLocal(Map<String, dynamic> raw, String groupID) async {
+  Future<void> _insertServerMsgToLocal(
+      Map<String, dynamic> raw, String groupID) async {
     final sendID = raw['sendID'] as String? ?? '';
     final contentType = raw['contentType'] as int? ?? 0;
     final content = raw['content'];
     String? contentStr;
     if (content != null && content is String) {
       contentStr = content;
-      if (content.length > 0 && content.length % 4 == 0 && RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(content)) {
+      if (content.length > 0 &&
+          content.length % 4 == 0 &&
+          RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(content)) {
         try {
           contentStr = utf8.decode(base64Decode(content));
           // 服务端文本消息 content 常为 JSON 如 {"content":"xxx"}，提取 content 字段
@@ -3099,7 +3224,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     var chatConversationID = conversationID;
     if (conversationID.startsWith('n_') && groupID.isNotEmpty) {
       chatConversationID = 'sg_$groupID';
-      ILogger.d('[群聊上翻] conversationID $conversationID 转为 chatConversationID $chatConversationID');
+      ILogger.d(
+          '[群聊上翻] conversationID $conversationID 转为 chatConversationID $chatConversationID');
     }
 
     int begin;
@@ -3112,12 +3238,18 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       begin = max(1, end - count + 1);
     }
 
-    ILogger.d('[群聊上翻] pullMessageBySeqs conv=$chatConversationID groupID=$groupID begin=$begin end=$end');
+    ILogger.d(
+        '[群聊上翻] pullMessageBySeqs conv=$chatConversationID groupID=$groupID begin=$begin end=$end');
 
     final resp = await Apis.pullMessageBySeqs(
       userID: userID,
       seqRanges: [
-        {'conversationID': chatConversationID, 'begin': begin, 'end': end, 'num': count}
+        {
+          'conversationID': chatConversationID,
+          'begin': begin,
+          'end': end,
+          'num': count
+        }
       ],
       order: 1,
     );
@@ -3129,11 +3261,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final msgsMap = resp['msgs'] as Map<String, dynamic>?;
     final pullMsgs = msgsMap?[chatConversationID];
     if (pullMsgs == null) {
-      ILogger.d('[群聊上翻] msgsMap 中无 conv=$chatConversationID 的 key，resp.keys=${resp.keys}');
+      ILogger.d(
+          '[群聊上翻] msgsMap 中无 conv=$chatConversationID 的 key，resp.keys=${resp.keys}');
       return (0, true);
     }
     final list = (pullMsgs['Msgs'] ?? pullMsgs['msgs']) as List<dynamic>?;
-    final isEnd = pullMsgs['isEnd'] as bool? ?? pullMsgs['IsEnd'] as bool? ?? true;
+    final isEnd =
+        pullMsgs['isEnd'] as bool? ?? pullMsgs['IsEnd'] as bool? ?? true;
     if (list == null || list.isEmpty) {
       ILogger.d('[群聊上翻] list 为空 isEnd=$isEnd');
       return (0, isEnd);
@@ -3142,7 +3276,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     int inserted = 0;
     int skipped = 0;
     for (final e in list) {
-      final m = e is Map<String, dynamic> ? e : Map<String, dynamic>.from(e as Map);
+      final m =
+          e is Map<String, dynamic> ? e : Map<String, dynamic>.from(e as Map);
       if ((m['clientMsgID'] ?? m['sendID']) == null) {
         skipped++;
         continue;
@@ -3151,7 +3286,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       inserted++;
     }
 
-    ILogger.d('[群聊上翻] inserted=$inserted skipped=$skipped isEnd=$isEnd listLen=${list.length}');
+    ILogger.d(
+        '[群聊上翻] inserted=$inserted skipped=$skipped isEnd=$isEnd listLen=${list.length}');
 
     // 若本批全是占位/已删除消息(inserted=0)，即使 isEnd=false 也当作已到底，避免无限循环请求
     if (inserted == 0 && skipped > 0) {
@@ -3205,8 +3341,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         result.isEnd != true &&
         iterations < maxIterations) {
       final nextResult = await _fetchReverseHistoryMessages(list.last);
-      if (nextResult.messageList == null ||
-          nextResult.messageList!.isEmpty) break;
+      if (nextResult.messageList == null || nextResult.messageList!.isEmpty)
+        break;
       list = [...list, ...nextResult.messageList!];
       filteredList = _sortMessagesBySendTimeAsc(_filterMessagesForChat(list));
       result = nextResult;
@@ -3267,8 +3403,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         result.isEnd != true &&
         iterations < maxIterations) {
       final nextResult = await _fetchHistoryMessages(list.last);
-      if (nextResult.messageList == null ||
-          nextResult.messageList!.isEmpty) break;
+      if (nextResult.messageList == null || nextResult.messageList!.isEmpty)
+        break;
       list = [...list, ...nextResult.messageList!];
       filteredList = _sortMessagesBySendTimeAsc(_filterMessagesForChat(list));
       result = nextResult;
@@ -3296,7 +3432,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       if (searchMessage != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final RenderBox box =
-          scrollViewKey.currentContext!.findRenderObject() as RenderBox;
+              scrollViewKey.currentContext!.findRenderObject() as RenderBox;
           final scrollViewHeight = box.size.height;
           scrollController.jumpTo((scrollViewHeight ?? 0) * -1);
         });
@@ -3312,17 +3448,17 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     try {
       final luckyMoneyMessages = messages
           .where((msg) =>
-      msg.contentType == MessageType.custom &&
-          msg.customElem != null &&
-          msg.customElem!.data != null)
+              msg.contentType == MessageType.custom &&
+              msg.customElem != null &&
+              msg.customElem!.data != null)
           .toList();
       if (luckyMoneyMessages.isEmpty) return;
 
       final allLuckyMoneyStatuses =
-      await LuckMoneyStatusManager.getAllLuckMoneyStatuses(
-          userId: OpenIM.iMManager.userID);
+          await LuckMoneyStatusManager.getAllLuckMoneyStatuses(
+              userId: OpenIM.iMManager.userID);
       final allPacketStatuses =
-      await LuckMoneyStatusManager.getAllPacketStatuses();
+          await LuckMoneyStatusManager.getAllPacketStatuses();
 
       // 先用本地状态更新这一批消息
       for (final msg in luckyMoneyMessages) {
@@ -3335,10 +3471,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           final luckyMoneyId = luckyMoneyData['msg_id'];
           if (luckyMoneyId == null || luckyMoneyId.isEmpty) continue;
 
-          final userStatus =
-              allLuckyMoneyStatuses[luckyMoneyId] ?? 'pending';
-          final packetStatus =
-              allPacketStatuses[luckyMoneyId] ?? 'pending';
+          final userStatus = allLuckyMoneyStatuses[luckyMoneyId] ?? 'pending';
+          final packetStatus = allPacketStatuses[luckyMoneyId] ?? 'pending';
 
           bool isReceived = false;
           String finalStatus = 'pending';
@@ -3364,8 +3498,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       // 对这一页中本地仍为 pending 的少量红包做一次服务端校准
       final apiService = core.ApiService();
       const int kMaxServerCheckCount = 10;
-      final List<Message> candidates = luckyMoneyMessages
-          .where((msg) {
+      final List<Message> candidates = luckyMoneyMessages.where((msg) {
         try {
           final data = json.decode(msg.customElem!.data!);
           if (data['customType'] != CustomMessageType.luckMoney) {
@@ -3379,8 +3512,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         } catch (_) {
           return false;
         }
-      })
-          .toList();
+      }).toList();
 
       if (candidates.isEmpty) return;
 
@@ -3397,12 +3529,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           final luckyMoneyId = luckyMoneyData['msg_id'] as String?;
           if (luckyMoneyId == null || luckyMoneyId.isEmpty) continue;
 
-          final result =
-          await apiService.transactionCheckCompleted(transaction_id: luckyMoneyId);
+          final result = await apiService.transactionCheckCompleted(
+              transaction_id: luckyMoneyId);
           final Map<String, dynamic>? respData = result == null
               ? null
               : ((result as Map<String, dynamic>)['data'] ?? result)
-          as Map<String, dynamic>?;
+                  as Map<String, dynamic>?;
           final received = respData?['received'] == true;
           final completed = respData?['completed'] == true;
 
@@ -3411,8 +3543,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             luckyMoneyData['isReceived'] = true;
             luckyMoneyData['status'] = 'completed';
             msg.customElem!.data = json.encode(data);
-            await LuckMoneyStatusManager.saveLuckMoneyStatus(luckyMoneyId,
-                'completed', userId: OpenIM.iMManager.userID);
+            await LuckMoneyStatusManager.saveLuckMoneyStatus(
+                luckyMoneyId, 'completed',
+                userId: OpenIM.iMManager.userID);
           } else if (completed) {
             // 红包整体已结束但当前用户未领取：仅更新视觉状态与整体状态缓存
             luckyMoneyData['isReceived'] = false;
@@ -3434,7 +3567,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   Future<void> _loadHistoryForSyncEnd() async {
     final result =
-    await OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
+        await OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
       conversationID: conversationInfo.conversationID,
       count: messageList.length < _pageSize ? _pageSize : messageList.length,
       startMsg: null,
@@ -3444,7 +3577,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   void _mergeHistoryMessages(List<Message> messages) {
-    final incoming = _sortMessagesBySendTimeAsc(_filterMessagesForChat(messages));
+    final incoming =
+        _sortMessagesBySendTimeAsc(_filterMessagesForChat(messages));
     final existingIds =
         messageList.map((m) => m.clientMsgID).whereType<String>().toSet();
 
@@ -3468,7 +3602,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
     }
 
-    final fullList = _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList));
+    final fullList =
+        _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList));
     customChatListViewController.clear();
     customChatListViewController.insertAllToBottom(fullList);
     _syncRxListWithMessageList();
@@ -3491,7 +3626,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     firstLoadEmpty.value = false;
     _isFirstLoad = true;
     try {
-      await OpenIM.iMManager.conversationManager.getConversationListSplit(offset: 0, count: 400);
+      await OpenIM.iMManager.conversationManager
+          .getConversationListSplit(offset: 0, count: 400);
       await Future.delayed(const Duration(milliseconds: 1800));
       await onScrollToTopLoad();
     } catch (_) {}
@@ -3558,9 +3694,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       // 获取历史消息中的转账消息
       final transferMessages = messageList
           .where((msg) =>
-      msg.contentType == MessageType.custom &&
-          msg.customElem != null &&
-          msg.customElem!.data != null)
+              msg.contentType == MessageType.custom &&
+              msg.customElem != null &&
+              msg.customElem!.data != null)
           .toList();
 
       // 从本地存储获取转账状态
@@ -3573,7 +3709,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
             // 从本地存储获取转账状态
             final status =
-            await TransferStatusManager.getTransferStatus(transferId);
+                await TransferStatusManager.getTransferStatus(transferId);
             final isReceived = status == 'completed';
 
             // 更新消息状态
@@ -3598,9 +3734,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       // 获取历史消息中的红包消息
       final luckyMoneyMessages = messageList
           .where((msg) =>
-      msg.contentType == MessageType.custom &&
-          msg.customElem != null &&
-          msg.customElem!.data != null)
+              msg.contentType == MessageType.custom &&
+              msg.customElem != null &&
+              msg.customElem!.data != null)
           .toList();
 
       if (luckyMoneyMessages.isEmpty) {
@@ -3609,10 +3745,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
       // 批量获取红包状态（按当前用户过滤）+ 红包整体结束状态，避免多次读取本地存储
       final allLuckyMoneyStatuses =
-      await LuckMoneyStatusManager.getAllLuckMoneyStatuses(
-          userId: OpenIM.iMManager.userID);
+          await LuckMoneyStatusManager.getAllLuckMoneyStatuses(
+              userId: OpenIM.iMManager.userID);
       final allPacketStatuses =
-      await LuckMoneyStatusManager.getAllPacketStatuses();
+          await LuckMoneyStatusManager.getAllPacketStatuses();
 
       // 写入响应式缓存（当前用户是否已领取），供 ChatLuckMoneyItemView 的 Obx 订阅，
       // 确保重启进入会话后 UI 能刷新为已领取
@@ -3630,11 +3766,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             if (luckyMoneyId == null || luckyMoneyId.isEmpty) continue;
 
             // 1. 当前用户是否已领取
-            final userStatus =
-                allLuckyMoneyStatuses[luckyMoneyId] ?? 'pending';
+            final userStatus = allLuckyMoneyStatuses[luckyMoneyId] ?? 'pending';
             // 2. 红包整体是否已结束（即使当前用户未领取）
-            final packetStatus =
-                allPacketStatuses[luckyMoneyId] ?? 'pending';
+            final packetStatus = allPacketStatuses[luckyMoneyId] ?? 'pending';
 
             bool isReceived = false;
             String finalStatus = 'pending';
@@ -3669,10 +3803,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       const int kMaxServerCheckCount = 20;
       // 只针对最近 N 条红包做服务端校准,减少进入会话时的网络压力
       final Iterable<Message> recentLuckyMessages =
-      luckyMoneyMessages.length > kMaxServerCheckCount
-          ? luckyMoneyMessages
-          .sublist(luckyMoneyMessages.length - kMaxServerCheckCount)
-          : luckyMoneyMessages;
+          luckyMoneyMessages.length > kMaxServerCheckCount
+              ? luckyMoneyMessages
+                  .sublist(luckyMoneyMessages.length - kMaxServerCheckCount)
+              : luckyMoneyMessages;
 
       for (final msg in recentLuckyMessages) {
         try {
@@ -3689,10 +3823,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             continue;
           }
 
-          final result = await apiService.transactionCheckCompleted(transaction_id: luckyMoneyId);
+          final result = await apiService.transactionCheckCompleted(
+              transaction_id: luckyMoneyId);
           final Map<String, dynamic>? respData = result == null
               ? null
-              : ((result as Map<String, dynamic>)['data'] ?? result) as Map<String, dynamic>?;
+              : ((result as Map<String, dynamic>)['data'] ?? result)
+                  as Map<String, dynamic>?;
           final received = respData?['received'] == true;
 
           if (received) {
@@ -3700,7 +3836,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             luckyMoneyData['isReceived'] = true;
             luckyMoneyData['status'] = 'completed';
             msg.customElem!.data = json.encode(data);
-            await LuckMoneyStatusManager.saveLuckMoneyStatus(luckyMoneyId, 'completed', userId: OpenIM.iMManager.userID);
+            await LuckMoneyStatusManager.saveLuckMoneyStatus(
+                luckyMoneyId, 'completed',
+                userId: OpenIM.iMManager.userID);
           }
         } catch (e) {
           ILogger.d('拉取红包服务端状态失败: $e');
@@ -3737,7 +3875,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       final status = luckMoneyData['status'] ?? 'pending';
 
       // 更新全局状态
-      LuckMoneyStatusManager.saveLuckMoneyStatus(luckMoneyId, status, userId: OpenIM.iMManager.userID);
+      LuckMoneyStatusManager.saveLuckMoneyStatus(luckMoneyId, status,
+          userId: OpenIM.iMManager.userID);
 
       // 更新消息列表中的状态
       _updateLuckyMoneyInMessageList(luckMoneyId, luckMoneyData);
@@ -3767,22 +3906,24 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
               // 如果有领取金额，也更新
               if (luckMoneyData['received_amount'] != null) {
                 msgLuckMoneyData['received_amount'] =
-                luckMoneyData['received_amount'];
+                    luckMoneyData['received_amount'];
               }
 
               // 更新领取计数
               if (luckMoneyData['received_count'] != null) {
                 msgLuckMoneyData['received_count'] =
-                luckMoneyData['received_count'];
+                    luckMoneyData['received_count'];
               }
 
               // 更新领取记录：仅保留最近 N 条，避免 5000 人群等场景下消息体过大导致 websocket 断连
               if (luckMoneyData['receivers'] != null) {
-                final List<dynamic> list = List<dynamic>.from(luckMoneyData['receivers'] as List);
+                final List<dynamic> list =
+                    List<dynamic>.from(luckMoneyData['receivers'] as List);
                 const int kMaxReceiversInMessage = 50;
-                msgLuckMoneyData['receivers'] = list.length > kMaxReceiversInMessage
-                    ? list.sublist(list.length - kMaxReceiversInMessage)
-                    : list;
+                msgLuckMoneyData['receivers'] =
+                    list.length > kMaxReceiversInMessage
+                        ? list.sublist(list.length - kMaxReceiversInMessage)
+                        : list;
               }
 
               // 创建新消息对象以强制刷新列表
@@ -3876,7 +4017,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   final isMultiSelectMode = false.obs;
   final selectedMessages = <Message>[].obs;
 
-  final GlobalKey<ChatInputBoxState> chatInputKey = GlobalKey<ChatInputBoxState>();
+  final GlobalKey<ChatInputBoxState> chatInputKey =
+      GlobalKey<ChatInputBoxState>();
 
   void toggleMultiSelectMode() {
     isMultiSelectMode.value = !isMultiSelectMode.value;

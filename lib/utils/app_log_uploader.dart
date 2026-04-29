@@ -18,6 +18,7 @@ class AppLogUploader {
   static const _maxFlushBatches = 3;
   static const _maxMessageLength = 4000;
   static const _maxStackLength = 12000;
+  static const _autoFlushDelay = Duration(seconds: 15);
 
   final List<Map<String, dynamic>> _buffer = [];
   final Dio _dio = Dio(BaseOptions(
@@ -31,6 +32,7 @@ class AppLogUploader {
   PackageInfo? _packageInfo;
   final String _sessionId = const Uuid().v4();
   Timer? _persistTimer;
+  Timer? _autoFlushTimer;
   bool _uploading = false;
 
   void capture(
@@ -57,10 +59,13 @@ class AppLogUploader {
       _buffer.removeRange(0, _buffer.length - _maxStoredRows);
     }
     _schedulePersist();
+    _scheduleAutoFlush();
   }
 
   Future<bool> flush({String reason = 'manual'}) async {
     if (_uploading) return false;
+    _autoFlushTimer?.cancel();
+    _autoFlushTimer = null;
     if (!_hasUploadCredential()) {
       await _persistBuffer();
       return false;
@@ -86,7 +91,8 @@ class AppLogUploader {
         batches++;
       }
       return true;
-    } catch (_) {
+    } catch (e, stackTrace) {
+      _captureInternalFailure(reason, e, stackTrace);
       return false;
     } finally {
       _uploading = false;
@@ -117,6 +123,17 @@ class AppLogUploader {
     if (_uploading || _persistTimer?.isActive == true) return;
     _persistTimer = Timer(const Duration(milliseconds: 300), () {
       unawaited(_persistBuffer());
+    });
+  }
+
+  void _scheduleAutoFlush() {
+    if (_uploading ||
+        _autoFlushTimer?.isActive == true ||
+        !_hasUploadCredential()) {
+      return;
+    }
+    _autoFlushTimer = Timer(_autoFlushDelay, () {
+      unawaited(flush(reason: 'auto'));
     });
   }
 
@@ -204,7 +221,7 @@ class AppLogUploader {
         'batch_id': batchId,
         'reason': reason,
         'device_id': DataSp.getDeviceID(),
-        'platform': IMUtils.getPlatform(),
+        'platform': _platformId,
         'system_type': _systemType,
         'app_version': appVersion,
         'session_id': _sessionId,
@@ -216,6 +233,7 @@ class AppLogUploader {
           'operationID': 'app-log-$batchId',
           'token': token,
           'orgId': orgId,
+          'orgid': orgId,
           'source': _source,
         },
       ),
@@ -249,6 +267,30 @@ class AppLogUploader {
     if (Platform.isWindows) return 'windows';
     if (Platform.isLinux) return 'linux';
     return 'unknown';
+  }
+
+  int get _platformId {
+    if (Platform.isIOS) return 1;
+    if (Platform.isAndroid) return 2;
+    return 0;
+  }
+
+  void _captureInternalFailure(
+    String reason,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    final message = _redact('upload failed, reason=$reason, error=$error');
+    _buffer.add({
+      'level': 'WARN',
+      'tag': 'AppLogUploader',
+      'message': _limit(message, _maxMessageLength),
+      'client_time': DateTime.now().millisecondsSinceEpoch,
+      'stack': _limit(_redact('$stackTrace'), 2000),
+    });
+    if (_buffer.length > _maxStoredRows) {
+      _buffer.removeRange(0, _buffer.length - _maxStoredRows);
+    }
   }
 
   static String _normalizeLevel(String level) {
