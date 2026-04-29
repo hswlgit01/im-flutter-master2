@@ -69,12 +69,12 @@ class ChatApp extends StatelessWidget {
           }),
           side: BorderSide(color: Colors.grey.shade500, width: 1),
         ),
-        dialogTheme: const DialogThemeData().copyWith(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-        ),
+        dialogTheme: ThemeData.light().dialogTheme.copyWith(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+            ),
         textButtonTheme: TextButtonThemeData(
           style: ButtonStyle(
             shape: WidgetStatePropertyAll(
