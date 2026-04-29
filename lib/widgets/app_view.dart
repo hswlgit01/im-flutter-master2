@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
@@ -7,9 +9,10 @@ import 'package:get/get.dart';
 import 'package:openim_common/openim_common.dart';
 
 import '../core/controller/app_controller.dart';
+import '../utils/app_log_uploader.dart';
 
 class AppView extends StatefulWidget {
-  const AppView({Key? key, required this.builder}) : super(key: key);
+  const AppView({super.key, required this.builder});
   final Widget Function(Locale? locale, TransitionBuilder builder) builder;
 
   @override
@@ -45,6 +48,16 @@ class _AppViewState extends State<AppView> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(AppLogUploader.instance.flush(reason: state.name));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GetBuilder<AppController>(
       init: AppController(),
@@ -67,7 +80,7 @@ class _AppViewState extends State<AppView> with WidgetsBindingObserver {
       builder: (context, widget) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(
-            textScaleFactor: Config.textScaleFactor,
+            textScaler: const TextScaler.linear(Config.textScaleFactor),
           ),
           child: widget!,
         );

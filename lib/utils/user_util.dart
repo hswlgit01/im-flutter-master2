@@ -8,6 +8,7 @@ import 'package:openim/pages/conversation/conversation_logic.dart';
 import 'package:openim/pages/home/home_logic.dart';
 import 'package:openim/routes/app_navigator.dart';
 import 'package:openim_common/openim_common.dart';
+import 'package:openim/utils/app_log_uploader.dart';
 import 'package:openim/utils/luck_money_status_manager.dart';
 
 class UserUtil {
@@ -17,6 +18,10 @@ class UserUtil {
       final securityService = SecurityService();
       final imLogic = Get.find<IMController>();
       final orgController = Get.find<OrgController>();
+
+      await AppLogUploader.instance
+          .flush(reason: 'logout')
+          .timeout(const Duration(seconds: 5), onTimeout: () => false);
 
       // 清除RSA相关数据
       await securityService.clearSecurityData();

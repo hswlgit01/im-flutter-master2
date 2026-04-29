@@ -65,6 +65,7 @@ class Urls {
   static final changeOrgUser = "${Config.appAuthUrl}/third/organization_user/change_org_user";
   static final joinInvitation = "${Config.appAuthUrl}/third/organization/join_using_invitation_code";
   static final checkUserProtection = "${Config.appAuthUrl}/third_admin/organization/internal/check_user_protection";
+  static final appLogUpload = "${Config.appAuthUrl}/third/app_log/upload";
 
   // 注册账户-new
   static final userRegister = "${Config.appAuthUrl}/third/user/register";

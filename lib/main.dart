@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:openim_common/openim_common.dart';
 import 'package:flutter/foundation.dart';
+import 'utils/app_log_uploader.dart';
 import 'utils/log_util.dart';
 
 import 'app.dart';
@@ -12,14 +12,19 @@ void main() {
   runZonedGuarded(() {
     // 初始化日志工具
     _initLogger();
-    
+
     FlutterError.onError = (FlutterErrorDetails details) {
       FlutterError.presentError(details);
-      LogUtil.e('FlutterError', details.exception.toString(), details.exception, details.stack);
-      Logger.print('FlutterError: ${details.exception.toString()}, ${details.stack.toString()}');
+      LogUtil.e('FlutterError', details.exception.toString(), details.exception,
+          details.stack);
+      Logger.print(
+          'FlutterError: ${details.exception.toString()}, ${details.stack.toString()}');
     };
 
-    Config.init(() => runApp(const ChatApp()));
+    Config.init(() {
+      unawaited(AppLogUploader.instance.flush(reason: 'startup'));
+      runApp(const ChatApp());
+    });
   }, (error, stackTrace) {
     LogUtil.e('ZoneError', error.toString(), error, stackTrace);
     Logger.print('FlutterError: ${error.toString()}, ${stackTrace.toString()}');
@@ -35,6 +40,6 @@ void _initLogger() {
     // 在开发和调试模式下显示所有日志
     LogUtil.setLevel(LogLevel.debug);
   }
-  
+
   LogUtil.i('App', '应用启动，日志系统初始化完成');
 }
