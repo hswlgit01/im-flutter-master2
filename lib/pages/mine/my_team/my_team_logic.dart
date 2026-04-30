@@ -8,6 +8,8 @@ import '../../../utils/log_util.dart';
 
 class MyTeamLogic extends GetxController {
   static const _tag = 'MyTeamLogic';
+  static const _defaultAndroidDownloadUrl =
+      'http://8.148.66.77:8080/freechat-latest.apk';
 
   final IMController imLogic = Get.find<IMController>();
   final RxBool isLoading = true.obs;
@@ -144,6 +146,13 @@ class MyTeamLogic extends GetxController {
         return;
       }
 
+      final defaultLink = _platformDefaultDownloadUrl();
+      if (defaultLink != null) {
+        downloadUrl.value = defaultLink;
+        LogUtil.w(_tag, '未找到远程配置下载链接，使用默认下载链接: $defaultLink');
+        return;
+      }
+
       // 如果无法从远程配置获取，链接保持为空
       LogUtil.w(_tag, '未找到远程配置下载链接，链接为空');
     } catch (e) {
@@ -164,6 +173,13 @@ class MyTeamLogic extends GetxController {
           return link;
         }
       }
+    }
+    return null;
+  }
+
+  String? _platformDefaultDownloadUrl() {
+    if (Platform.isAndroid) {
+      return _defaultAndroidDownloadUrl;
     }
     return null;
   }
