@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -36,6 +37,8 @@ class AppController extends GetxController with UpgradeManger {
 
   final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   String? currentActiveConversationId;
+  final _pendingMessagePrompts = <String, im.Message>{};
+  Timer? _pendingPromptFlushTimer;
 
   final initializationSettingsAndroid =
       const AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -49,10 +52,12 @@ class AppController extends GetxController with UpgradeManger {
 
   RTCBridge? get rtcBridge => PackageBridge.rtcBridge;
 
-  bool get shouldMuted =>
-      rtcBridge?.hasConnection == true ||
-      Get.find<IMController>().imSdkStatusSubject.values.last.status !=
-          IMSdkStatus.syncEnded;
+  bool get shouldMuted {
+    if (rtcBridge?.hasConnection == true) return true;
+    if (!Get.isRegistered<IMController>()) return false;
+    final values = Get.find<IMController>().imSdkStatusSubject.values;
+    return values.isNotEmpty && values.last.status != IMSdkStatus.syncEnded;
+  }
 
   final _ring = 'assets/audio/message_ring.wav';
   final _audioPlayer = AudioPlayer();
@@ -80,6 +85,15 @@ class AppController extends GetxController with UpgradeManger {
 
     if (!run) {
       _cancelAllNotifications();
+      // dawn 2026-05-11 修复手机端弱网私聊无提示：回到前台时主动校准会话/未读，并尝试补发同步期间缓存的提示。
+      try {
+        final imController = Get.find<IMController>();
+        unawaited(
+            imController.refreshConversationSnapshot(reason: 'foreground'));
+        unawaited(flushPendingMessagePrompts());
+      } catch (e) {
+        Logger.print('[AppController] 前台恢复补刷会话失败: $e');
+      }
     }
   }
 
@@ -115,7 +129,8 @@ class AppController extends GetxController with UpgradeManger {
         message.attachedInfoElem?.notSenderNotificationPush == true ||
         message.contentType == im.MessageType.typing ||
         message.sendID == OpenIM.iMManager.userID ||
-        (message.contentType! >= 1000 && !allowedSystemNotifications.contains(message.contentType))) return;
+        (message.contentType! >= 1000 &&
+            !allowedSystemNotifications.contains(message.contentType))) return;
 
     // 过滤通话信令消息，这些消息不应该显示通知
     if (message.contentType == 110 && message.customElem != null) {
@@ -124,8 +139,12 @@ class AppController extends GetxController with UpgradeManger {
         final customType = data['customType'];
 
         // 通话信令消息(200-204)由通话模块专门处理，不显示普通通知
-        if (customType == 200 || customType == 201 || customType == 202 ||
-            customType == 203 || customType == 204 || customType == 2005) {
+        if (customType == 200 ||
+            customType == 201 ||
+            customType == 202 ||
+            customType == 203 ||
+            customType == 204 ||
+            customType == 2005) {
           Logger.print('[AppController] 跳过通话信令消息通知，customType=$customType');
           return;
         }
@@ -175,8 +194,9 @@ class AppController extends GetxController with UpgradeManger {
   }
 
   Future<void> promptSoundOrNotification(im.Message message) async {
-    var status = Get.find<IMController>().imSdkStatusSubject.values;
-    if (status.lastOrNull?.status != IMSdkStatus.syncEnded) {
+    if (!_isImSynced) {
+      // dawn 2026-05-11 修复手机端弱网私聊无提示：同步未完成时不直接丢提示，按会话缓存最后一条，待同步完成/回前台再补发。
+      _cachePendingMessagePrompt(message);
       return;
     }
     if (!isRunningBackground) {
@@ -194,20 +214,54 @@ class AppController extends GetxController with UpgradeManger {
             ticker: 'ticker');
         const NotificationDetails platformChannelSpecifics =
             NotificationDetails(android: androidPlatformChannelSpecifics);
-            final sourceID = message.sessionType == ConversationType.single
-                ? message.sendID
-                : message.groupID;
+        final sourceID = message.sessionType == ConversationType.single
+            ? message.sendID
+            : message.groupID;
 
-            final sessionType = message.sessionType;
-        await flutterLocalNotificationsPlugin.show(
-            id, message.senderNickname, IMUtils.parseMsg(message), platformChannelSpecifics,
+        final sessionType = message.sessionType;
+        await flutterLocalNotificationsPlugin.show(id, message.senderNickname,
+            IMUtils.parseMsg(message), platformChannelSpecifics,
             payload: "chat://$sessionType/$sourceID");
       }
     }
   }
 
+  bool get _isImSynced {
+    if (!Get.isRegistered<IMController>()) return true;
+    final values = Get.find<IMController>().imSdkStatusSubject.values;
+    return values.isEmpty || values.last.status == IMSdkStatus.syncEnded;
+  }
+
+  String _pendingPromptKey(im.Message message) {
+    final sourceID = message.sessionType == ConversationType.single
+        ? message.sendID
+        : message.groupID;
+    return '${message.sessionType ?? 0}:$sourceID';
+  }
+
+  void _cachePendingMessagePrompt(im.Message message) {
+    _pendingMessagePrompts[_pendingPromptKey(message)] = message;
+    if (_pendingMessagePrompts.length > 20) {
+      _pendingMessagePrompts.remove(_pendingMessagePrompts.keys.first);
+    }
+    _pendingPromptFlushTimer?.cancel();
+    _pendingPromptFlushTimer = Timer(const Duration(seconds: 2), () {
+      unawaited(flushPendingMessagePrompts());
+    });
+  }
+
+  Future<void> flushPendingMessagePrompts() async {
+    if (_pendingMessagePrompts.isEmpty || !_isImSynced) return;
+    final messages = _pendingMessagePrompts.values.toList();
+    _pendingMessagePrompts.clear();
+    for (final message in messages) {
+      await showNotification(message);
+    }
+  }
+
   /// 显示好友申请系统通知
-  Future<void> showFriendApplicationSystemNotification(FriendApplicationInfo info) async {
+  Future<void> showFriendApplicationSystemNotification(
+      FriendApplicationInfo info) async {
     if (!Platform.isAndroid) return;
 
     try {
@@ -361,6 +415,7 @@ class AppController extends GetxController with UpgradeManger {
   @override
   void onClose() {
     closeSubject();
+    _pendingPromptFlushTimer?.cancel();
     _audioPlayer.dispose();
     super.onClose();
   }
@@ -388,10 +443,10 @@ class AppController extends GetxController with UpgradeManger {
       // 如果无法获取系统语言，默认使用中文
       return const Locale('zh', 'CN');
     }
-    
+
     final languageCode = systemLocale.languageCode.toLowerCase();
     final countryCode = systemLocale.countryCode?.toUpperCase();
-    
+
     // 根据系统语言映射到应用支持的语言
     if (languageCode == 'zh') {
       if (countryCode == 'TW' || countryCode == 'HK' || countryCode == 'MO') {
@@ -432,7 +487,7 @@ class AppController extends GetxController with UpgradeManger {
         // 使用统一的更新服务进行检查
         await _updateService.checkForUpdates(
           showNoUpdateToast: false, // 不显示无更新提示
-          showUpdateDialog: true,    // 有更新时显示对话框
+          showUpdateDialog: true, // 有更新时显示对话框
         );
       } catch (e, stackTrace) {
         LogUtil.e('AppController', '应用更新检查失败', e, stackTrace);
@@ -593,10 +648,8 @@ class AppController extends GetxController with UpgradeManger {
           onWillPop: () async => false, // 禁止返回键
           child: AlertDialog(
             title: const Text('请手动重启应用'),
-            content: const Text(
-              '由于iOS系统限制，应用无法自动关闭\n'
-              '请按Home键退出，然后重新打开应用以完成更新'
-            ),
+            content: const Text('由于iOS系统限制，应用无法自动关闭\n'
+                '请按Home键退出，然后重新打开应用以完成更新'),
             actions: [
               TextButton(
                 child: const Text('知道了'),

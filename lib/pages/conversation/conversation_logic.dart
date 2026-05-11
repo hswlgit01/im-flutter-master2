@@ -43,6 +43,7 @@ class ConversationLogic extends GetxController {
 
   /// 红包状态缓存（当前用户是否已领取）：会话列表摘要用，避免 latestMsg 未更新时仍显示 [待领取]
   Map<String, String> _redPacketStatusCache = {};
+
   /// 红包整体状态缓存（无论谁领完，只要红包结束，用于纠正 [待领取]）
   Map<String, String> _packetOverallStatusCache = {};
   final _apiService = core.ApiService();
@@ -72,7 +73,8 @@ class ConversationLogic extends GetxController {
     });
     // 监听群信息变更,主动更新会话列表中的群名称和头像
     imLogic.groupInfoUpdatedSubject.listen((groupInfo) async {
-      print('[ConversationLogic] 群信息更新: groupID=${groupInfo.groupID}, 新名称: ${groupInfo.groupName}, status=${groupInfo.status}');
+      print(
+          '[ConversationLogic] 群信息更新: groupID=${groupInfo.groupID}, 新名称: ${groupInfo.groupName}, status=${groupInfo.status}');
 
       // 构建会话ID (超级群格式: sg_groupID)
       final conversationID = 'sg_${groupInfo.groupID}';
@@ -87,7 +89,8 @@ class ConversationLogic extends GetxController {
           // Await the SDK deletion before touching the in-memory list so the two
           // stay consistent even if the call throws.
           await OpenIM.iMManager.conversationManager
-              .deleteConversationAndDeleteAllMsg(conversationID: conversationID);
+              .deleteConversationAndDeleteAllMsg(
+                  conversationID: conversationID);
         } catch (e, s) {
           print('[ConversationLogic] 删除已解散群会话失败: $e\n$s');
         }
@@ -135,7 +138,8 @@ class ConversationLogic extends GetxController {
         }
       }
       if (!dismissed) {
-        print('[ConversationLogic] joinedGroupDeleted 非解散(普通退群/被踢),保留本地会话: $conversationID');
+        print(
+            '[ConversationLogic] joinedGroupDeleted 非解散(普通退群/被踢),保留本地会话: $conversationID');
         return;
       }
       print('[ConversationLogic] joinedGroupDeleted 确认解散,清本地: $conversationID');
@@ -168,8 +172,14 @@ class ConversationLogic extends GetxController {
       } else if (status == IMSdkStatus.syncEnded ||
           status == IMSdkStatus.syncFailed) {
         EasyLoading.dismiss();
-        if (reInstall) {
+        // dawn 2026-05-11 修复手机端弱网私聊无提示：每次同步结束都重拉会话列表，避免 SDK 会话变更事件弱网下丢失。
+        if (status == IMSdkStatus.syncEnded) {
           onRefresh();
+        } else if (reInstall) {
+          onRefresh();
+          reInstall = false;
+        }
+        if (status == IMSdkStatus.syncEnded) {
           reInstall = false;
         }
       }
@@ -216,7 +226,8 @@ class ConversationLogic extends GetxController {
             // 检查是否是单聊且对方已经是好友
             if (conversation.isSingleChat && conversation.userID != null) {
               final isFriend = _checkIsFriend(conversation.userID!);
-              print('[ConversationLogic] 检查1203会话: userID=${conversation.userID}, isFriend=$isFriend');
+              print(
+                  '[ConversationLogic] 检查1203会话: userID=${conversation.userID}, isFriend=$isFriend');
               if (isFriend) {
                 print('[ConversationLogic] ✅ 保留1203会话(已是好友)');
                 return true; // 已是好友,显示会话
@@ -229,7 +240,8 @@ class ConversationLogic extends GetxController {
           // ⚠️ 重要修复: 群聊会话即使最后一条消息是系统通知也要保留
           // 例如: 1520是群名修改通知,不应该导致整个群聊会话被过滤掉
           if (!conversation.isSingleChat) {
-            print('[ConversationLogic] ✅ 保留群聊会话(即使latestMsg是系统通知) contentType=$contentType');
+            print(
+                '[ConversationLogic] ✅ 保留群聊会话(即使latestMsg是系统通知) contentType=$contentType');
             return true;
           }
 
@@ -277,7 +289,8 @@ class ConversationLogic extends GetxController {
   Future<void> loadRedPacketStatusCache() async {
     try {
       _redPacketStatusCache =
-          await LuckMoneyStatusManager.getAllLuckMoneyStatuses(userId: OpenIM.iMManager.userID);
+          await LuckMoneyStatusManager.getAllLuckMoneyStatuses(
+              userId: OpenIM.iMManager.userID);
       _packetOverallStatusCache =
           await LuckMoneyStatusManager.getAllPacketStatuses();
       list.refresh();
@@ -292,18 +305,20 @@ class ConversationLogic extends GetxController {
   void _ensureRedPacketStatusFromServer(String msgId) async {
     if (_redPacketStatusCache.containsKey(msgId)) return;
     try {
-      final result = await _apiService.transactionCheckCompleted(transaction_id: msgId);
+      final result =
+          await _apiService.transactionCheckCompleted(transaction_id: msgId);
       if (result == null) return;
-      final Map<String, dynamic>? respData =
-          result is Map<String, dynamic> ? (result['data'] ?? result) as Map<String, dynamic>? : null;
+      final Map<String, dynamic>? respData = result is Map<String, dynamic>
+          ? (result['data'] ?? result) as Map<String, dynamic>?
+          : null;
       final received = respData?['received'] == true;
       final completed = respData?['completed'] == true;
 
       // 当前用户已领取：写入“已领取”缓存
       if (received) {
         _redPacketStatusCache[msgId] = 'completed';
-        await LuckMoneyStatusManager.saveLuckMoneyStatus(
-            msgId, 'completed', userId: OpenIM.iMManager.userID);
+        await LuckMoneyStatusManager.saveLuckMoneyStatus(msgId, 'completed',
+            userId: OpenIM.iMManager.userID);
       }
 
       // 无论是谁领完，只要红包整体已结束，就写入整体状态缓存，纠正会话预览中的 [待领取]
@@ -467,8 +482,7 @@ class ConversationLogic extends GetxController {
               customType == CustomMessageType.callingAccept ||
               customType == CustomMessageType.callingReject ||
               customType == CustomMessageType.callingCancel ||
-              customType == CustomMessageType.callingHungup
-              ) {
+              customType == CustomMessageType.callingHungup) {
             final type = data['data']?['type'] ?? '';
             if (type == 'video') {
               return '[${StrRes.callVideo}]';
@@ -559,7 +573,8 @@ class ConversationLogic extends GetxController {
     print('[ConversationLogic] 启动好友列表检查定时器');
     _friendCheckTimer = Timer.periodic(Duration(seconds: 5), (timer) async {
       try {
-        final friends = await OpenIM.iMManager.friendshipManager.getFriendList();
+        final friends =
+            await OpenIM.iMManager.friendshipManager.getFriendList();
         final newFriendIDs = friends.map((f) => f.userID!).toSet();
 
         // 检查是否有新好友
@@ -591,7 +606,7 @@ class ConversationLogic extends GetxController {
         return StrRes.connecting;
       case IMSdkStatus.connectionFailed:
         return StrRes.connecting;
-        // return StrRes.connectionFailed;
+      // return StrRes.connectionFailed;
       case IMSdkStatus.connectionSucceeded:
       case IMSdkStatus.syncEnded:
         return null;
@@ -667,7 +682,8 @@ class ConversationLogic extends GetxController {
           // ⚠️ 重要修复: 群聊会话即使最后一条消息是系统通知也要保留
           // 例如: 1520是群名修改通知,不应该导致整个群聊会话被过滤掉
           if (!conversation.isSingleChat) {
-            print('[ConversationLogic] getFirstPage: 保留群聊会话(即使latestMsg是系统通知) contentType=$contentType');
+            print(
+                '[ConversationLogic] getFirstPage: 保留群聊会话(即使latestMsg是系统通知) contentType=$contentType');
             return true;
           }
 

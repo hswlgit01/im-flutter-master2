@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -71,7 +72,8 @@ mixin IMCallback {
 
   final unreadMsgCountEventSubject = PublishSubject<int>();
 
-  final friendApplicationChangedSubject = BehaviorSubject<FriendApplicationInfo>();
+  final friendApplicationChangedSubject =
+      BehaviorSubject<FriendApplicationInfo>();
 
   final friendAddSubject = BehaviorSubject<FriendInfo>();
 
@@ -85,7 +87,8 @@ mixin IMCallback {
 
   final groupInfoUpdatedSubject = BehaviorSubject<GroupInfo>();
 
-  final groupApplicationChangedSubject = BehaviorSubject<GroupApplicationInfo>();
+  final groupApplicationChangedSubject =
+      BehaviorSubject<GroupApplicationInfo>();
 
   final initializedSubject = PublishSubject<bool>();
 
@@ -93,8 +96,7 @@ mixin IMCallback {
 
   final Map<String, int> _friendRelationshipNotifyMarks = {};
 
-  bool _markRecent(Map<String, int> marks, String key,
-      {int windowMs = 5000}) {
+  bool _markRecent(Map<String, int> marks, String key, {int windowMs = 5000}) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final last = marks[key];
     if (last != null && now - last < windowMs) {
@@ -121,15 +123,61 @@ mixin IMCallback {
 
   final onKickedOfflineSubject = PublishSubject<KickoffType>();
 
-  final imSdkStatusSubject = ReplaySubject<({IMSdkStatus status, bool reInstall, int? progress})>();
+  final imSdkStatusSubject =
+      ReplaySubject<({IMSdkStatus status, bool reInstall, int? progress})>();
 
-  final imSdkStatusPublishSubject = PublishSubject<({IMSdkStatus status, bool reInstall, int? progress})>();
+  final imSdkStatusPublishSubject =
+      PublishSubject<({IMSdkStatus status, bool reInstall, int? progress})>();
 
   final inputStateChangedSubject = PublishSubject<InputStatusChangedData>();
 
-  void imSdkStatus(IMSdkStatus status, {bool reInstall = false, int? progress}) {
-    imSdkStatusSubject.add((status: status, reInstall: reInstall, progress: progress));
-    imSdkStatusPublishSubject.add((status: status, reInstall: reInstall, progress: progress));
+  Timer? _conversationReconcileTimer;
+
+  void imSdkStatus(IMSdkStatus status,
+      {bool reInstall = false, int? progress}) {
+    imSdkStatusSubject
+        .add((status: status, reInstall: reInstall, progress: progress));
+    imSdkStatusPublishSubject
+        .add((status: status, reInstall: reInstall, progress: progress));
+    // dawn 2026-05-11 修复手机端弱网私聊无提示：同步完成后主动补刷会话/未读并释放同步期间缓存的提示。
+    if (status == IMSdkStatus.syncEnded) {
+      Future.microtask(() async {
+        await refreshConversationSnapshot(reason: 'sync_ended');
+        await initLogic.flushPendingMessagePrompts();
+      });
+    }
+  }
+
+  void scheduleConversationReconcile(String reason,
+      {Duration delay = const Duration(milliseconds: 800)}) {
+    _conversationReconcileTimer?.cancel();
+    _conversationReconcileTimer = Timer(delay, () {
+      unawaited(refreshConversationSnapshot(reason: reason));
+    });
+  }
+
+  Future<void> refreshConversationSnapshot({String reason = 'manual'}) async {
+    try {
+      final conversations = await OpenIM.iMManager.conversationManager
+          .getConversationListSplit(offset: 0, count: 400);
+      conversationChangedSubject.addSafely(conversations);
+      Logger.print(
+          '[IMCallback] 已补刷会话列表($reason), count=${conversations.length}');
+    } catch (e, s) {
+      Logger.print('[IMCallback] 补刷会话列表失败($reason): $e\n$s');
+    }
+
+    try {
+      final rawCount =
+          await OpenIM.iMManager.conversationManager.getTotalUnreadMsgCount();
+      final count = rawCount is int
+          ? rawCount
+          : int.tryParse(rawCount?.toString() ?? '') ?? 0;
+      totalUnreadMsgCountChanged(count);
+      Logger.print('[IMCallback] 已补刷总未读($reason): $count');
+    } catch (e, s) {
+      Logger.print('[IMCallback] 补刷总未读失败($reason): $e\n$s');
+    }
   }
 
   void kickedOffline() {
@@ -174,7 +222,8 @@ mixin IMCallback {
 
   void recvC2CMessageReadReceipt(List<ReadReceiptInfo> list) {
     if (list.isNotEmpty) {
-      print('[IMController] 📬 收到已读回执: ${list.length} 条, userIDs=${list.map((r) => r.userID).toList()}, msgIDList长度=${list.map((r) => r.msgIDList?.length ?? 0).toList()}');
+      print(
+          '[IMController] 📬 收到已读回执: ${list.length} 条, userIDs=${list.map((r) => r.userID).toList()}, msgIDList长度=${list.map((r) => r.msgIDList?.length ?? 0).toList()}');
     }
     // dawn 2026-04-27 临时排查：SDK 已读回调入口上报
     DebugLogUploader.send('sdk_recv_c2c_read_receipt', {
@@ -184,7 +233,10 @@ mixin IMCallback {
     for (var r in list) {
       final key = r.userID ?? '';
       if (key.isEmpty) continue;
-      _pendingC2CReadReceipts[key] = [...(_pendingC2CReadReceipts[key] ?? []), r];
+      _pendingC2CReadReceipts[key] = [
+        ...(_pendingC2CReadReceipts[key] ?? []),
+        r
+      ];
     }
     c2cReadReceiptSubject.add(list);
     onRecvC2CReadReceipt?.call(list);
@@ -192,8 +244,10 @@ mixin IMCallback {
 
   void recvNewMessage(Message msg) {
     Logger.print('[IMCallback] ===== recvNewMessage START =====');
-    Logger.print('[IMCallback] contentType=${msg.contentType}, sendID=${msg.sendID}, recvID=${msg.recvID}');
-    Logger.print('[IMCallback] isRunningBackground=${initLogic.isRunningBackground}');
+    Logger.print(
+        '[IMCallback] contentType=${msg.contentType}, sendID=${msg.sendID}, recvID=${msg.recvID}');
+    Logger.print(
+        '[IMCallback] isRunningBackground=${initLogic.isRunningBackground}');
     // dawn 2026-04-27 临时排查：SDK 给 Dart 的新消息入口上报，重点关注 2101
     DebugLogUploader.send('sdk_recv_new_msg', {
       'contentType': msg.contentType,
@@ -220,13 +274,17 @@ mixin IMCallback {
         Logger.print('[IMCallback] 检测到自定义消息，customType=$customType');
 
         // 处理通话信令消息（模拟 onRecvOnlineOnlyMessage 的行为）
-        if (customType == 200 || customType == 201 || customType == 202 ||
-            customType == 203 || customType == 204 || customType == 2005) {
+        if (customType == 200 ||
+            customType == 201 ||
+            customType == 202 ||
+            customType == 203 ||
+            customType == 204 ||
+            customType == 2005) {
           Logger.print('[IMCallback] ✅ 检测到通话信令消息(customType=$customType)');
           Logger.print('[IMCallback] 准备手动触发通话信令处理...');
 
-          final signaling = SignalingInfo(
-              invitation: InvitationInfo.fromJson(data['data']));
+          final signaling =
+              SignalingInfo(invitation: InvitationInfo.fromJson(data['data']));
           signaling.userID = signaling.invitation?.inviterUserID;
 
           switch (customType) {
@@ -294,7 +352,8 @@ mixin IMCallback {
     // 重要：只处理别人发给我的申请，不处理我发出的申请
     if (msg.contentType == 1203) {
       Logger.print('[IMCallback] 检测到好友申请通知(1203)');
-      Logger.print('[IMCallback] currentUserID=$currentUserID, sendID=${msg.sendID}, isSentByMe=$isSentByMe');
+      Logger.print(
+          '[IMCallback] currentUserID=$currentUserID, sendID=${msg.sendID}, isSentByMe=$isSentByMe');
 
       if (!isSentByMe) {
         Logger.print('[IMCallback] ✅ 这是别人发给我的好友申请，触发通知');
@@ -310,13 +369,14 @@ mixin IMCallback {
       print('========== 收到1201通知(好友申请通过) ==========');
       print('[IMCallback] sendID=${msg.sendID}, currentUserID=$currentUserID');
       Logger.print('[IMCallback] 检测到好友申请通过通知(1201)');
-      Logger.print('[IMCallback] currentUserID=$currentUserID, sendID=${msg.sendID}, isSentByMe=$isSentByMe');
+      Logger.print(
+          '[IMCallback] currentUserID=$currentUserID, sendID=${msg.sendID}, isSentByMe=$isSentByMe');
 
       if (!isSentByMe) {
         print('[IMCallback] ✅ 这是对方通过了我的申请');
         Logger.print('[IMCallback] ✅ 对方通过了我的好友申请，准备处理');
         _handleFriendApplicationApproved(msg.sendID!);
-        _showFriendApprovedNotification(msg.sendID!);  // 新增：显示通知
+        _showFriendApprovedNotification(msg.sendID!); // 新增：显示通知
       } else {
         print('[IMCallback] ⚠️ 这是我通过的申请,忽略');
         Logger.print('[IMCallback] ⚠️ 这是我通过的好友申请，不需要处理');
@@ -332,7 +392,7 @@ mixin IMCallback {
         print('[IMCallback] ✅ 好友关系已建立');
         Logger.print('[IMCallback] ✅ 好友关系已建立');
         _ensureConversationExists(msg.sendID!);
-        _showFriendAddedNotification(msg.sendID!);  // 显示通知
+        _showFriendAddedNotification(msg.sendID!); // 显示通知
       }
     }
 
@@ -341,6 +401,8 @@ mixin IMCallback {
 
     // 通过Subject广播消息，让所有订阅者都能收到
     newMessageSubject.addSafely(msg);
+    // dawn 2026-05-11 修复手机端弱网会话不提示：SDK 会话变更回调丢失时，收到消息后兜底补刷列表/未读。
+    scheduleConversationReconcile('recv_new_message');
 
     Logger.print('[IMCallback] ===== recvNewMessage END =====');
   }
@@ -351,11 +413,13 @@ mixin IMCallback {
     try {
       Logger.print('[IMCallback] 🔔 开始处理好友申请通知');
       Logger.print('[IMCallback] 正在获取最新好友申请列表...');
-      var list = await OpenIM.iMManager.friendshipManager.getFriendApplicationListAsRecipient();
+      var list = await OpenIM.iMManager.friendshipManager
+          .getFriendApplicationListAsRecipient();
       Logger.print('[IMCallback] 获取到 ${list.length} 个好友申请');
 
       if (list.isNotEmpty) {
-        Logger.print('[IMCallback] 好友申请详情: fromUserID=${list.first.fromUserID}, fromNickname=${list.first.fromNickname}');
+        Logger.print(
+            '[IMCallback] 好友申请详情: fromUserID=${list.first.fromUserID}, fromNickname=${list.first.fromNickname}');
 
         // 触发好友申请变更事件
         friendApplicationChangedSubject.addSafely(list.first);
@@ -377,7 +441,8 @@ mixin IMCallback {
   /// 显示好友申请通知（声音+视觉提示）
   void _showFriendApplicationNotification(FriendApplicationInfo info) {
     try {
-      Logger.print('[IMCallback] isRunningBackground=${initLogic.isRunningBackground}');
+      Logger.print(
+          '[IMCallback] isRunningBackground=${initLogic.isRunningBackground}');
 
       // 策略：同时播放声音和显示通知，让系统决定
       // 前台时：系统通知会被忽略，只播放声音
@@ -390,7 +455,6 @@ mixin IMCallback {
       // 始终尝试显示系统通知（前台时系统会自动忽略）
       initLogic.showFriendApplicationSystemNotification(info);
       Logger.print('[IMCallback] 已调用系统通知方法');
-
     } catch (e) {
       Logger.print('[IMCallback] 显示好友申请通知失败: $e');
     }
@@ -412,8 +476,10 @@ mixin IMCallback {
       print('[IMCallback] 主动创建与新好友的会话');
       Logger.print('[IMCallback] 主动创建与新好友的会话: $friendUserID');
       try {
-        await FriendConversationHelper.ensureConversationForFriend(friendUserID);
-        final conversation = await OpenIM.iMManager.conversationManager.getOneConversation(
+        await FriendConversationHelper.ensureConversationForFriend(
+            friendUserID);
+        final conversation =
+            await OpenIM.iMManager.conversationManager.getOneConversation(
           sourceID: friendUserID,
           sessionType: ConversationType.single,
         );
@@ -432,15 +498,16 @@ mixin IMCallback {
       // 同时拉取所有会话作为兜底方案
       print('[IMCallback] 拉取所有会话作为兜底');
       try {
-        final conversations = await OpenIM.iMManager.conversationManager.getAllConversationList();
+        final conversations =
+            await OpenIM.iMManager.conversationManager.getAllConversationList();
         conversationChangedSubject.addSafely(conversations);
-        print('[IMCallback] ✅ 已触发 conversationChangedSubject, 会话数: ${conversations.length}');
+        print(
+            '[IMCallback] ✅ 已触发 conversationChangedSubject, 会话数: ${conversations.length}');
         Logger.print('[IMCallback] ✅ 已触发会话列表更新, 会话数: ${conversations.length}');
       } catch (e) {
         print('[IMCallback] ❌ 拉取会话列表失败: $e');
         Logger.print('[IMCallback] ❌ 拉取会话列表失败: $e');
       }
-
     } catch (e, stackTrace) {
       print('[IMCallback] ❌ 处理好友申请通过失败: $e');
       Logger.print('[IMCallback] ❌ 处理好友申请通过失败: $e');
@@ -464,7 +531,8 @@ mixin IMCallback {
 
       // 获取好友信息用于通知
       try {
-        final friendInfo = await OpenIM.iMManager.friendshipManager.getFriendsInfo(
+        final friendInfo =
+            await OpenIM.iMManager.friendshipManager.getFriendsInfo(
           userIDList: [friendUserID],
         );
 
@@ -482,7 +550,6 @@ mixin IMCallback {
         Logger.print('[IMCallback] ⚠️ 获取好友信息失败,仅播放声音: $e');
         // 即使获取失败,也已经播放了声音
       }
-
     } catch (e) {
       Logger.print('[IMCallback] 显示好友通过通知失败: $e');
     }
@@ -504,7 +571,8 @@ mixin IMCallback {
 
       // 获取好友信息用于通知
       try {
-        final friendInfo = await OpenIM.iMManager.friendshipManager.getFriendsInfo(
+        final friendInfo =
+            await OpenIM.iMManager.friendshipManager.getFriendsInfo(
           userIDList: [friendUserID],
         );
 
@@ -521,14 +589,14 @@ mixin IMCallback {
           // friendAddSubject，让 friend_list_logic 的 _addFriend 也能收到，
           // 邀请人 zz 列表里立刻出现 zz5。
           friendAddSubject.addSafely(friend);
-          Logger.print('[IMCallback] ✅ 已主动推送 friendAddSubject: ${friend.nickname}');
+          Logger.print(
+              '[IMCallback] ✅ 已主动推送 friendAddSubject: ${friend.nickname}');
 
           Logger.print('[IMCallback] ✅ 好友添加通知处理完成: ${friend.nickname}');
         }
       } catch (e) {
         Logger.print('[IMCallback] ⚠️ 获取好友信息失败,仅播放声音: $e');
       }
-
     } catch (e) {
       Logger.print('[IMCallback] 显示好友添加通知失败: $e');
     }
@@ -536,7 +604,8 @@ mixin IMCallback {
 
   void recvOfflineMessage(Message msg) {
     print('[IMCallback] ===== recvOfflineMessage START =====');
-    print('[IMCallback] contentType=${msg.contentType}, sendID=${msg.sendID}, recvID=${msg.recvID}');
+    print(
+        '[IMCallback] contentType=${msg.contentType}, sendID=${msg.sendID}, recvID=${msg.recvID}');
     print('[IMCallback] isRunningBackground=${initLogic.isRunningBackground}');
     // dawn 2026-04-27 临时排查：离线消息入口也打上报
     DebugLogUploader.send('sdk_recv_offline_msg', {
@@ -558,13 +627,17 @@ mixin IMCallback {
         print('[IMCallback] 检测到离线自定义消息，customType=$customType');
 
         // 处理通话信令消息
-        if (customType == 200 || customType == 201 || customType == 202 ||
-            customType == 203 || customType == 204 || customType == 2005) {
+        if (customType == 200 ||
+            customType == 201 ||
+            customType == 202 ||
+            customType == 203 ||
+            customType == 204 ||
+            customType == 2005) {
           print('[IMCallback] ✅ 检测到离线通话信令消息(customType=$customType)');
           print('[IMCallback] 准备手动触发通话信令处理...');
 
-          final signaling = SignalingInfo(
-              invitation: InvitationInfo.fromJson(data['data']));
+          final signaling =
+              SignalingInfo(invitation: InvitationInfo.fromJson(data['data']));
           signaling.userID = signaling.invitation?.inviterUserID;
 
           switch (customType) {
@@ -633,7 +706,8 @@ mixin IMCallback {
     // 重要：只处理别人发给我的申请，不处理我发出的申请
     if (msg.contentType == 1203) {
       Logger.print('[IMCallback] 检测到好友申请离线通知(1203)');
-      Logger.print('[IMCallback] currentUserID=$currentUserID, sendID=${msg.sendID}, isSentByMe=$isSentByMe');
+      Logger.print(
+          '[IMCallback] currentUserID=$currentUserID, sendID=${msg.sendID}, isSentByMe=$isSentByMe');
 
       if (!isSentByMe) {
         Logger.print('[IMCallback] ✅ 这是别人发给我的好友申请，触发通知');
@@ -649,13 +723,14 @@ mixin IMCallback {
       print('========== 收到1201离线通知(好友申请通过) ==========');
       print('[IMCallback] sendID=${msg.sendID}, currentUserID=$currentUserID');
       Logger.print('[IMCallback] 检测到好友申请通过离线通知(1201)');
-      Logger.print('[IMCallback] currentUserID=$currentUserID, sendID=${msg.sendID}, isSentByMe=$isSentByMe');
+      Logger.print(
+          '[IMCallback] currentUserID=$currentUserID, sendID=${msg.sendID}, isSentByMe=$isSentByMe');
 
       if (!isSentByMe) {
         print('[IMCallback] ✅ 这是对方通过了我的申请(离线)');
         Logger.print('[IMCallback] ✅ 对方通过了我的好友申请，准备处理');
         _handleFriendApplicationApproved(msg.sendID!);
-        _showFriendApprovedNotification(msg.sendID!);  // 新增：显示通知
+        _showFriendApprovedNotification(msg.sendID!); // 新增：显示通知
       } else {
         print('[IMCallback] ⚠️ 这是我通过的申请,忽略(离线)');
         Logger.print('[IMCallback] ⚠️ 这是我通过的好友申请，不需要处理');
@@ -671,12 +746,15 @@ mixin IMCallback {
         print('[IMCallback] ✅ 好友关系已建立(离线)');
         Logger.print('[IMCallback] ✅ 好友关系已建立(离线)');
         _ensureConversationExists(msg.sendID!);
-        _showFriendAddedNotification(msg.sendID!);  // 显示通知
+        _showFriendAddedNotification(msg.sendID!); // 显示通知
       }
     }
 
     initLogic.showNotification(msg);
     onRecvOfflineMessage?.call(msg);
+    // dawn 2026-05-11 修复手机端离线/弱网消息进库但页面无感知：离线消息也广播给当前聊天页并补刷会话。
+    newMessageSubject.addSafely(msg);
+    scheduleConversationReconcile('recv_offline_message');
     Logger.print('[IMCallback] ===== recvOfflineMessage END =====');
   }
 
@@ -699,13 +777,15 @@ mixin IMCallback {
     print('[IMCallback] fromUserID=${u.fromUserID}, toUserID=${u.toUserID}');
     print('[IMCallback] handleResult=${u.handleResult}');
 
-    Logger.print('[IMCallback] friendApplicationAccepted: fromUserID=${u.fromUserID}, toUserID=${u.toUserID}');
+    Logger.print(
+        '[IMCallback] friendApplicationAccepted: fromUserID=${u.fromUserID}, toUserID=${u.toUserID}');
     friendApplicationChangedSubject.addSafely(u);
 
     // 确保会话创建
     // fromUserID 是申请发起者，toUserID 是接受者
     final currentUserID = OpenIM.iMManager.userID;
-    final friendUserID = (u.fromUserID == currentUserID) ? u.toUserID : u.fromUserID;
+    final friendUserID =
+        (u.fromUserID == currentUserID) ? u.toUserID : u.fromUserID;
 
     if (friendUserID != null) {
       print('[IMCallback] 准备创建会话: friendUserID=$friendUserID');
@@ -715,17 +795,20 @@ mixin IMCallback {
   }
 
   void friendApplicationAdded(FriendApplicationInfo u) {
-    Logger.print('[IMCallback] friendApplicationAdded: fromUserID=${u.fromUserID}, toUserID=${u.toUserID}, handleMsg=${u.handleMsg}');
+    Logger.print(
+        '[IMCallback] friendApplicationAdded: fromUserID=${u.fromUserID}, toUserID=${u.toUserID}, handleMsg=${u.handleMsg}');
     friendApplicationChangedSubject.addSafely(u);
   }
 
   void friendApplicationDeleted(FriendApplicationInfo u) {
-    Logger.print('[IMCallback] friendApplicationDeleted: fromUserID=${u.fromUserID}, toUserID=${u.toUserID}');
+    Logger.print(
+        '[IMCallback] friendApplicationDeleted: fromUserID=${u.fromUserID}, toUserID=${u.toUserID}');
     friendApplicationChangedSubject.addSafely(u);
   }
 
   void friendApplicationRejected(FriendApplicationInfo u) {
-    Logger.print('[IMCallback] friendApplicationRejected: fromUserID=${u.fromUserID}, toUserID=${u.toUserID}');
+    Logger.print(
+        '[IMCallback] friendApplicationRejected: fromUserID=${u.fromUserID}, toUserID=${u.toUserID}');
     friendApplicationChangedSubject.addSafely(u);
   }
 
@@ -737,7 +820,8 @@ mixin IMCallback {
     print('========== friendAdded 回调被触发 ==========');
     print('[IMCallback] userID=${u.userID}, nickname=${u.nickname}');
 
-    Logger.print('[IMCallback] friendAdded: userID=${u.userID}, nickname=${u.nickname}');
+    Logger.print(
+        '[IMCallback] friendAdded: userID=${u.userID}, nickname=${u.nickname}');
     friendAddSubject.addSafely(u);
 
     // 确保会话存在且在聊天列表可见（默认好友/邀请人自动互加也走这里）
@@ -747,7 +831,8 @@ mixin IMCallback {
     Future.delayed(Duration(milliseconds: 1500), () async {
       print('[IMCallback] friendAdded - 延迟刷新会话列表');
       try {
-        final conversations = await OpenIM.iMManager.conversationManager.getAllConversationList();
+        final conversations =
+            await OpenIM.iMManager.conversationManager.getAllConversationList();
         conversationChangedSubject.addSafely(conversations);
         print('[IMCallback] ✅ 已触发会话列表刷新(friendAdded)');
         Logger.print('[IMCallback] friendAdded后已触发会话列表刷新');
@@ -768,19 +853,21 @@ mixin IMCallback {
       Logger.print('[IMCallback] 正在确保会话存在: friendUserID=$friendUserID');
 
       await FriendConversationHelper.ensureConversationForFriend(friendUserID);
-      final conversation = await OpenIM.iMManager.conversationManager.getOneConversation(
+      final conversation =
+          await OpenIM.iMManager.conversationManager.getOneConversation(
         sourceID: friendUserID,
         sessionType: ConversationType.single,
       );
 
       Logger.print('[IMCallback] ✅ 会话已确保存在');
-      Logger.print('[IMCallback] conversationID=${conversation.conversationID}');
+      Logger.print(
+          '[IMCallback] conversationID=${conversation.conversationID}');
 
       // 确认会话在列表中
-      final conversations = await OpenIM.iMManager.conversationManager.getAllConversationList();
+      final conversations =
+          await OpenIM.iMManager.conversationManager.getAllConversationList();
       final exists = conversations.any((c) => c.userID == friendUserID);
       Logger.print('[IMCallback] 会话在列表中: $exists');
-
     } catch (e, stackTrace) {
       Logger.print('[IMCallback] 确保会话存在失败: $e');
       Logger.print('[IMCallback] 堆栈: $stackTrace');
@@ -853,6 +940,7 @@ mixin IMCallback {
   }
 
   void close() {
+    _conversationReconcileTimer?.cancel();
     initializedSubject.close();
     friendApplicationChangedSubject.close();
     friendAddSubject.close();
