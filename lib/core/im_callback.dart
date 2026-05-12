@@ -132,6 +132,8 @@ mixin IMCallback {
   final inputStateChangedSubject = PublishSubject<InputStatusChangedData>();
 
   Timer? _conversationReconcileTimer;
+  final Map<String, String> _promptedConversationMessageKeys = {};
+  int? _lastTotalUnreadCount;
 
   void imSdkStatus(IMSdkStatus status,
       {bool reInstall = false, int? progress}) {
@@ -161,6 +163,7 @@ mixin IMCallback {
       final conversations = await OpenIM.iMManager.conversationManager
           .getConversationListSplit(offset: 0, count: 400);
       conversationChangedSubject.addSafely(conversations);
+      _promptLatestMessagesFromConversations(conversations, reason);
       Logger.print(
           '[IMCallback] 已补刷会话列表($reason), count=${conversations.length}');
     } catch (e, s) {
@@ -177,6 +180,75 @@ mixin IMCallback {
       Logger.print('[IMCallback] 已补刷总未读($reason): $count');
     } catch (e, s) {
       Logger.print('[IMCallback] 补刷总未读失败($reason): $e\n$s');
+    }
+  }
+
+  String _messagePromptKey(Message message) {
+    final serverMsgID = message.serverMsgID;
+    if (serverMsgID != null && serverMsgID.isNotEmpty) {
+      return 'server:$serverMsgID';
+    }
+    final clientMsgID = message.clientMsgID;
+    if (clientMsgID != null && clientMsgID.isNotEmpty) {
+      return 'client:$clientMsgID';
+    }
+    return [
+      'fallback',
+      message.sessionType,
+      message.sendID,
+      message.recvID,
+      message.groupID,
+      message.seq,
+      message.sendTime,
+      message.contentType,
+    ].join(':');
+  }
+
+  void _markPromptedMessage(Message message) {
+    final messageKey = _messagePromptKey(message);
+    if (message.sessionType == ConversationType.single) {
+      // dawn 2026-05-12 修复手机端弱网私聊无提示：单聊 conversationID 双方顺序不固定，两个方向都标记避免重复提示。
+      _promptedConversationMessageKeys[
+          'si_${message.sendID}_${message.recvID}'] = messageKey;
+      _promptedConversationMessageKeys[
+          'si_${message.recvID}_${message.sendID}'] = messageKey;
+      return;
+    }
+    _promptedConversationMessageKeys['sg_${message.groupID}'] = messageKey;
+  }
+
+  bool _isRecentEnoughForPrompt(Message message) {
+    final sendTime = message.sendTime;
+    if (sendTime == null || sendTime <= 0) return true;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return (now - sendTime).abs() <= const Duration(minutes: 10).inMilliseconds;
+  }
+
+  void _promptLatestMessagesFromConversations(
+      List<ConversationInfo> list, String reason) {
+    // dawn 2026-05-12 修复手机端弱网私聊无提示：SDK 只回调会话/未读时，用会话 latestMsg 兜底触发一次提示。
+    final shouldPrompt = reason == 'conversation_changed' ||
+        reason == 'new_conversation' ||
+        reason == 'total_unread_changed';
+    if (!shouldPrompt) return;
+
+    for (final conversation in list) {
+      final latestMsg = conversation.latestMsg;
+      if (latestMsg == null ||
+          conversation.unreadCount <= 0 ||
+          latestMsg.sendID == OpenIM.iMManager.userID ||
+          !_isRecentEnoughForPrompt(latestMsg)) {
+        continue;
+      }
+
+      final conversationID = conversation.conversationID;
+      final messageKey = _messagePromptKey(latestMsg);
+      if (_promptedConversationMessageKeys[conversationID] == messageKey) {
+        continue;
+      }
+
+      _promptedConversationMessageKeys[conversationID] = messageKey;
+      unawaited(initLogic.showNotification(latestMsg));
     }
   }
 
@@ -397,6 +469,7 @@ mixin IMCallback {
     }
 
     initLogic.showNotification(msg);
+    _markPromptedMessage(msg);
     onRecvNewMessage?.call(msg);
 
     // 通过Subject广播消息，让所有订阅者都能收到
@@ -751,6 +824,7 @@ mixin IMCallback {
     }
 
     initLogic.showNotification(msg);
+    _markPromptedMessage(msg);
     onRecvOfflineMessage?.call(msg);
     // dawn 2026-05-11 修复手机端离线/弱网消息进库但页面无感知：离线消息也广播给当前聊天页并补刷会话。
     newMessageSubject.addSafely(msg);
@@ -879,10 +953,12 @@ mixin IMCallback {
   }
 
   void conversationChanged(List<ConversationInfo> list) {
+    _promptLatestMessagesFromConversations(list, 'conversation_changed');
     conversationChangedSubject.addSafely(list);
   }
 
   void newConversation(List<ConversationInfo> list) {
+    _promptLatestMessagesFromConversations(list, 'new_conversation');
     conversationAddedSubject.addSafely(list);
   }
 
@@ -928,11 +1004,18 @@ mixin IMCallback {
 
   void totalUnreadMsgCountChanged(int count) {
     print('[IMCallback] SDK上报总未读数: $count');
+    final previous = _lastTotalUnreadCount;
+    _lastTotalUnreadCount = count;
 
     // 直接使用SDK上报的值，无需前端修正
     // 后端已通过Options机制正确设置IsUnreadCount=false来排除不应计数的消息
     initLogic.showBadge(count);
     unreadMsgCountEventSubject.addSafely(count);
+    if (previous != null && count > previous) {
+      // dawn 2026-05-12 修复手机端弱网私聊无提示：未读数增加但消息回调缺失时，补拉会话 latestMsg 触发提示。
+      scheduleConversationReconcile('total_unread_changed',
+          delay: const Duration(milliseconds: 500));
+    }
   }
 
   void inputStateChanged(InputStatusChangedData status) {
@@ -941,6 +1024,7 @@ mixin IMCallback {
 
   void close() {
     _conversationReconcileTimer?.cancel();
+    _promptedConversationMessageKeys.clear();
     initializedSubject.close();
     friendApplicationChangedSubject.close();
     friendAddSubject.close();

@@ -203,7 +203,8 @@ class AppController extends GetxController with UpgradeManger {
       _playMessageSound();
     } else {
       if (Platform.isAndroid) {
-        final id = message.seq!;
+        // dawn 2026-05-12 修复手机端弱网私聊无提示：兜底会话 latestMsg 可能没有 seq，通知 id 改为可回退。
+        final id = message.seq ?? message.clientMsgID.hashCode;
 
         const androidPlatformChannelSpecifics = AndroidNotificationDetails(
             'chat', 'FreeChat message',
