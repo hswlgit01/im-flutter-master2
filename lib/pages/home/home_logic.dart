@@ -94,6 +94,10 @@ class HomeLogic extends SuperController {
     imLogic.imSdkStatusPublishSubject.listen((value) {
       if (value.status == IMSdkStatus.syncStart) {
         _getRTCInvitationStart();
+      } else if (value.status == IMSdkStatus.syncEnded) {
+        // dawn 2026-05-14 修复好友/群通知离线无红点：SDK 同步完成后主动重算申请未处理数量。
+        getUnhandledFriendApplicationCount();
+        getUnhandledGroupApplicationCount();
       }
     });
 

@@ -429,7 +429,7 @@ mixin IMCallback {
 
       if (!isSentByMe) {
         Logger.print('[IMCallback] ✅ 这是别人发给我的好友申请，触发通知');
-        _handleFriendApplicationNotification();
+        _scheduleFriendApplicationRefresh();
         Logger.print('[IMCallback] ✅ 好友申请处理完成');
       } else {
         Logger.print('[IMCallback] ⚠️ 这是我发出的好友申请，不触发通知');
@@ -467,6 +467,15 @@ mixin IMCallback {
         _showFriendAddedNotification(msg.sendID!); // 显示通知
       }
     }
+    // dawn 2026-05-14 修复群通知无红点：SDK 群申请 listener 偶发不回调时，按协议通知手动刷新群申请列表。
+    else if (msg.contentType == 1503 ||
+        msg.contentType == 1505 ||
+        msg.contentType == 1506) {
+      Logger.print('[IMCallback] 检测到群申请通知(${msg.contentType})');
+      if (!isSentByMe) {
+        _scheduleGroupApplicationRefresh();
+      }
+    }
 
     initLogic.showNotification(msg);
     _markPromptedMessage(msg);
@@ -482,6 +491,15 @@ mixin IMCallback {
 
   /// 手动处理好友申请通知
   /// 当SDK没有触发friendListener回调时，通过此方法手动刷新好友申请列表
+  void _scheduleFriendApplicationRefresh() {
+    _handleFriendApplicationNotification();
+    // dawn 2026-05-14 修复新好友提示延迟：通知可能先于本地申请列表落盘，延迟补刷避免红点漏掉。
+    Future.delayed(const Duration(milliseconds: 800),
+        _handleFriendApplicationNotification);
+    Future.delayed(
+        const Duration(seconds: 2), _handleFriendApplicationNotification);
+  }
+
   void _handleFriendApplicationNotification() async {
     try {
       Logger.print('[IMCallback] 🔔 开始处理好友申请通知');
@@ -507,6 +525,31 @@ mixin IMCallback {
       }
     } catch (e, stackTrace) {
       Logger.print('[IMCallback] ❌ 获取好友申请列表失败: $e');
+      Logger.print('[IMCallback] ❌ 堆栈: $stackTrace');
+    }
+  }
+
+  void _scheduleGroupApplicationRefresh() {
+    _handleGroupApplicationNotification();
+    // dawn 2026-05-14 修复群通知提示延迟：协议通知到达后延迟补刷，覆盖 SDK 列表同步慢的情况。
+    Future.delayed(
+        const Duration(milliseconds: 800), _handleGroupApplicationNotification);
+    Future.delayed(
+        const Duration(seconds: 2), _handleGroupApplicationNotification);
+  }
+
+  void _handleGroupApplicationNotification() async {
+    try {
+      Logger.print('[IMCallback] 🔔 开始处理群申请通知');
+      final list = await OpenIM.iMManager.groupManager
+          .getGroupApplicationListAsRecipient();
+      Logger.print('[IMCallback] 获取到 ${list.length} 个群申请');
+      if (list.isNotEmpty) {
+        groupApplicationChangedSubject.addSafely(list.first);
+        Logger.print('[IMCallback] ✅ 已触发群申请变更事件');
+      }
+    } catch (e, stackTrace) {
+      Logger.print('[IMCallback] ❌ 获取群申请列表失败: $e');
       Logger.print('[IMCallback] ❌ 堆栈: $stackTrace');
     }
   }
@@ -784,7 +827,7 @@ mixin IMCallback {
 
       if (!isSentByMe) {
         Logger.print('[IMCallback] ✅ 这是别人发给我的好友申请，触发通知');
-        _handleFriendApplicationNotification();
+        _scheduleFriendApplicationRefresh();
         Logger.print('[IMCallback] ✅ 好友申请处理完成');
       } else {
         Logger.print('[IMCallback] ⚠️ 这是我发出的好友申请，不触发通知');
@@ -820,6 +863,15 @@ mixin IMCallback {
         Logger.print('[IMCallback] ✅ 好友关系已建立(离线)');
         _ensureConversationExists(msg.sendID!);
         _showFriendAddedNotification(msg.sendID!); // 显示通知
+      }
+    }
+    // dawn 2026-05-14 修复离线群通知无红点：离线同步的群申请协议通知也触发群申请列表补刷。
+    else if (msg.contentType == 1503 ||
+        msg.contentType == 1505 ||
+        msg.contentType == 1506) {
+      Logger.print('[IMCallback] 检测到群申请离线通知(${msg.contentType})');
+      if (!isSentByMe) {
+        _scheduleGroupApplicationRefresh();
       }
     }
 

@@ -684,12 +684,18 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
     required String transaction_id,
   }) async {
     try {
+      final headers = Map<String, dynamic>.from(Apis.chatTokenOptions.headers ?? {});
+      final imUserID = DataSp.userID;
+      if (imUserID != null && imUserID.isNotEmpty) {
+        // dawn 2026-05-14 修复红包重登后误显示待领取：带上 IM 用户ID，服务端可按 user_id/user_im_id 双路查询领取记录。
+        headers['X-User-IM-ID'] = imUserID;
+      }
       final data = await HttpUtil.post(
         Urls.transactionCheckCompleted,
         data: {
           'transaction_id': transaction_id,
         },
-        options: Apis.chatTokenOptions,
+        options: Options(headers: headers),
       );
 
       if (data != null) {
@@ -930,7 +936,7 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
       return null;
     }
   }
-  
+
   /// 举手上台
   Future<Map<String, dynamic>?> raiseHand({
     required String roomName,
@@ -1034,7 +1040,7 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
           'operationID': const Uuid().v4(),
         },
       );
-      
+
       final data = await HttpUtil.post(
         Urls.getUploadPartSize,
         data: {
@@ -1071,7 +1077,7 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
           'operationID': const Uuid().v4(),
         },
       );
-      
+
       final data = await HttpUtil.post(
         Urls.getUploadUrl,
         data: {
@@ -1112,7 +1118,7 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
           'operationID': const Uuid().v4(),
         },
       );
-      
+
       final data = await HttpUtil.post(
         Urls.confirmUpload,
         data: {
