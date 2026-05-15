@@ -1802,12 +1802,33 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     _sendMessage(message);
   }
 
+  Future<void> _maskSensitiveMessage(Message message) async {
+    // dawn 2026-05-15 修复手机端自己消息仍显示原词：所有发送入口入本地列表前统一脱敏。
+    if (message.contentType == MessageType.text) {
+      final content = message.textElem?.content;
+      if (content != null && content.isNotEmpty) {
+        message.textElem?.content =
+            await apiService.maskSensitiveWords(content);
+      }
+    } else if (message.contentType == MessageType.atText) {
+      final content = message.atTextElem?.text;
+      if (content != null && content.isNotEmpty) {
+        message.atTextElem?.text = await apiService.maskSensitiveWords(content);
+      }
+    } else if (message.contentType == MessageType.quote) {
+      final content = message.quoteElem?.text;
+      if (content != null && content.isNotEmpty) {
+        message.quoteElem?.text = await apiService.maskSensitiveWords(content);
+      }
+    }
+  }
+
   Future _sendMessage(
     Message message, {
     String? userId,
     String? groupId,
     bool addToUI = true,
-  }) {
+  }) async {
     // 群聊场景下，在本地先做禁言/全员禁言前置校验，避免发出无效请求：
     // - isMute.value 为 true：当前用户已被单独禁言
     // - isGroupMute 为 true：已开启全员禁言（管理员/群主除外）
@@ -1819,6 +1840,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
       return Future.value();
     }
+
+    await _maskSensitiveMessage(message);
 
     userId = IMUtils.emptyStrToNull(userId);
     groupId = IMUtils.emptyStrToNull(groupId);

@@ -389,6 +389,75 @@ class ConversationLogic extends GetxController {
     return null;
   }
 
+  // dawn 2026-05-15 修复手机端会话列表摘要显示暂不支持：未知自定义消息尽量提取真实文案。
+  Map<String, dynamic>? _decodeJsonMap(String raw) {
+    try {
+      final decoded = json.decode(raw);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String? _readCustomPreviewText(dynamic payload) {
+    if (payload is String) {
+      final nested = _decodeJsonMap(payload);
+      if (nested != null) {
+        return _readCustomPreviewText(nested);
+      }
+      final text = payload.trim();
+      if (text.isNotEmpty && !text.startsWith('{') && !text.startsWith('[')) {
+        return text;
+      }
+      return null;
+    }
+
+    if (payload is! Map) return null;
+    final map = Map<String, dynamic>.from(payload);
+    for (final key in ['content', 'text', 'remark', 'msg', 'title']) {
+      final value = map[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+    return _readCustomPreviewText(map['data']);
+  }
+
+  String? _getCustomMessagePreview(Message message) {
+    final rawData = message.customElem?.data;
+    if (rawData == null || rawData.isEmpty) return null;
+
+    final payload = _decodeJsonMap(rawData);
+    final preview = _readCustomPreviewText(payload ?? rawData);
+    if (preview != null && preview.isNotEmpty) return preview;
+
+    final parsed = IMUtils.parseCustomMessage(message);
+    if (parsed is Map) {
+      final content = parsed['content']?.toString().trim();
+      if (content != null &&
+          content.isNotEmpty &&
+          content != StrRes.unsupportedMessage &&
+          content != '[${StrRes.unsupportedMessage}]') {
+        return content;
+      }
+    }
+    return null;
+  }
+
+  String _maskPreviewText(String text) =>
+      _apiService.maskSensitiveWordsFromCache(text);
+
+  String _formatLatestMsgPreview(ConversationInfo info, String content) {
+    final preview = _maskPreviewText(content);
+    if (info.isSingleChat ||
+        info.latestMsg?.sendID == OpenIM.iMManager.userID ||
+        info.conversationType == ConversationType.notification) {
+      return preview;
+    }
+    return "${info.latestMsg?.senderNickname ?? ''}: $preview ";
+  }
+
   String getContent(ConversationInfo info) {
     try {
       if (null != info.draftText && '' != info.draftText) {
@@ -472,9 +541,11 @@ class ConversationLogic extends GetxController {
           }
           // 处理恢复消息
           else if (customType == CustomMessageType.recover) {
-            final content = data['content'] ?? '';
+            final content = data['content']?.toString() ??
+                _readCustomPreviewText(data) ??
+                '';
             if (content.isNotEmpty) {
-              return content;
+              return _maskPreviewText(content);
             }
             return '[恢复消息]';
           } else if (customType == CustomMessageType.call ||
@@ -489,8 +560,16 @@ class ConversationLogic extends GetxController {
             }
             return '[${StrRes.callVoice}]';
           }
+          final customPreview = _getCustomMessagePreview(info.latestMsg!);
+          if (customPreview != null && customPreview.isNotEmpty) {
+            return _formatLatestMsgPreview(info, customPreview);
+          }
         } catch (e) {
           ILogger.e('解析自定义消息失败: $e');
+          final customPreview = _getCustomMessagePreview(info.latestMsg!);
+          if (customPreview != null && customPreview.isNotEmpty) {
+            return _formatLatestMsgPreview(info, customPreview);
+          }
         }
       }
 
@@ -498,10 +577,12 @@ class ConversationLogic extends GetxController {
       if (text != null) return text;
       if (info.isSingleChat ||
           info.latestMsg!.sendID == OpenIM.iMManager.userID ||
-          info.conversationType == ConversationType.notification)
-        return IMUtils.parseMsg(info.latestMsg!, isConversation: true);
+          info.conversationType == ConversationType.notification) {
+        return _maskPreviewText(
+            IMUtils.parseMsg(info.latestMsg!, isConversation: true));
+      }
 
-      return "${info.latestMsg!.senderNickname}: ${IMUtils.parseMsg(info.latestMsg!, isConversation: true)} ";
+      return "${info.latestMsg!.senderNickname}: ${_maskPreviewText(IMUtils.parseMsg(info.latestMsg!, isConversation: true))} ";
     } catch (e, s) {
       Logger.print('------e:$e s:$s');
     }

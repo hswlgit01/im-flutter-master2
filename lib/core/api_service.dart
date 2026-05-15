@@ -71,6 +71,16 @@ class ApiService {
   Future<String> maskSensitiveWords(String text) async {
     if (text.isEmpty) return text;
     final words = await _getEnabledSensitiveWords();
+    return _maskSensitiveWordsWithList(text, words);
+  }
+
+  // dawn 2026-05-15 修复手机端会话列表摘要露出敏感词：摘要渲染只能同步执行，使用已缓存词表兜底脱敏。
+  String maskSensitiveWordsFromCache(String text) {
+    if (text.isEmpty || _sensitiveWordsCache.isEmpty) return text;
+    return _maskSensitiveWordsWithList(text, _sensitiveWordsCache);
+  }
+
+  String _maskSensitiveWordsWithList(String text, List<String> words) {
     var result = text;
     for (final word in words) {
       if (result.contains(word)) {

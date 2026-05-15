@@ -20,10 +20,19 @@ class OrgController extends GetxService {
         .toList();
   }
 
+  // dawn 2026-05-15 修复团队长功能不展示：兼容组织角色中文别名。
+  String _normalizeOrgRole(String role) {
+    final aliases = {
+      '业务员': 'GroupManager',
+      '团队长': 'TermManager',
+    };
+    return aliases[role.trim()] ?? role.trim();
+  }
+
   // dawn 2026-05-15 修复团队长功能不展示：统一兼容旧 basic、细分权限码和直加好友角色。
   bool hasPermission(String code) {
     final roles = currentOrgRoles;
-    final orgRole = currentOrg.role ?? '';
+    final orgRole = _normalizeOrgRole(currentOrg.role ?? '');
     if (code == 'add_friend' &&
         (orgRole == 'GroupManager' || orgRole == 'TermManager')) {
       return true;
