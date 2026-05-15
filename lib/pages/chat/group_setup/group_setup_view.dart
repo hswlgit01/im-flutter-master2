@@ -18,7 +18,8 @@ class GroupSetupPage extends StatelessWidget {
     return Scaffold(
       appBar: TitleBar.back(
         title: StrRes.groupChatSetup,
-        right: logic.orgController.currentOrgRoles.contains("basic")
+        // dawn 2026-05-15 修复团队长群分享入口不展示：按发送名片权限展示，兼容旧 basic。
+        right: logic.orgController.canSendBusinessCard
             ? (ImageRes.multiBoxForward.toImage..onTap = logic.shareGroup)
             : null,
       ),
@@ -27,7 +28,10 @@ class GroupSetupPage extends StatelessWidget {
             child: Column(
               children: [
                 if (logic.isJoinedGroup.value) _buildBaseInfoView(),
-                if (logic.isJoinedGroup.value && logic.isShowMember) ...[_buildMemberView(), 10.verticalSpace],
+                if (logic.isJoinedGroup.value && logic.isShowMember) ...[
+                  _buildMemberView(),
+                  10.verticalSpace
+                ],
                 if (logic.isJoinedGroup.value)
                   Padding(
                     padding: EdgeInsets.symmetric(
@@ -145,8 +149,9 @@ class GroupSetupPage extends StatelessWidget {
                             child:
                                 (logic.groupInfo.value.groupName ?? '').toText
                                   ..style = Styles.ts_0C1C33_17sp),
-                        if (logic.isShowMember) '(${logic.groupInfo.value.memberCount ?? 0})'.toText
-                          ..style = Styles.ts_0C1C33_17sp,
+                        if (logic.isShowMember)
+                          '(${logic.groupInfo.value.memberCount ?? 0})'.toText
+                            ..style = Styles.ts_0C1C33_17sp,
                         6.horizontalSpace,
                         if (logic.isOwnerOrAdmin)
                           ImageRes.editName.toImage
@@ -269,25 +274,26 @@ class GroupSetupPage extends StatelessWidget {
               height: 1,
               margin: EdgeInsets.symmetric(horizontal: 10.w),
             ),
-            if (logic.isShowMember) GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: logic.viewGroupMembers,
-              child: Container(
-                padding: EdgeInsets.only(left: 12.w, right: 16.w),
-                height: 46.h,
-                child: Row(
-                  children: [
-                    sprintf(StrRes.viewAllGroupMembers,
-                        [logic.groupInfo.value.memberCount]).toText
-                      ..style = Styles.ts_0C1C33_17sp,
-                    const Spacer(),
-                    ImageRes.rightArrow.toImage
-                      ..width = 24.w
-                      ..height = 24.h,
-                  ],
+            if (logic.isShowMember)
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: logic.viewGroupMembers,
+                child: Container(
+                  padding: EdgeInsets.only(left: 12.w, right: 16.w),
+                  height: 46.h,
+                  child: Row(
+                    children: [
+                      sprintf(StrRes.viewAllGroupMembers,
+                          [logic.groupInfo.value.memberCount]).toText
+                        ..style = Styles.ts_0C1C33_17sp,
+                      const Spacer(),
+                      ImageRes.rightArrow.toImage
+                        ..width = 24.w
+                        ..height = 24.h,
+                    ],
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       );

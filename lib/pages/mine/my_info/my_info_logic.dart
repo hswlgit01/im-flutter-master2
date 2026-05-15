@@ -10,6 +10,7 @@ import 'package:openim/utils/avatar_util.dart';
 import 'package:openim_common/openim_common.dart';
 import '../../../core/controller/im_controller.dart';
 import 'identity_verify/identity_verify_view.dart';
+
 class MyInfoLogic extends GetxController {
   final imLogic = Get.find<IMController>();
   final loginType = LoginType.fromRawValue(DataSp.getLoginType());
@@ -25,7 +26,8 @@ class MyInfoLogic extends GetxController {
   }
 
   void editMyName() {
-    if (orgController.currentOrgRoles.contains("modify_nickname")) {
+    // dawn 2026-05-15 修复旧 basic 用户无法改昵称：昵称权限统一走兼容判断。
+    if (orgController.canModifyNickname) {
       AppNavigator.startEditMyInfo();
     }
   }
@@ -47,46 +49,45 @@ class MyInfoLogic extends GetxController {
 
   void openPhotoSheet() {
     IMViews.openPhotoSheet(
-      onData: (path, url) async {
-        if (path != null) {
-          // 显示加载对话框
-          LoadingView.singleton.show();
+        onData: (path, url) async {
+          if (path != null) {
+            // 显示加载对话框
+            LoadingView.singleton.show();
 
-          // 使用简化版的AvatarUtil处理整个流程
-          await AvatarUtil.uploadAndUpdateAvatar(
-            imagePath: path,
-            onComplete: (success, newUrl) async {
-              if (success && newUrl != null) {
-                // 1. 更新本地显示（UI层）
-                imLogic.userInfo.update((val) {
-                  val?.faceURL = newUrl;
-                });
-                userInfo.refresh();
+            // 使用简化版的AvatarUtil处理整个流程
+            await AvatarUtil.uploadAndUpdateAvatar(
+              imagePath: path,
+              onComplete: (success, newUrl) async {
+                if (success && newUrl != null) {
+                  // 1. 更新本地显示（UI层）
+                  imLogic.userInfo.update((val) {
+                    val?.faceURL = newUrl;
+                  });
+                  userInfo.refresh();
 
-                // 2. 关闭加载对话框
-                LoadingView.singleton.dismiss();
+                  // 2. 关闭加载对话框
+                  LoadingView.singleton.dismiss();
 
-                // 3. 通知用户
-                IMViews.showToast("头像更新成功");
+                  // 3. 通知用户
+                  IMViews.showToast("头像更新成功");
 
-                // 4. 强制刷新页面
-                update();
-
-                // 5. 延迟二次刷新确保UI完全更新
-                Future.delayed(Duration(milliseconds: 500), () {
+                  // 4. 强制刷新页面
                   update();
-                  Get.forceAppUpdate();
-                });
-              } else {
-                LoadingView.singleton.dismiss();
-                IMViews.showToast("头像更新失败");
-              }
-            },
-          );
-        }
-      },
-      quality: 50
-    );
+
+                  // 5. 延迟二次刷新确保UI完全更新
+                  Future.delayed(Duration(milliseconds: 500), () {
+                    update();
+                    Get.forceAppUpdate();
+                  });
+                } else {
+                  LoadingView.singleton.dismiss();
+                  IMViews.showToast("头像更新失败");
+                }
+              },
+            );
+          }
+        },
+        quality: 50);
   }
 
   void openDatePicker() {
@@ -95,7 +96,7 @@ class MyInfoLogic extends GetxController {
     DatePicker.showDatePicker(
       Get.context!,
       locale: isZh ? LocaleType.zh : LocaleType.en,
-      minTime: DateTime(1900, 1, 1),  // 添加最小时间限制为1900年1月1日
+      minTime: DateTime(1900, 1, 1), // 添加最小时间限制为1900年1月1日
       maxTime: DateTime.now(),
       currentTime: DateTime.fromMillisecondsSinceEpoch(
           imLogic.userInfo.value.birth ?? 0),
@@ -159,10 +160,9 @@ class MyInfoLogic extends GetxController {
 
         // 获取完整用户信息（从API）
         final user = await Apis.getUserFullInfo(
-          pageNumber: 1,
-          showNumber: 1,
-          userIDList: [selfInfo.userID ?? OpenIM.iMManager.userID]
-        );
+            pageNumber: 1,
+            showNumber: 1,
+            userIDList: [selfInfo.userID ?? OpenIM.iMManager.userID]);
 
         if (user != null && user.isNotEmpty) {
           // 更新本地用户信息和全局用户信息
@@ -245,7 +245,6 @@ class MyInfoLogic extends GetxController {
       _identityInfo.value = IdentityVerifyInfo(status: 0);
     }
   }
-
 
   void openIdentityVerifyPage() {
     final currentInfo = identityInfo;

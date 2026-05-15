@@ -30,15 +30,17 @@ class FriendSetupPage extends StatelessWidget {
             showRightArrow: true,
             onTap: logic.setFriendRemark,
           ),
-          if (logic.orgController.currentOrgRoles.contains("basic")) _buildItemView(
-            label: StrRes.recommendToFriend,
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(6.r),
-              bottomRight: Radius.circular(6.r),
+          // dawn 2026-05-15 修复团队长推荐名片入口不展示：按发送名片权限展示，兼容旧 basic。
+          if (logic.orgController.canSendBusinessCard)
+            _buildItemView(
+              label: StrRes.recommendToFriend,
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(6.r),
+                bottomRight: Radius.circular(6.r),
+              ),
+              showRightArrow: true,
+              onTap: logic.recommendToFriend,
             ),
-            showRightArrow: true,
-            onTap: logic.recommendToFriend,
-          ),
           10.verticalSpace,
           Obx(() => _buildItemView(
                 label: StrRes.addToBlacklist,

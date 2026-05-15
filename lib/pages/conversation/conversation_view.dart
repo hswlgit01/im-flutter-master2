@@ -18,7 +18,7 @@ class ConversationPage extends StatelessWidget {
   final logic = Get.find<ConversationLogic>();
   final im = Get.find<IMController>();
 
-  ConversationPage({super.key, required this.openParentDrawer}){
+  ConversationPage({super.key, required this.openParentDrawer}) {
     _loadAppInfo();
   }
 
@@ -57,8 +57,9 @@ class ConversationPage extends StatelessWidget {
               popCtrl: logic.popCtrl,
               onAddFriend: logic.addFriend,
               onAddGroup: logic.addGroup,
-              hasBaseRule:
-                  logic.orgController.currentOrgRoles.contains("basic"),
+              // dawn 2026-05-15 修复团队长首页加号功能不展示：任一快捷权限可显示加号菜单。
+              hasBaseRule: logic.orgController.canAddFriend ||
+                  logic.orgController.canCreateGroup,
               onCreateGroup: logic.createGroup,
               onScan: logic.scan,
               left: Expanded(
@@ -79,9 +80,7 @@ class ConversationPage extends StatelessWidget {
                     10.horizontalSpace,
                     Flexible(
                       child: Obx(() => Text(
-                            appName.value.isNotEmpty
-                                ? appName.value
-                                : '加载中...',
+                            appName.value.isNotEmpty ? appName.value : '加载中...',
                             style: Styles.ts_0C1C33_17sp_medium,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -94,7 +93,8 @@ class ConversationPage extends StatelessWidget {
                           child: SyncStatusView(
                         isFailed: logic.isFailedSdkStatus,
                         statusStr: logic.imSdkStatus!,
-                        onTap: logic.isFailedSdkStatus ? logic.onRetrySync : null,
+                        onTap:
+                            logic.isFailedSdkStatus ? logic.onRetrySync : null,
                       )),
                   ],
                 ),
@@ -221,8 +221,10 @@ class ConversationPage extends StatelessWidget {
                                     children: [
                                       info.groupAtType != GroupAtType.atNormal
                                           ? TextSpan(
-                                              text: '${logic.getPrefixTag(info)} ',
-                                              style: Styles.ts_0089FF_14sp_medium,
+                                              text:
+                                                  '${logic.getPrefixTag(info)} ',
+                                              style:
+                                                  Styles.ts_0089FF_14sp_medium,
                                             )
                                           : unReadCount > 0
                                               ? TextSpan(
@@ -230,7 +232,8 @@ class ConversationPage extends StatelessWidget {
                                                       '[${sprintf(StrRes.nPieces, [
                                                         unReadCount
                                                       ])}] ',
-                                                  style: Styles.ts_0089FF_14sp_medium,
+                                                  style: Styles
+                                                      .ts_0089FF_14sp_medium,
                                                 )
                                               : const TextSpan(),
                                     ],

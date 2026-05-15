@@ -1567,12 +1567,14 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       ILogger.e('发送图片消息失败: $e');
     }
 
-    var content = IMUtils.safeTrim(inputCtrl.text);
-    var ids = _extractIds(content);
+    final rawContent = IMUtils.safeTrim(inputCtrl.text);
+    var ids = _extractIds(rawContent);
     ids = ids.toSet().toList();
-    if (content.isEmpty) {
+    if (rawContent.isEmpty) {
       return;
     }
+    // dawn 2026-05-15 修复手机端发送方敏感词未脱敏：创建本地消息前先替换文本内容。
+    final content = await apiService.maskSensitiveWords(rawContent);
 
     Message message;
 
@@ -1612,7 +1614,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     await _sendMessage(message);
 
     // 如果包含"已成功收款"关键词，可能是收款成功的通知，尝试刷新相关的转账消息
-    if (content.contains('已成功收款')) {
+    if (rawContent.contains('已成功收款')) {
       // 检查是否有需要更新的转账消息
       WidgetsBinding.instance.addPostFrameCallback((_) {
         try {
@@ -1702,8 +1704,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     String? userId,
     String? groupId,
   }) async {
+    // dawn 2026-05-15 修复手机端转发备注敏感词未脱敏：备注文本同普通消息一样先本地替换。
+    final filteredContent = await apiService.maskSensitiveWords(content);
     final message = await OpenIM.iMManager.messageManager.createTextMessage(
-      text: content,
+      text: filteredContent,
     );
     _sendMessage(message, userId: userId, groupId: groupId);
   }

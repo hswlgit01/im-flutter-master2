@@ -36,12 +36,15 @@ class MyInfoPage extends StatelessWidget {
                     _buildItemView(
                       label: StrRes.name,
                       value: imLogic.userInfo.value.nickname,
-                      showRightArrow: logic.orgController.currentOrgRoles.contains("modify_nickname"),
+                      // dawn 2026-05-15 修复旧 basic 用户无法改昵称：昵称权限统一走兼容判断。
+                      showRightArrow: logic.orgController.canModifyNickname,
                       onTap: logic.editMyName,
                     ),
                     _buildItemView(
                       label: StrRes.gender,
-                      value: imLogic.userInfo.value.isMale ? StrRes.man : StrRes.woman,
+                      value: imLogic.userInfo.value.isMale
+                          ? StrRes.man
+                          : StrRes.woman,
                       onTap: logic.selectGender,
                     ),
                     _buildItemView(
@@ -106,7 +109,7 @@ class MyInfoPage extends StatelessWidget {
       case 2:
         if (realName != null && realName.isNotEmpty) {
           final lastName = realName.substring(0, 1);
-          statusText = StrRes.verifyStatusApproved+'($lastName**)';
+          statusText = StrRes.verifyStatusApproved + '($lastName**)';
         } else {
           statusText = StrRes.verifyStatusApproved ?? '已认证';
         }
@@ -129,17 +132,19 @@ class MyInfoPage extends StatelessWidget {
       onTap: shouldShowArrow ? onTap : null,
       child: Container(
         height: 46.h,
-        padding: isRejected ? EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h) : EdgeInsets.zero,
+        padding: isRejected
+            ? EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h)
+            : EdgeInsets.zero,
         decoration: isRejected
-          ? BoxDecoration(
-              color: Color(0xFFFFF1F0),
-              borderRadius: BorderRadius.circular(4.r),
-              border: Border.all(
-                color: Color(0xFFFFCCC7),
-                width: 1,
-              ),
-            )
-          : null,
+            ? BoxDecoration(
+                color: Color(0xFFFFF1F0),
+                borderRadius: BorderRadius.circular(4.r),
+                border: Border.all(
+                  color: Color(0xFFFFCCC7),
+                  width: 1,
+                ),
+              )
+            : null,
         child: Row(
           children: [
             if (isRejected)
@@ -364,14 +369,9 @@ class MyInfoPage extends StatelessWidget {
               ),
             ),
             SizedBox(height: 20.h),
-            _buildInfoItem(
-              StrRes.verifyStatus ?? '认证状态', 
-              StrRes.verifyStatusApproved ?? '已认证'
-            ),
-            _buildInfoItem(
-              StrRes.realName ?? '真实姓名', 
-              info?.realName ?? ''
-            ),
+            _buildInfoItem(StrRes.verifyStatus ?? '认证状态',
+                StrRes.verifyStatusApproved ?? '已认证'),
+            _buildInfoItem(StrRes.realName ?? '真实姓名', info?.realName ?? ''),
             _buildInfoItem(
               StrRes.verifyTime ?? '认证时间',
               DateUtil.formatDateMs(

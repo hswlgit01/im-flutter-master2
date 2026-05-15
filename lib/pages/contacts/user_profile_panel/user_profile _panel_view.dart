@@ -99,7 +99,8 @@ class UserProfilePanelPage extends StatelessWidget {
               ),
             ),
             if (!logic.isMyself &&
-                logic.orgController.currentOrgRoles.contains("basic") &&
+                // dawn 2026-05-15 修复团队长加好友按钮不展示：按 add_friend 权限展示，兼容旧 basic。
+                logic.orgController.canAddFriend &&
                 logic.isAllowAddFriend &&
                 !logic.isFriendship &&
                 (!logic.isGroupMemberPage ||
@@ -263,7 +264,9 @@ class UserProfilePanelPage extends StatelessWidget {
       );
 
   Widget _buildButtonGroup() {
-    if (!logic.isMyself && !logic.isFriendship && logic.imLogic.userInfo.value.canSendFreeMsg != 1) {
+    if (!logic.isMyself &&
+        !logic.isFriendship &&
+        logic.imLogic.userInfo.value.canSendFreeMsg != 1) {
       return Container();
     }
     return Positioned(

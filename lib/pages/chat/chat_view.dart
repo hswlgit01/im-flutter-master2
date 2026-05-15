@@ -34,10 +34,10 @@ class ChatPage extends StatelessWidget {
                       .abs() <=
                   2 * 60 * 1000 &&
               message.sendID == OpenIM.iMManager.userID,
-      MessageOperationType.copy: message.isTextType 
-      || message.contentType == MessageType.atText 
-      || message.contentType == MessageType.quote
-      || message.isPictureType,
+      MessageOperationType.copy: message.isTextType ||
+          message.contentType == MessageType.atText ||
+          message.contentType == MessageType.quote ||
+          message.isPictureType,
       MessageOperationType.forward: !message.isCustomType,
       MessageOperationType.delete: true,
       MessageOperationType.quote: message.isTextType ||
@@ -584,7 +584,8 @@ class ChatPage extends StatelessWidget {
                               quoteContent: quoteContent,
                               toolbox: ChatToolBox(
                                 onTapAlbum: logic.onTapAlbum,
-                                onTapCall: logic.isGroupChat ? null : logic.call,
+                                onTapCall:
+                                    logic.isGroupChat ? null : logic.call,
                                 onTapTransfer: (!logic.isGroupChat &&
                                         logic.orgController.currentOrgRoles
                                             .contains("transfer"))
@@ -596,13 +597,13 @@ class ChatPage extends StatelessWidget {
                                     ? () => logic.onTapLuckMoney(context)
                                     : null,
                                 onTapEmoji: () => logic.onTapEmoji(context),
-                                onTapFile: logic.orgController.currentOrgRoles
-                                        .contains("basic")
+                                // dawn 2026-05-15 修复团队长文件入口不展示：按 send_file 权限展示，兼容旧 basic。
+                                onTapFile: logic.orgController.canSendFile
                                     ? () => logic.onTapFile(context)
                                     : null,
                                 onTapCarte: (!logic.isGroupChat &&
-                                    logic.orgController.currentOrgRoles
-                                        .contains("basic"))
+                                        // dawn 2026-05-15 修复团队长名片入口不展示：按 send_business_card 权限展示，兼容旧 basic。
+                                        logic.orgController.canSendBusinessCard)
                                     ? () => logic.onTapCarte()
                                     : null,
                               ),
@@ -615,12 +616,15 @@ class ChatPage extends StatelessWidget {
                           }),
                         ),
                       ),
-                                  child: TouchCloseSoftKeyboard(
+                child: TouchCloseSoftKeyboard(
                     child: Opacity(
                   opacity: logic.isReadyToShow.value ? 1.0 : 0.0,
                   child: Obx(() {
-                    final listEmpty = logic.customChatListViewController.list.isEmpty;
-                    final showEmptyHint = logic.firstLoadEmpty.value && listEmpty && logic.searchMessage == null;
+                    final listEmpty =
+                        logic.customChatListViewController.list.isEmpty;
+                    final showEmptyHint = logic.firstLoadEmpty.value &&
+                        listEmpty &&
+                        logic.searchMessage == null;
                     return Stack(
                       children: [
                         CustomChatListView(
@@ -635,7 +639,8 @@ class ChatPage extends StatelessWidget {
                           itemBuilder: (context, index, postion, message) {
                             if (_isNotificationMessage(message)) {
                               return AutoScrollTag(
-                                key: ValueKey('notification_${message.clientMsgID}'),
+                                key: ValueKey(
+                                    'notification_${message.clientMsgID}'),
                                 controller: logic.scrollController,
                                 index: postion,
                                 child: _buildNotificationMessage(message),
@@ -660,11 +665,14 @@ class ChatPage extends StatelessWidget {
                                   children: [
                                     Text('暂无消息', style: Styles.ts_8E9AB0_15sp),
                                     SizedBox(height: 8.h),
-                                    Text('请返回会话列表下拉刷新后重试', style: Styles.ts_8E9AB0_13sp, textAlign: TextAlign.center),
+                                    Text('请返回会话列表下拉刷新后重试',
+                                        style: Styles.ts_8E9AB0_13sp,
+                                        textAlign: TextAlign.center),
                                     SizedBox(height: 16.h),
                                     TextButton(
                                       onPressed: () => logic.retryLoadHistory(),
-                                      child: Text('重试', style: Styles.ts_0089FF_14sp),
+                                      child: Text('重试',
+                                          style: Styles.ts_0089FF_14sp),
                                     ),
                                   ],
                                 ),
@@ -685,7 +693,8 @@ class ChatPage extends StatelessWidget {
     if (logic.isGroupChat) {
       return Obx(() {
         // 添加对空公告的检查，如果公告内容为空，不显示横幅
-        if (logic.isReadNotification.value || logic.notification.value.trim().isEmpty) {
+        if (logic.isReadNotification.value ||
+            logic.notification.value.trim().isEmpty) {
           return const SizedBox();
         } else {
           return GestureDetector(

@@ -17,20 +17,21 @@ class AddContactsMethodPage extends StatelessWidget {
       body: Column(
         children: [
           10.verticalSpace,
-          if (logic.orgController.currentOrgRoles.contains("basic"))
+          // dawn 2026-05-15 修复团队长入口不展示：扫码/加好友/建群按细分权限码展示，兼容旧 basic。
+          if (logic.orgController.canAddFriend)
             _buildItemView(
                 icon: ImageRes.scanBlue,
                 text: StrRes.scan,
                 hintText: StrRes.scanHint,
                 onTap: logic.scan),
-          if (logic.orgController.currentOrgRoles.contains("basic"))
+          if (logic.orgController.canAddFriend)
             _buildItemView(
               icon: ImageRes.addFriendBlue,
               text: StrRes.addFriend,
               hintText: StrRes.addFriendHint,
               onTap: logic.addFriend,
             ),
-          if (logic.orgController.currentOrgRoles.contains("basic"))
+          if (logic.orgController.canCreateGroup)
             _buildItemView(
               icon: ImageRes.createGroupBlue,
               text: StrRes.createGroup,

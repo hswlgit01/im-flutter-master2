@@ -16,6 +16,10 @@ class ApiService {
 
   // Dio实例
 
+  // dawn 2026-05-15 修复手机端发送方敏感词未脱敏：短缓存启用词表，避免每条消息都请求后台。
+  List<String> _sensitiveWordsCache = [];
+  DateTime? _sensitiveWordsExpireAt;
+
   /// 检查 chatToken 是否有效
   bool _checkChatToken() {
     final chatToken = DataSp.chatToken;
@@ -23,6 +27,57 @@ class ApiService {
       return false;
     }
     return true;
+  }
+
+  int _runeLength(String text) => text.runes.length;
+
+  String _maskWord(String word) => List.filled(_runeLength(word), '*').join();
+
+  Future<List<String>> _getEnabledSensitiveWords() async {
+    final now = DateTime.now();
+    if (_sensitiveWordsExpireAt != null &&
+        now.isBefore(_sensitiveWordsExpireAt!)) {
+      return _sensitiveWordsCache;
+    }
+
+    try {
+      if (!_checkChatToken()) return _sensitiveWordsCache;
+
+      final data = await HttpUtil.get(
+        Urls.sensitiveWordEnabled,
+        options: Apis.chatTokenOptions,
+        showErrorToast: false,
+      );
+      final words = data is Map ? data['words'] : null;
+      final nextWords = <String>{};
+      if (words is List) {
+        for (final word in words) {
+          if (word is String && word.trim().isNotEmpty) {
+            nextWords.add(word.trim());
+          }
+        }
+      }
+      _sensitiveWordsCache = nextWords.toList()
+        ..sort((a, b) => _runeLength(b).compareTo(_runeLength(a)));
+    } catch (e) {
+      LogUtil.e(TAG, '获取敏感词失败: $e');
+    } finally {
+      _sensitiveWordsExpireAt = DateTime.now().add(const Duration(seconds: 10));
+    }
+    return _sensitiveWordsCache;
+  }
+
+  /// dawn 2026-05-15 修复手机端发送方敏感词未脱敏：创建本地消息前按敏感词字数替换为星号。
+  Future<String> maskSensitiveWords(String text) async {
+    if (text.isEmpty) return text;
+    final words = await _getEnabledSensitiveWords();
+    var result = text;
+    for (final word in words) {
+      if (result.contains(word)) {
+        result = result.replaceAll(word, _maskWord(word));
+      }
+    }
+    return result;
   }
 
   /// 获取RSA公钥
@@ -101,7 +156,9 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
       final success = response.statusCode == 200;
 
       // 解析具体的错误码
-      final errCode = response.data is Map<String, dynamic> ? response.data['errCode'] : null;
+      final errCode = response.data is Map<String, dynamic>
+          ? response.data['errCode']
+          : null;
 
       LogUtil.i(TAG, '补偿金初始化结果: HTTP状态码=$success, 错误码=$errCode');
 
@@ -180,19 +237,16 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
     }
   }
 
-
   /// 根据组织查询钱包余额
   Future<BalanceData?> walletBalanceByOrg(String orgId) async {
     try {
       if (!_checkChatToken()) return null;
 
-      final data = await HttpUtil.get(
-        Urls.walletBalanceByOrg,
-        options: Apis.chatTokenOptions,
-        queryParameters: {
-          'org_id': orgId,
-        }
-      );
+      final data = await HttpUtil.get(Urls.walletBalanceByOrg,
+          options: Apis.chatTokenOptions,
+          queryParameters: {
+            'org_id': orgId,
+          });
 
       final walletData = data;
       if (walletData == null) {
@@ -244,12 +298,11 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
       );
 
       if (result == "success") {
-
       } else {
         return null;
       }
     } catch (e) {
-       LogUtil.e(TAG, '获取代币信息失败: $e');
+      LogUtil.e(TAG, '获取代币信息失败: $e');
       return null;
     }
   }
@@ -395,10 +448,8 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
   }
 
   /// 领取交易
-  Future<Map<String, dynamic>> transactionReceive({
-    required String transaction_id,
-    String? password
-  }) async {
+  Future<Map<String, dynamic>> transactionReceive(
+      {required String transaction_id, String? password}) async {
     try {
       if (!_checkChatToken()) {
         return {'success': false, 'code': 401, 'message': '未授权，请先登录'};
@@ -406,14 +457,10 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
 
       final data = await HttpUtil.post(
         Urls.transactionReceive,
-        data: {
-          'transaction_id': transaction_id,
-          'password': password
-        },
-        showErrorToast:false,
+        data: {'transaction_id': transaction_id, 'password': password},
+        showErrorToast: false,
         options: Apis.chatTokenOptions,
       );
-
 
       if (data != null && data['amount'] != null) {
         return {'success': true, 'code': 200, 'message': '领取成功', 'data': data};
@@ -502,10 +549,10 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
 
       // 构建查询参数
       final queryParams = {
-        'type_in': typeFilter.join(','),  // 使用逗号分隔的多个类型
+        'type_in': typeFilter.join(','), // 使用逗号分隔的多个类型
         'page': page.toString(),
         'page_size': pageSize.toString(),
-        'order': 'created_at',  // 按创建时间排序
+        'order': 'created_at', // 按创建时间排序
       };
 
       // 注意：补偿金与币种无关，不传递币种ID
@@ -515,9 +562,8 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
       }
 
       // 构建查询字符串
-      final queryString = queryParams.entries
-          .map((e) => '${e.key}=${e.value}')
-          .join('&');
+      final queryString =
+          queryParams.entries.map((e) => '${e.key}=${e.value}').join('&');
 
       LogUtil.i(TAG, '获取补偿金记录请求: ${Urls.walletTsRecord}?$queryString');
 
@@ -536,13 +582,17 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
             final dataMap = data['data'] as Map;
 
             // 提取总数
-            final int total = dataMap['total'] is int ? dataMap['total'] :
-                             (dataMap['total'] is String ? int.tryParse(dataMap['total']) ?? 0 : 0);
+            final int total = dataMap['total'] is int
+                ? dataMap['total']
+                : (dataMap['total'] is String
+                    ? int.tryParse(dataMap['total']) ?? 0
+                    : 0);
 
             // 提取记录列表
             if (dataMap['data'] is List) {
               final List records = dataMap['data'] as List;
-              LogUtil.i(TAG, '获取补偿金记录成功 (标准结构): $total 条记录, 当前页 ${records.length} 条');
+              LogUtil.i(
+                  TAG, '获取补偿金记录成功 (标准结构): $total 条记录, 当前页 ${records.length} 条');
 
               // 转换为前端期望的格式
               return {
@@ -554,11 +604,15 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
 
           // 策略2: 尝试旧版API响应结构 {total, records: [...]}
           if (data['records'] is List) {
-            final int total = data['total'] is int ? data['total'] :
-                             (data['total'] is String ? int.tryParse(data['total']) ?? 0 : 0);
+            final int total = data['total'] is int
+                ? data['total']
+                : (data['total'] is String
+                    ? int.tryParse(data['total']) ?? 0
+                    : 0);
             final List records = data['records'] as List;
 
-            LogUtil.i(TAG, '获取补偿金记录成功 (旧版结构): $total 条记录, 当前页 ${records.length} 条');
+            LogUtil.i(
+                TAG, '获取补偿金记录成功 (旧版结构): $total 条记录, 当前页 ${records.length} 条');
 
             return {
               'total': total,
@@ -684,7 +738,8 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
     required String transaction_id,
   }) async {
     try {
-      final headers = Map<String, dynamic>.from(Apis.chatTokenOptions.headers ?? {});
+      final headers =
+          Map<String, dynamic>.from(Apis.chatTokenOptions.headers ?? {});
       final imUserID = DataSp.userID;
       if (imUserID != null && imUserID.isNotEmpty) {
         // dawn 2026-05-14 修复红包重登后误显示待领取：带上 IM 用户ID，服务端可按 user_id/user_im_id 双路查询领取记录。
@@ -719,7 +774,8 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
     int? pageSize,
   }) async {
     try {
-      final headers = Map<String, dynamic>.from(Apis.chatTokenOptions.headers ?? {});
+      final headers =
+          Map<String, dynamic>.from(Apis.chatTokenOptions.headers ?? {});
       if (opUserImId != null && opUserImId.isNotEmpty) {
         headers['X-User-IM-ID'] = opUserImId;
       }
@@ -918,7 +974,6 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
     int page = 1,
     int page_size = 20,
     required String keyword,
-
   }) async {
     try {
       final data = await HttpUtil.get(
