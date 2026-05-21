@@ -58,12 +58,8 @@ android {
 
         multiDexEnabled true
 
-        // 在模拟器上运行需要添加 x86 架构支持
-        // 真机使用: "arm64-v8a", "armeabi-v7a"
-        // 模拟器使用: "x86", "x86_64"
-        ndk {
-            abiFilters "arm64-v8a", "armeabi-v7a", "x86", "x86_64"
-        }
+        // dawn 2026-05-21 修复安装包体积：不要固定 ndk abiFilters，避免与 Flutter --split-per-abi 冲突。
+        // 调试和打包的 ABI 由 Flutter/Gradle 构建命令控制。
 
         lintOptions {
             disable 'InvalidPackage'
