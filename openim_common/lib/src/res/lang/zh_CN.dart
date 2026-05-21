@@ -21,7 +21,7 @@ const Map<String, String> zh_CN = {
   "emailRegisterUser": "邮箱注册用户",
   'lockPwdErrorHint': '错误%s次',
   "newUserRegister": "新用户注册",
-  "verificationCode": "验证码", 
+  "verificationCode": "验证码",
   "sendVerificationCode": "发送验证码",
   'resendVerificationCode': '重发验证码',
   'verificationCodeTimingReminder': '%sS后重新获取验证码',
@@ -335,7 +335,8 @@ const Map<String, String> zh_CN = {
   "clearAll": "清空",
   "clearSuccessfully": "清除成功",
   "clearCache": "清空缓存",
-  "clearCacheConfirm": "清空缓存将同时清除聊天本地数据（不影响登录），可解决 WebSocket 连接异常（如 read limit exceeded）。是否继续？",
+  "clearCacheConfirm":
+      "清空缓存将同时清除聊天本地数据（不影响登录），可解决 WebSocket 连接异常（如 read limit exceeded）。是否继续？",
   "clearCacheSuccess": "缓存已清空，连接将自动恢复",
   "clearCacheSuccessRestart": "缓存已清空，请重启应用以重新连接",
   "messageTooLargeRecovered": "检测到消息过大导致连接异常，已自动清空缓存并重连",
@@ -784,7 +785,7 @@ const Map<String, String> zh_CN = {
   "live.join_failed": "加入失败: %s",
   "live.create": "创建直播",
   "live.join_button": "加入",
-  
+
   // 直播列表相关
   "live.search_placeholder": "搜索直播间、主播名称或房间号",
   "live.untitled_stream": "未命名直播",
@@ -799,7 +800,7 @@ const Map<String, String> zh_CN = {
   "live.pull_to_load_more": "上拉加载更多",
   "live.all_loaded": "— 已加载全部内容 —",
   "live.viewers": "观看人数",
-  
+
   // 直播房间退出相关
   "live.host_app_exit": "房主应用意外退出",
   "live.disconnect_room": "断开房间连接",
@@ -948,7 +949,8 @@ const Map<String, String> zh_CN = {
   'wallet.operationFailed': '操作失败',
   'wallet.verifyLoginPassword': '验证登录密码',
   'wallet.activateSuccess': '钱包开通成功',
-  'wallet.activateSuccessDesc': '钱包已成功激活，您现在可以查看余额并使用钱包功能。如果您是首次开通，系统可能会在几秒钟内初始化您的补偿金余额。',
+  'wallet.activateSuccessDesc':
+      '钱包已成功激活，您现在可以查看余额并使用钱包功能。如果您是首次开通，系统可能会在几秒钟内初始化您的补偿金余额。',
   'wallet.activateNotice': '钱包开通提示',
   'wallet.compensationBalance': '补偿金余额',
   'wallet.compensationRecords': '补偿金记录',
@@ -1081,12 +1083,13 @@ const Map<String, String> zh_CN = {
   "featureInDevelopment": "功能开发中，敬请期待！",
   "errCode.captchaError": '验证码错误',
   "errCode.deviceRegisterNumExceed": '设备注册数量超过限制',
-  "errCode.invalidInvitationCode": '无效的邀请码',  "captchaRefreshPrompt": "看不清? 换一张",
-  
+  "errCode.invalidInvitationCode": '无效的邀请码', "captchaRefreshPrompt": "看不清? 换一张",
+
   // 签到页面
   "checkin": "签到",
   "checkinReward": "签到奖励",
-  "dailyCheckinReward": "每日签到领奖励",  "myRewards": "我的奖励",  "consecutiveCheckin": "已经连续签到",
+  "dailyCheckinReward": "每日签到领奖励", "myRewards": "我的奖励",
+  "consecutiveCheckin": "已经连续签到",
   "remindMeTomorrow": "提醒我明天来",
   "month": "月",
   "congratulationsCheckinSuccess": "恭喜签到成功",
@@ -1125,7 +1128,7 @@ const Map<String, String> zh_CN = {
   "lotteryTicket": "张",
   "points": "积分",
   "rewardReceived": "获得%s奖励：%s%s",
-  
+
   // 文件预览相关
   "processingFile": "正在处理文件...",
   "fileDownloading": "文件正在下载中，请稍候...",
@@ -1142,7 +1145,7 @@ const Map<String, String> zh_CN = {
   "participateToGetTickets": "参与活动即可获得奖券",
   "loadFailed": "加载失败",
   "retry": "重试",
-  
+
   // Lottery tickets related
   "useNow": "立即使用",
   "loadingMore": "加载更多中...",
@@ -1154,7 +1157,7 @@ const Map<String, String> zh_CN = {
   "unknownTicket": "未知奖券",
   "lotteryActivity": "抽奖活动",
   "loadTicketsFailed": "加载奖券失败",
-  
+
   // Prize records related
   "prizeRecords": "中奖记录",
   "all": "全部",
@@ -1167,7 +1170,7 @@ const Map<String, String> zh_CN = {
   "loadFailedRetry": "加载失败，请重试",
   "noPrizeRecords": "暂无中奖记录",
   "participateToWinPrizes": "参与活动即可赢取奖品",
-  
+
   // 轮盘抽奖相关
   "luckWheel": "幸运轮盘",
   "spinToWin": "点击抽奖按钮开始转动",
@@ -1182,11 +1185,12 @@ const Map<String, String> zh_CN = {
   "lotteryFailed": "抽奖失败",
   "getPrizesError": "获取奖品列表失败",
   "lotteryError": "抽奖失败，请重试",
+  // dawn 2026-05-21 修复上传文件限制：聊天文件和视频上传提示调整为200MB。
   // 聊天相关翻译
   "needPhotoPermission": "需要照片库访问权限才能选择照片",
   "imageSizeLimit": "图片大小不能超过5MB",
-  "videoSizeLimit": "视频大小不能超过50MB",
-  "fileSizeLimit": "文件大小不能超过20MB",
+  "videoSizeLimit": "视频大小不能超过200MB",
+  "fileSizeLimit": "文件大小不能超过200MB",
   "sendingFile": "正在发送文件...",
   "sendFileSuccess": "文件发送成功",
   "sendFileFailed": "发送文件失败",
@@ -1195,7 +1199,7 @@ const Map<String, String> zh_CN = {
   "revokeFailed": "撤回失败",
   "joinMeetingContent": "是否加入会议：%s？",
   "joinMeetingFailed": "加入会议失败",
-  
+
   // 发现页面相关字符串
   "dailyCheckinGetReward": "每日签到获得奖励",
   "videoConferenceFunction": "视频会议功能",
@@ -1244,7 +1248,7 @@ const Map<String, String> zh_CN = {
   "deleteFailed": "删除失败",
   "identityVerify": "身份认证",
   "verifyStatus_pending": "待认证",
-  "verifyStatus_reviewing": "审核中", 
+  "verifyStatus_reviewing": "审核中",
   "verifyStatus_approved": "已认证",
   "verifyStatus_rejected": "已拒绝",
   "realName": "真实姓名",
@@ -1254,7 +1258,8 @@ const Map<String, String> zh_CN = {
   "uploadFrontHint": "请上传身份证人像面",
   "uploadBackHint": "请上传身份证国徽面",
   "verifyTipsTitle": "认证须知",
-  "verifyTipsContent": "1. 请确保信息真实有效\n2. 身份证照片需清晰可见\n3. 审核通常需要1-3个工作日\n4. 信息仅用于身份验证，严格保密",
+  "verifyTipsContent":
+      "1. 请确保信息真实有效\n2. 身份证照片需清晰可见\n3. 审核通常需要1-3个工作日\n4. 信息仅用于身份验证，严格保密",
   "submitVerify": "提交认证",
   "verifyInfo": "身份认证信息",
   "verifyTime": "认证时间",
@@ -1271,7 +1276,7 @@ const Map<String, String> zh_CN = {
   "submitFailed": "提交失败",
   "reviewingStatus": "审核状态",
   "reviewingMsg": "您的身份认证正在审核中，请耐心等待...",
-   "withdrawal": "提现",
+  "withdrawal": "提现",
   "withdrawalAmount": "提现金额",
   "enterAmount": "请输入金额",
   "currentBalance": "当前余额",

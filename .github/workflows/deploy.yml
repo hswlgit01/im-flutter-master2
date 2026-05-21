@@ -51,7 +51,10 @@ jobs:
         run: |
           ENV_VALUE="${{ github.event.inputs.environment }}"
           ENV_VALUE="${ENV_VALUE:-prod}"
-          flutter build apk --release --dart-define=ENV="$ENV_VALUE"
+          # dawn 2026-05-21 修复安装包体积：CI 只构建真机ABI拆分包，下载包使用arm64版本，避免把x86模拟器库打进线上APK。
+          flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --dart-define=ENV="$ENV_VALUE"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/app-release.apk
+          ls -lh build/app/outputs/flutter-apk/*.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

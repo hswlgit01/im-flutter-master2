@@ -45,7 +45,7 @@ const Map<String, String> zh_HK = {
   "setInfo": "設置信息",
   "loginPwdFormat": "6～20位，至少包含數字、字母",
   "loginPwdFormat6t": "請至少輸入6位的密碼",
-  
+
   "passwordLogin": "密碼登錄",
   "through": "通過%s",
   "home": "聊天",
@@ -330,7 +330,8 @@ const Map<String, String> zh_HK = {
   "clearAll": "清空",
   "clearSuccessfully": "清除成功",
   "clearCache": "清空緩存",
-  "clearCacheConfirm": "清空緩存將同時清除聊天本地數據（不影響登錄），可解決 WebSocket 連接異常（如 read limit exceeded）。是否繼續？",
+  "clearCacheConfirm":
+      "清空緩存將同時清除聊天本地數據（不影響登錄），可解決 WebSocket 連接異常（如 read limit exceeded）。是否繼續？",
   "clearCacheSuccess": "緩存已清空，連接將自動恢復",
   "clearCacheSuccessRestart": "緩存已清空，請重啟應用以重新連接",
   "messageTooLargeRecovered": "檢測到消息過大導致連接異常，已自動清空緩存並重連",
@@ -784,7 +785,7 @@ const Map<String, String> zh_HK = {
   "live.join_failed": "加入失敗: %s",
   "live.create": "創建直播",
   "live.join_button": "加入",
-  
+
   // 直播列表相關
   "live.search_placeholder": "搜索直播間、主播名稱或房間號",
   "live.untitled_stream": "未命名直播",
@@ -799,7 +800,7 @@ const Map<String, String> zh_HK = {
   "live.pull_to_load_more": "上拉加載更多",
   "live.all_loaded": "— 已加載全部內容 —",
   "live.viewers": "觀看人數",
-  
+
   // 直播房間退出相關
   "live.host_app_exit": "房主應用意外退出",
   "live.disconnect_room": "斷開房間連接",
@@ -887,7 +888,7 @@ const Map<String, String> zh_HK = {
   'selectType': '選擇類型',
   'currency': '貨幣',
   'selectCurrency': '選擇貨幣',
-  'selectEmoji':'選擇表情',
+  'selectEmoji': '選擇表情',
 
   'wallet.viewDetails': '查看詳情',
   'wallet.redPacketFull': '手慢了，紅包領完了',
@@ -976,7 +977,7 @@ const Map<String, String> zh_HK = {
   "timeCredited": '到賬時間',
   "deleteChatWarning": '刪除後，將會清空呢個對話嘅聊天記錄',
   "clickToView": '點擊查看',
-  
+
   // 權限相關
   'permission.needPhotoPermission': '需要照片庫訪問權限才能選擇照片',
   'permission.needPhotoFullAccess': '請在系統設置中允許完全訪問照片庫',
@@ -1083,13 +1084,14 @@ const Map<String, String> zh_HK = {
   "errCode.deviceRegisterNumExceed": "設備註冊數量超過限制，請聯繫管理員",
   "errCode.invalidInvitationCode": "無效的邀請碼",
   "captchaRefreshPrompt": "睇唔清？換一張",
-  "accountFormatError": "帳號格式不正確，請輸入5-20位字符，只能包含數字、字母、\"-\"、\"_\"",  "accountFormatHint": "5-20位字符，只能包含數字、字母、\"-\"、\"_\"",
-  
+  "accountFormatError": "帳號格式不正確，請輸入5-20位字符，只能包含數字、字母、\"-\"、\"_\"",
+  "accountFormatHint": "5-20位字符，只能包含數字、字母、\"-\"、\"_\"",
+
   // 簽到頁面
   "checkin": "簽到",
   "checkinReward": "簽到獎勵",
   "dailyCheckinReward": "每日簽到領獎勵",
-  "myRewards": "我的獎勵",  "consecutiveCheckin": "已經連續簽到",
+  "myRewards": "我的獎勵", "consecutiveCheckin": "已經連續簽到",
   "remindMeTomorrow": "提醒我明天來",
   "congratulationsCheckinSuccess": "恭喜您簽到成功",
   "complete": "完成",
@@ -1127,7 +1129,7 @@ const Map<String, String> zh_HK = {
   "lotteryTicket": "張",
   "points": "積分",
   "rewardReceived": "獲得%s獎勵：%s%s",
-  
+
   // 文件預覽相關
   "processingFile": "正在處理文件...",
   "fileDownloading": "文件正在下載中，請稍候...",
@@ -1144,7 +1146,7 @@ const Map<String, String> zh_HK = {
   "participateToGetTickets": "參與活動即可獲得獎券",
   "loadFailed": "加載失敗",
   "retry": "重試",
-  
+
   // Lottery tickets related
   "useNow": "立即使用",
   "loadingMore": "加載更多中...",
@@ -1156,7 +1158,7 @@ const Map<String, String> zh_HK = {
   "unknownTicket": "未知獎券",
   "lotteryActivity": "抽獎活動",
   "loadTicketsFailed": "加載獎券失敗",
-  
+
   // 獎品記錄相關
   "prizeRecords": "獎品記錄",
   "all": "全部",
@@ -1169,11 +1171,12 @@ const Map<String, String> zh_HK = {
   "loadFailedRetry": "加載失敗，請重試",
   "noPrizeRecords": "暫無獎品記錄",
   "participateToWinPrizes": "參與活動即可獲得豐厚獎品",
-  
+
+  // dawn 2026-05-21 修复上传文件限制：聊天文件和视频上传提示调整为200MB。
   // 聊天相關翻譯
   "imageSizeLimit": "圖片大小不能超過5MB",
-  "videoSizeLimit": "視頻大小不能超過50MB",
-  "fileSizeLimit": "文件大小不能超過20MB",
+  "videoSizeLimit": "視頻大小不能超過200MB",
+  "fileSizeLimit": "文件大小不能超過200MB",
   "sendingFile": "正在發送文件...",
   "sendFileSuccess": "文件發送成功",
   "sendFileFailed": "發送文件失敗",
@@ -1182,7 +1185,7 @@ const Map<String, String> zh_HK = {
   "revokeFailed": "撤回失敗",
   "joinMeetingContent": "是否加入會議：%s？",
   "joinMeetingFailed": "加入會議失敗",
-  
+
   // 發現頁面相關字符串
   "dailyCheckinGetReward": "每日簽到獲得獎勵",
   "videoConferenceFunction": "視頻會議功能",
@@ -1232,7 +1235,7 @@ const Map<String, String> zh_HK = {
   "identityVerify": "身份認證",
   "verifyStatus_pending": "待認證",
   "verifyStatus_reviewing": "審核中",
-  "verifyStatus_approved": "已認證", 
+  "verifyStatus_approved": "已認證",
   "verifyStatus_rejected": "已拒絕",
   "realName": "真實姓名",
   "idCardNumber": "身份證號碼",
@@ -1241,7 +1244,8 @@ const Map<String, String> zh_HK = {
   "uploadFrontHint": "請上傳身份證人像面",
   "uploadBackHint": "請上傳身份證國徽面",
   "verifyTipsTitle": "認證須知",
-  "verifyTipsContent": "1. 請確保資訊真實有效\n2. 身份證照片需清晰可見\n3. 審核通常需要1-3個工作日\n4. 資訊僅用於身份驗證，嚴格保密",
+  "verifyTipsContent":
+      "1. 請確保資訊真實有效\n2. 身份證照片需清晰可見\n3. 審核通常需要1-3個工作日\n4. 資訊僅用於身份驗證，嚴格保密",
   "submitVerify": "提交認證",
   "verifyInfo": "身份認證資訊",
   "verifyTime": "認證時間",
@@ -1275,18 +1279,18 @@ const Map<String, String> zh_HK = {
   "withdrawalFailed": "提現失敗",
   "withdrawalRejected": "提現被拒絕",
   "contactCustomerService": "請咨詢客服",
-  
+
   "minWithdrawal": "起提金額",
   "maxWithdrawal": "最高提現",
   "needRealName": "需實名認證",
   "needBindAccount": "需綁定賬戶",
   "enter6DigitPassword": "請輸入6位密碼",
-  
+
   "fee": "手續費",
   "actualAmount": "實際金額",
   "bank": "銀行",
   "branch": "支行",
-  
+
   "accountNumber": "賬戶號碼",
   "withdrawalLimit": "提現限額",
   "singleTransaction": "單筆交易",

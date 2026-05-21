@@ -2202,8 +2202,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
                   }
 
                   if (entity.type == AssetType.video) {
-                    // 视频大小限制 50MB
-                    const maxVideoSize = 50 * 1024 * 1024;
+                    // dawn 2026-05-21 修复上传文件限制：视频上传上限调整为200MB。
+                    const maxVideoSize = 200 * 1024 * 1024;
                     if (fileSizeBytes > maxVideoSize) {
                       IMViews.showToast(StrRes.videoSizeLimit);
                       return false;
@@ -3978,9 +3978,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         if (file.path != null) {
-          // 检查文件大小限制 20MB
+          // dawn 2026-05-21 修复上传文件限制：文件上传上限调整为200MB。
           final fileSize = file.size;
-          const maxFileSize = 20 * 1024 * 1024; // 20MB
+          const maxFileSize = 200 * 1024 * 1024; // 200MB
 
           if (fileSize > maxFileSize) {
             IMViews.showToast(StrRes.fileSizeLimit);

@@ -14,7 +14,8 @@ import '../utils/log_util.dart';
 class UploadUtil {
   static const String TAG = "UploadUtil";
   static const int DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024; // 5MB 默认分片大小
-  static const int MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB 最大文件大小
+  // dawn 2026-05-21 修复上传文件限制：会聊文件上传上限调整为200MB。
+  static const int MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB 最大文件大小
 
   // MIME类型映射
   static const Map<String, String> _mimeTypes = {
@@ -37,11 +38,13 @@ class UploadUtil {
     'wav': 'audio/wav',
     'pdf': 'application/pdf',
     'doc': 'application/msword',
-    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'docx':
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'xls': 'application/vnd.ms-excel',
     'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'ppt': 'application/vnd.ms-powerpoint',
-    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'pptx':
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'xml': 'application/xml',
     'zip': 'application/zip',
     'tar': 'application/x-tar',
@@ -73,7 +76,8 @@ class UploadUtil {
 
   /// 获取MIME类型
   static String getMimeType(String fileName) {
-    final extension = path.extension(fileName).toLowerCase().replaceAll('.', '');
+    final extension =
+        path.extension(fileName).toLowerCase().replaceAll('.', '');
     return _mimeTypes[extension] ?? 'application/octet-stream';
   }
 
@@ -82,30 +86,30 @@ class UploadUtil {
     final fileSize = await file.length();
     final chunks = (fileSize / partSize).ceil();
     final chunkHashList = <String>[];
-    
+
     // 模拟JavaScript的SparkMD5.ArrayBuffer()累积逻辑
     var cumulativeBytes = <int>[];
-    
+
     for (int i = 0; i < chunks; i++) {
       final start = i * partSize;
       final end = (i + 1) * partSize > fileSize ? fileSize : (i + 1) * partSize;
-      
+
       // 读取分片数据
       final chunkBytes = await file.openRead(start, end).toList();
       final chunk = chunkBytes.expand((x) => x).toList();
-      
+
       // 累积所有字节（模拟JavaScript的fileSpark.append()）
       cumulativeBytes.addAll(chunk);
-      
+
       // 计算累积哈希（模拟JavaScript的fileSpark.end()）
       final cumulativeHash = md5.convert(cumulativeBytes).toString();
       chunkHashList.add(cumulativeHash);
     }
-    
+
     // 用逗号连接所有累积哈希，然后计算最终哈希（模拟JavaScript的textSpark逻辑）
     final totalFileHash = chunkHashList.join(',');
     final finalHash = md5.convert(utf8.encode(totalFileHash)).toString();
-    
+
     return finalHash;
   }
 
@@ -195,55 +199,58 @@ class UploadUtil {
       // 获取当前用户ID（调试多个来源）
       final openIMUserID = OpenIM.iMManager.userID;
       final dataSpUserID = DataSp.userID;
-      LogUtil.i(TAG, '调试用户ID - OpenIM.userID: $openIMUserID, DataSp.userID: $dataSpUserID');
-      
+      LogUtil.i(TAG,
+          '调试用户ID - OpenIM.userID: $openIMUserID, DataSp.userID: $dataSpUserID');
+
       // 优先使用DataSp.userID，如果为空则使用OpenIM的userID
       final userID = dataSpUserID ?? openIMUserID ?? 'anonymous';
       // 确保文件名始终以用户ID开头
-      final fileName = customFileName != null 
+      final fileName = customFileName != null
           ? '${userID}/${customFileName}'
           : '${userID}/${DateTime.now().millisecondsSinceEpoch}_${path.basename(file.path)}';
       final contentType = getMimeType(file.path);
-      
+
       LogUtil.i(TAG, '生成的文件名: $fileName');
 
       // 获取分片大小
       final partSize = await getUploadPartSize(fileSize);
       final chunks = (fileSize / partSize).ceil();
-      
-      LogUtil.i(TAG, '开始分片上传: 文件大小=${fileSize ~/ (1024 * 1024)}MB, 分片大小=${partSize ~/ (1024 * 1024)}MB, 分片数量=$chunks');
+
+      LogUtil.i(TAG,
+          '开始分片上传: 文件大小=${fileSize ~/ (1024 * 1024)}MB, 分片大小=${partSize ~/ (1024 * 1024)}MB, 分片数量=$chunks');
 
       // 预先计算所有分片信息和哈希（完全仿照JavaScript SparkMD5逻辑）
       final List<Map<String, int>> chunkGapList = [];
       final List<String> chunkHashList = [];
-      
+
       // 模拟JavaScript的SparkMD5.ArrayBuffer()累积逻辑
       var cumulativeBytes = <int>[];
-      
+
       for (int i = 0; i < chunks; i++) {
         final start = i * partSize;
-        final end = (i + 1) * partSize > fileSize ? fileSize : (i + 1) * partSize;
+        final end =
+            (i + 1) * partSize > fileSize ? fileSize : (i + 1) * partSize;
         chunkGapList.add({'start': start, 'end': end});
-        
+
         // 读取分片数据
         final chunkBytes = await file.openRead(start, end).toList();
         final chunk = chunkBytes.expand((x) => x).toList();
-        
+
         // 累积所有字节（模拟JavaScript的fileSpark.append()）
         cumulativeBytes.addAll(chunk);
-        
+
         // 计算累积哈希（模拟JavaScript的fileSpark.end()）
         final cumulativeHash = md5.convert(cumulativeBytes).toString();
         chunkHashList.add(cumulativeHash);
       }
-      
+
       // 计算最终文件哈希（仿照JavaScript SparkMD5逻辑）
       // 用逗号连接所有累积哈希，然后计算最终哈希（模拟JavaScript的textSpark逻辑）
       final totalFileHash = chunkHashList.join(',');
       final finalHash = md5.convert(utf8.encode(totalFileHash)).toString();
-      
+
       LogUtil.i(TAG, '文件哈希计算完成: $finalHash');
-      
+
       // 获取上传URL
       final uploadResult = await getUploadUrl(
         hash: finalHash,
@@ -276,7 +283,7 @@ class UploadUtil {
       // 并行上传所有分片
       final dio = Dio();
       final uploadFutures = <Future<void>>[];
-      
+
       for (int i = 0; i < chunks; i++) {
         uploadFutures.add(_uploadChunk(
           dio: dio,
@@ -292,7 +299,7 @@ class UploadUtil {
 
       // 等待所有分片上传完成
       await Future.wait(uploadFutures);
-      
+
       LogUtil.i(TAG, '所有分片上传完成');
       onProgress?.call(0.9);
 
@@ -345,7 +352,7 @@ class UploadUtil {
       // 构建请求URL
       final uri = Uri.parse(url);
       final queryParams = Map<String, String>.from(uri.queryParameters);
-      
+
       if (signQuery != null) {
         for (final item in signQuery) {
           queryParams[item['key']] = item['values'][0];
@@ -356,12 +363,12 @@ class UploadUtil {
           queryParams[item['key']] = item['values'][0];
         }
       }
-      
+
       final requestUrl = uri.replace(queryParameters: queryParams).toString();
 
       // 构建请求头
       final headers = <String, String>{};
-      
+
       if (signHeader != null) {
         for (final item in signHeader) {
           headers[item['key']] = item['values'][0];
@@ -372,12 +379,13 @@ class UploadUtil {
           headers[item['key']] = item['values'][0];
         }
       }
-      
+
       final chunkSize = chunkGap['end']! - chunkGap['start']!;
       headers['Content-Length'] = chunkSize.toString();
 
       // 读取分片数据
-      final chunk = await file.openRead(chunkGap['start']!, chunkGap['end']!).toList();
+      final chunk =
+          await file.openRead(chunkGap['start']!, chunkGap['end']!).toList();
       final chunkData = Uint8List.fromList(chunk.expand((x) => x).toList());
 
       // 上传分片
@@ -406,7 +414,8 @@ class UploadUtil {
   }) async {
     try {
       final fileSize = await file.length();
-      if (fileSize > 10 * 1024 * 1024) { // 10MB以下使用简单上传
+      if (fileSize > 10 * 1024 * 1024) {
+        // 10MB以下使用简单上传
         return await splitUpload(
           file: file,
           onProgress: onProgress,
@@ -417,25 +426,26 @@ class UploadUtil {
       // 获取当前用户ID（调试多个来源）
       final openIMUserID = OpenIM.iMManager.userID;
       final dataSpUserID = DataSp.userID;
-      LogUtil.i(TAG, '调试用户ID - OpenIM.userID: $openIMUserID, DataSp.userID: $dataSpUserID');
-      
+      LogUtil.i(TAG,
+          '调试用户ID - OpenIM.userID: $openIMUserID, DataSp.userID: $dataSpUserID');
+
       // 优先使用DataSp.userID，如果为空则使用OpenIM的userID
       final userID = dataSpUserID ?? openIMUserID ?? 'anonymous';
       // 确保文件名始终以用户ID开头
-      final fileName = customFileName != null 
+      final fileName = customFileName != null
           ? '${userID}/${customFileName}'
           : '${userID}/${DateTime.now().millisecondsSinceEpoch}_${path.basename(file.path)}';
       final contentType = getMimeType(file.path);
-      
+
       LogUtil.i(TAG, '生成的文件名: $fileName');
 
       // 对于简单上传，也使用累积MD5逻辑保持一致（作为单个分片）
       final fileBytes = await file.readAsBytes();
-      
+
       // 模拟JavaScript的SparkMD5逻辑：单个分片的累积hash
       final chunkHash = md5.convert(fileBytes).toString();
       final chunkHashList = [chunkHash];
-      
+
       // 用逗号连接所有累积哈希，然后计算最终哈希（模拟JavaScript的textSpark逻辑）
       final totalFileHash = chunkHashList.join(',');
       final fileHash = md5.convert(utf8.encode(totalFileHash)).toString();
@@ -466,7 +476,7 @@ class UploadUtil {
       final uploadParts = sign['parts'] as List;
       final signQuery = sign['query'];
       final signHeader = sign['header'];
-      
+
       // 获取第一个分片的上传信息
       final partInfo = uploadParts[0];
       final url = partInfo['url'];
@@ -497,9 +507,9 @@ class UploadUtil {
       // 上传文件
       final dio = Dio();
       // fileBytes 已经在前面计算哈希时读取了，这里直接使用
-      
+
       onProgress?.call(0.5);
-      
+
       final response = await dio.put(
         requestUrl,
         data: fileBytes,
@@ -514,7 +524,7 @@ class UploadUtil {
 
       // 确认上传获取最终URL
       final uploadID = upload['uploadID'];
-      
+
       final apiService = ApiService();
       final confirmResult = await apiService.confirmUpload(
         uploadID: uploadID,
@@ -541,4 +551,4 @@ class UploadUtil {
       };
     }
   }
-} 
+}

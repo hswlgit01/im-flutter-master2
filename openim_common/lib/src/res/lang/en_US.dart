@@ -10,8 +10,10 @@ const Map<String, String> en_US = {
   "account": "Account",
   "plsEnterAccount": "Please enter your account",
   "forgetPassword": "Forgot Password",
-  "forgetPasswordContactService": "If you cannot retrieve your password, please contact the administrator",
-  "phoneRegisterHint": "Please use your personal mobile number to ensure account security",
+  "forgetPasswordContactService":
+      "If you cannot retrieve your password, please contact the administrator",
+  "phoneRegisterHint":
+      "Please use your personal mobile number to ensure account security",
   "verificationCodeLogin": "Verification Code Login",
   "login": "Login",
   "noAccountYet": "Don't have an account yet?",
@@ -21,12 +23,14 @@ const Map<String, String> en_US = {
   "emailRegisterUser": "Email Registration",
   'lockPwdErrorHint': 'Error %s times',
   "newUserRegister": "New User Registration",
-  "verificationCode": "Verification Code",  "sendVerificationCode": "Send Verification Code",
+  "verificationCode": "Verification Code",
+  "sendVerificationCode": "Send Verification Code",
   'resendVerificationCode': 'Resend Verification Code',
   'verificationCodeTimingReminder': 'Get Verification Code Again in %s seconds',
   "defaultVerificationCode": "(Default Verification Code: %s)",
   "plsEnterVerificationCode": "Please enter your verification code",
-  "emailVerificationHint": "Changing email requires verification, please enter the code sent to your new email",
+  "emailVerificationHint":
+      "Changing email requires verification, please enter the code sent to your new email",
   "plsSendVerificationCodeFirst": "Please send verification code first",
   "verificationCodeVerifyFailed": "Verification code verification failed",
   "verificationCodeSent": "Verification code sent",
@@ -46,7 +50,8 @@ const Map<String, String> en_US = {
   "plsCompleteInfo": "Please complete your personal information",
   "plsEnterYourNickname": "Please enter your nickname",
   "setInfo": "Set Information",
-  "loginPwdFormat": "6 to 20 characters, at least including numbers and letters",
+  "loginPwdFormat":
+      "6 to 20 characters, at least including numbers and letters",
   "loginPwdFormat6t": "Please enter a password of at least 6 characters.",
   "passwordLogin": "Password Login",
   'through': 'Through %s',
@@ -88,8 +93,10 @@ const Map<String, String> en_US = {
   "chatRecord": "Chat Records",
   "revokeMsg": "withdrew a message",
   "aRevokeBMsg": "%s withdrew %s's message",
-  'blockedByFriendHint': 'The message has been sent but rejected by the recipient',
-  'deletedByFriendHint': '%s enabled friend verification. You are not their friend yet.',
+  'blockedByFriendHint':
+      'The message has been sent but rejected by the recipient',
+  'deletedByFriendHint':
+      '%s enabled friend verification. You are not their friend yet.',
   'sendFriendVerification': 'Send Friend Verification',
   'removedFromGroupHint': 'You have been removed from the group',
   'groupDisbanded': 'The group has been disbanded',
@@ -110,7 +117,8 @@ const Map<String, String> en_US = {
   "webOnline": "Web",
   "webMiniOnline": "Mini Program",
   "upgradeFind": "Discover New Version",
-  "upgradeVersion": "A new version %s is available. Your current version is %s.",
+  "upgradeVersion":
+      "A new version %s is available. Your current version is %s.",
   "upgradeDescription": "Update Description:",
   "upgradeIgnore": "Ignore",
   "upgradeLater": "Later",
@@ -155,9 +163,11 @@ const Map<String, String> en_US = {
   "addSuccessfully": "Added Successfully",
   "addFailed": "Add Failed",
   "setSuccessfully": "Set Successfully",
-  'callingBusy': 'You are already on a call or in a meeting and cannot perform this operation!',
+  'callingBusy':
+      'You are already on a call or in a meeting and cannot perform this operation!',
   'callHandledByOtherDevice': 'Call has been handled by another device',
-  'groupCallHint': 'The group is currently in a call. Are you sure you want to join the ongoing call?',
+  'groupCallHint':
+      'The group is currently in a call. Are you sure you want to join the ongoing call?',
   'joinIn': 'Join',
   'menuCopy': 'Copy',
   'menuDel': 'Delete',
@@ -257,8 +267,10 @@ const Map<String, String> en_US = {
   'addToBlacklist': 'Add to Blacklist',
   'unfriend': 'Unfriend',
   "areYouSureDelFriend": "Are you sure you want to delete this friend?",
-  "delFriendHint": "Delete contact \"%s\" and all chat history with this contact",
-  "areYouSureAddBlacklist": "Are you sure you want to add this friend to the blacklist?",
+  "delFriendHint":
+      "Delete contact \"%s\" and all chat history with this contact",
+  "areYouSureAddBlacklist":
+      "Are you sure you want to add this friend to the blacklist?",
   "remark": "Remark",
   "save": "Save",
   "saving": "Saving...",
@@ -287,7 +299,8 @@ const Map<String, String> en_US = {
   "blacklist": 'Contacts Blacklist',
   "unlockSettings": 'Unlock Settings',
   "changePassword": 'Change Login Password',
-  "changePasswordSuccess": 'Password changed successfully, please log in again!',
+  "changePasswordSuccess":
+      'Password changed successfully, please log in again!',
   "clearChatHistory": 'Clear Chat History',
   "confirmClearChatHistory": "Confirm Clearing All Chat History?",
   "languageSetup": "Language Setup",
@@ -331,10 +344,13 @@ const Map<String, String> en_US = {
   "clearAll": "Clear All",
   "clearSuccessfully": "Cleared Successfully",
   "clearCache": "Clear Cache",
-  "clearCacheConfirm": "Clearing cache will also remove local chat data (login unchanged), and can fix WebSocket errors (e.g. read limit exceeded). Continue?",
+  "clearCacheConfirm":
+      "Clearing cache will also remove local chat data (login unchanged), and can fix WebSocket errors (e.g. read limit exceeded). Continue?",
   "clearCacheSuccess": "Cache cleared, connection will recover automatically",
-  "clearCacheSuccessRestart": "Cache cleared. Please restart the app to reconnect",
-  "messageTooLargeRecovered": "Connection issue (message too large) detected, cache cleared and reconnecting",
+  "clearCacheSuccessRestart":
+      "Cache cleared. Please restart the app to reconnect",
+  "messageTooLargeRecovered":
+      "Connection issue (message too large) detected, cache cleared and reconnecting",
   "groupChatSetup": "Group Settings",
   "viewAllGroupMembers": "View All Group Members (%s)",
   "groupManage": "Management",
@@ -343,14 +359,17 @@ const Map<String, String> en_US = {
   "muteAllMember": "Mute All",
   "exitGroup": "Exit Group",
   "dismissGroup": "Dismiss Group",
-  "dismissGroupHint": "Once the group is dismissed, you will lose contact with group members",
-  "quitGroupHint": "After quitting the group, you will no longer receive messages from this group.",
+  "dismissGroupHint":
+      "Once the group is dismissed, you will lose contact with group members",
+  "quitGroupHint":
+      "After quitting the group, you will no longer receive messages from this group.",
   'joinGroupSet': 'Group Verification',
   'allowAnyoneJoinGroup': 'Allow Anyone',
   'inviteNotVerification': 'No Verification for Member Invitation',
   'needVerification': 'Verification Required',
   'noOneCanJoin': 'No One Can Join',
-  'groupNotAllowJoinHint': 'This group does not allow anyone to join, please contact the group owner or administrator',
+  'groupNotAllowJoinHint':
+      'This group does not allow anyone to join, please contact the group owner or administrator',
   'addMember': 'Add',
   'delMember': 'Remove',
   'groupOwner': 'Group Owner',
@@ -360,8 +379,10 @@ const Map<String, String> en_US = {
   'transferGroupOwnerRight': 'Transfer Group Owner',
   'groupMemberPermission': 'Group Member Permissions',
   'allowAnyoneViewMemberProfile': 'Allow anyone to view group member profiles',
-  'disallowViewMemberCountAndList': 'Do not allow viewing group member count and list',
-  'disallowAdminViewMembers': 'Do not allow administrators to view group members',
+  'disallowViewMemberCountAndList':
+      'Do not allow viewing group member count and list',
+  'disallowAdminViewMembers':
+      'Do not allow administrators to view group members',
   'groupName': 'Group Name',
   'groupAcPermissionTips': 'Only owner and admin can edit',
   'plsEnterGroupAc': 'Please enter group announcement',
@@ -371,7 +392,8 @@ const Map<String, String> en_US = {
   'selectedPeopleCount': 'Selected (%s)',
   'confirmSelectedPeople': 'Confirm (%s/%s)',
   'confirm': 'Confirm',
-  "confirmTransferGroupToUser": "Are you sure you want to transfer group ownership to: %s?",
+  "confirmTransferGroupToUser":
+      "Are you sure you want to transfer group ownership to: %s?",
   "removeGroupMember": "Remove Group Member",
   "searchNotResult": "No results found",
   "groupQrcode": "Group QR Code",
@@ -399,7 +421,8 @@ const Map<String, String> en_US = {
   "selectAll": "Select All",
   "plsEnterGroupNameHint": "Choose a group name for easy search",
   "completeCreation": "Complete Creation",
-  "sendCarteConfirmHint": "Are you sure you want to send this contact to the chat?",
+  "sendCarteConfirmHint":
+      "Are you sure you want to send this contact to the chat?",
   "sentSeparatelyTo": "Sent separately to:",
   "sentTo": "Sent to:",
   "leaveMessage": "Leave a message",
@@ -461,14 +484,16 @@ const Map<String, String> en_US = {
   "waitingCallHint": "Calling...",
   "waitingVoiceCallHint": "Waiting for the other party to pick up...",
   "invitedVoiceCallHint": "Inviting you for a voice call...",
-  "waitingVideoCallHint": "Waiting for the other party to accept the invitation",
+  "waitingVideoCallHint":
+      "Waiting for the other party to accept the invitation",
   "invitedVideoCallHint": "Inviting you for a video call...",
   "waitingToAnswer": "Waiting to answer",
   "invitedYouToCall": "Invited you to a call",
   "calling": "Calling...",
   "nPeopleCalling": "%s people on the call",
   'busyVideoCallHint': 'A user is busy and cannot receive your invitation',
-  'inviterBusyVideoCallHint': 'You are in another call and cannot send an invitation',
+  'inviterBusyVideoCallHint':
+      'You are in another call and cannot send an invitation',
   "whoInvitedVoiceCallHint": "%s invited you for a voice call",
   "whoInvitedVideoCallHint": "%s invited you for a video call",
   'plsInputMeetingSubject': 'Please enter meeting subject',
@@ -528,15 +553,18 @@ const Map<String, String> en_US = {
   'members': 'Members',
   'screenShare': 'Screen Share',
   'screenShareHint': 'Sharing the screen...',
-  'meetingClosedHint': 'The meeting has been closed or the connection has been lost. Are you sure you want to leave?',
+  'meetingClosedHint':
+      'The meeting has been closed or the connection has been lost. Are you sure you want to leave?',
   'meetingIsOver': 'The meeting has ended!',
   'networkError': 'Network error. Please try again later!',
   'shareSuccessfully': 'Shared successfully!',
   'notFoundMinP': 'No mini-programs published yet',
-  'notSendMessageNotInGroup': 'Can\'t send messages in a group chat that\'s signed out',
+  'notSendMessageNotInGroup':
+      'Can\'t send messages in a group chat that\'s signed out',
   'whoModifyGroupName': '%s modified the group name %s',
   "accountWarn": "Warn!",
-  "accountException": "Your account has been logged in to another device, please change your password in time.",
+  "accountException":
+      "Your account has been logged in to another device, please change your password in time.",
   "tagGroup": "TAG",
   "issueNotice": "Mass sending assistant",
   "createTagGroup": "Create tags",
@@ -551,7 +579,8 @@ const Map<String, String> en_US = {
   "emptyNotification": "No notice yet",
   "notificationReceiver": "%s recipients: %s",
   "sendAnother": "Send another",
-  "confirmDelTagNotificationHint": "Are you sure to remove this notification record?",
+  "confirmDelTagNotificationHint":
+      "Are you sure to remove this notification record?",
   "contentNotBlank": "The content can not be blank",
   "plsEnterDescription": "Please enter a description",
   "gifNotSupported": "Gif images are not supported",
@@ -583,15 +612,18 @@ const Map<String, String> en_US = {
   'serverAddress': 'Server Address',
   'switchToIP': 'Switch to IP',
   'switchToDomain': 'Switch to Domain',
-  'serverSettingTips': 'After modifying the configuration, you need to save and restart for the changes to take effect',
+  'serverSettingTips':
+      'After modifying the configuration, you need to save and restart for the changes to take effect',
   'callFail': 'You cannot call this user',
   'search_by_phone_and_uid': 'search by phone and uid',
   'special_message': 'special message',
   'edit_group_name': 'Modify group chat name',
-  'edit_group_tips': 'After modifying the group chat name, other members will be notified in the group.',
+  'edit_group_tips':
+      'After modifying the group chat name, other members will be notified in the group.',
   'logLevel': 'Log Level',
   'tokenInvalid': 'Invalid token, please log in again.',
-  'supportsTypeHint': 'Only png, jpg, jpeg, gif, bmp and webp formats are supported.',
+  'supportsTypeHint':
+      'Only png, jpg, jpeg, gif, bmp and webp formats are supported.',
   'permissionDeniedTitle': 'Permission denied',
   'permissionDeniedHint': 'Please allow %s permissions in settings.',
   'camera': 'Camera',
@@ -608,9 +640,11 @@ const Map<String, String> en_US = {
   'participantRemovedHit': 'You have been removed from the meeting.',
   'hasBeenSet': 'Has been set.',
   'lockMeeting': 'Lock Meeting',
-  'lockMeetingHint': 'After the meeting is locked, new members cannot enter the meeting',
+  'lockMeetingHint':
+      'After the meeting is locked, new members cannot enter the meeting',
   'voiceMotivation': 'Voice Motivation',
-  'voiceMotivationHint': 'When enabled, the participants who are speaking will be displayed first.',
+  'voiceMotivationHint':
+      'When enabled, the participants who are speaking will be displayed first.',
   'meetingIsLocked': 'The meeting is locked.',
   'today': 'Today',
   'meetingIsEnded': 'The meeting has ended.',
@@ -648,27 +682,27 @@ const Map<String, String> en_US = {
   '200004': 'The meeting has ended',
   '100010': 'The login status has expired and you need to log in again',
   '1004': '%s does not exist',
-  'wallet':'wallet',
+  'wallet': 'wallet',
   'verifyIdentity': 'Verify Identity',
   'paymentPassword': 'Payment Password',
   'updatedOn': 'Updated on %s',
-  'common.walletActivateFailed':'Wallet Activate Failed',
+  'common.walletActivateFailed': 'Wallet Activate Failed',
 
   // Meeting roles
   'meeting.role.host': 'Host',
   'meeting.role.admin': 'Admin',
   'meeting.role.publisher': 'Participant',
   'meeting.role.audience': 'Audience',
-  
+
   // Meeting system messages
   'meeting.system.disconnected': 'Disconnected',
   'meeting.system.host_invite_stage': 'Host invites you to speak',
   'meeting.system.sender': 'System',
-  
+
   // Meeting user related
   'meeting.user.unknown': 'Unknown User',
   'meeting.user.this_user': 'This User',
-  
+
   // Meeting operation status
   'meeting.status.admin_granted': 'Admin privileges granted',
   'meeting.status.connected_success': 'Successfully connected',
@@ -684,7 +718,7 @@ const Map<String, String> en_US = {
   'meeting.status.reject_invite': 'Rejected stage invitation',
   'meeting.status.share_success': 'Shared successfully',
   'meeting.status.copied': 'Copied to clipboard',
-  
+
   // Meeting UI elements
   'meeting.ui.invite_title': 'Stage invitation received',
   'meeting.ui.reject': 'Reject',
@@ -700,7 +734,7 @@ const Map<String, String> en_US = {
   'meeting.ui.share_meeting': 'Share Meeting',
   'meeting.ui.share_to_friend': 'Friends',
   'meeting.ui.copy_link': 'Copy Link',
-  
+
   // Meeting statistics
   'meeting.stats.duration': 'Stream Duration',
   'meeting.stats.viewers': 'Viewers',
@@ -709,39 +743,53 @@ const Map<String, String> en_US = {
   'meeting.stats.hand_count': 'Hand Raises',
   'meeting.stats.times': 'times',
   'meeting.stats.stage_count': 'Stage Participants',
-  
+
   // Error messages
   'meeting.error.metadata_format': 'Unsupported metadata format',
-  
+
   // More meeting related strings
-  'meeting.status.request_speaking': 'Speech request sent to host, please wait for approval',
-  'meeting.status.user_approved': 'Approved %s\'s speech request', 
+  'meeting.status.request_speaking':
+      'Speech request sent to host, please wait for approval',
+  'meeting.status.user_approved': 'Approved %s\'s speech request',
   'meeting.status.user_removed': '%s has been removed from the stage',
-  'meeting.status.user_revoked_admin': '%s has been removed as admin', 
+  'meeting.status.user_revoked_admin': '%s has been removed as admin',
   'meeting.status.user_set_admin': '%s has been set as admin',
-  'meeting.status.operation_not_successful': 'Operation unsuccessful, please try again',
+  'meeting.status.operation_not_successful':
+      'Operation unsuccessful, please try again',
   'meeting.status.demote_failed': 'Failed to demote user, please try again',
-  'meeting.status.revoke_admin_failed': 'Failed to revoke admin privileges, please try again',
-  'meeting.status.set_admin_failed': 'Failed to set user as admin, please try again',
-  
-  'meeting.ui.confirm_exit_host': 'Are you sure you want to end the meeting? All participants will be disconnected.',
-  'meeting.ui.confirm_exit_member': 'Are you sure you want to leave the meeting?',
-  
+  'meeting.status.revoke_admin_failed':
+      'Failed to revoke admin privileges, please try again',
+  'meeting.status.set_admin_failed':
+      'Failed to set user as admin, please try again',
+
+  'meeting.ui.confirm_exit_host':
+      'Are you sure you want to end the meeting? All participants will be disconnected.',
+  'meeting.ui.confirm_exit_member':
+      'Are you sure you want to leave the meeting?',
+
   // Meeting statistics details
   'meeting.stats.end_summary': 'Meeting Statistics',
-  'meeting.stats.request_handled': 'Request processed, please click refresh if video does not appear',
+  'meeting.stats.request_handled':
+      'Request processed, please click refresh if video does not appear',
   'meeting.status.joined': 'Joined meeting',
   'meeting.status.left': 'Left meeting',
-  'meeting.status.user_removed_from_meeting': 'User %s has been removed from the meeting',
-  'meeting.status.remove_failed': 'Failed to remove user from meeting, please try again',
+  'meeting.status.user_removed_from_meeting':
+      'User %s has been removed from the meeting',
+  'meeting.status.remove_failed':
+      'Failed to remove user from meeting, please try again',
   'meeting.ui.welcome_to_join': 'Welcome to join',
-  'meeting.ui.meetingStatusAdminGrantedMsg': 'You are now a meeting administrator and can manage other participants and control the meeting',
-  'meeting.ui.meetingStatusConnectedSuccessMsg': 'You have successfully joined the stage, please manually turn on your microphone and camera to start speaking',
-  'meeting.ui.clickTheLinkToJoin': 'I am attending a meeting, click the link to join',
+  'meeting.ui.meetingStatusAdminGrantedMsg':
+      'You are now a meeting administrator and can manage other participants and control the meeting',
+  'meeting.ui.meetingStatusConnectedSuccessMsg':
+      'You have successfully joined the stage, please manually turn on your microphone and camera to start speaking',
+  'meeting.ui.clickTheLinkToJoin':
+      'I am attending a meeting, click the link to join',
 
   // Live streaming related
-  "permitCameraAndMic": "Please allow camera and microphone permissions to use live streaming",
-  "initLiveDevicesFailed": "Failed to initialize live devices, please try again",
+  "permitCameraAndMic":
+      "Please allow camera and microphone permissions to use live streaming",
+  "initLiveDevicesFailed":
+      "Failed to initialize live devices, please try again",
   "switchCameraFailed": "Failed to switch camera",
   "reminder": "Reminder",
   "plsEnterLiveTitle": "Please enter a title for your live stream",
@@ -751,7 +799,7 @@ const Map<String, String> en_US = {
   "createLiveFailed": "Failed to create live stream",
   "error": "Error",
   "startLiveFailed": "Failed to start live streaming, please try again later",
-  
+
   // Live streaming view
   "startLiveStream": "Start Live Stream",
   "liveSettings": "Live Settings",
@@ -762,12 +810,13 @@ const Map<String, String> en_US = {
   "deviceAndInteractionSettings": "Device & Interaction Settings",
   "enableChat": "Enable Chat",
   "allowAudienceParticipation": "Allow Audience Participation",
-  "audienceParticipationDescription": "Enable audience to request to join the stream",
+  "audienceParticipationDescription":
+      "Enable audience to request to join the stream",
   "frontCamera": "Front Camera",
   "backCamera": "Back Camera",
   "cameraDisabled": "Camera Disabled",
   "enableCameraToPreview": "Enable camera to preview live stream",
-  
+
   // Meeting chat area
   "meeting.ui.audience": "Audience (%s)",
   "meeting.ui.speaking_request": "Speaking Request",
@@ -776,7 +825,7 @@ const Map<String, String> en_US = {
   "meeting.ui.all_speaking_requests": "All Speaking Requests",
   "meeting.ui.close": "Close",
   "meeting.ui.empty_chat": "No messages yet, say something!",
-  
+
   // Meeting participants list
   "participantList": "Participants",
   "meeting.status.invite": "Invite to Stage",
@@ -792,7 +841,7 @@ const Map<String, String> en_US = {
   "meeting.view.screen_of": "'s screen",
   "meeting.view.me": "me",
   "meeting.input.message": "Enter message...",
-  
+
   // 会议工具栏相关
   "meeting.toolbar.revoke_admin": "Remove Admin",
   "meeting.toolbar.remove_user": "Remove from Room",
@@ -814,7 +863,7 @@ const Map<String, String> en_US = {
   "live.join_failed": "Join failed: %s",
   "live.create": "Create Live",
   "live.join_button": "Join",
-  
+
   // Live stream list related
   "live.search_placeholder": "Search live rooms, hosts, or room IDs",
   "live.untitled_stream": "Untitled Stream",
@@ -829,7 +878,7 @@ const Map<String, String> en_US = {
   "live.pull_to_load_more": "Pull to load more",
   "live.all_loaded": "— All content loaded —",
   "live.viewers": "Viewers",
-  
+
   // Live room exit related
   "live.host_app_exit": "Host app unexpectedly exited",
   "live.disconnect_room": "Disconnect from room",
@@ -847,9 +896,11 @@ const Map<String, String> en_US = {
   'theRecipient': 'the recipient',
   'transferAmountToast': 'Enter transfer amount',
   'transferAmountVaildToast': 'Enter a valid transfer amount',
-  'transferAmountLimitVaildToast': 'Amount exceeds the single transfer limit of %s',
+  'transferAmountLimitVaildToast':
+      'Amount exceeds the single transfer limit of %s',
   'processing': 'Processing...',
-  'verifyIdentityTransfer': 'Please verify your identity to complete the transfer',
+  'verifyIdentityTransfer':
+      'Please verify your identity to complete the transfer',
   'enterPaymentPassword': 'Enter payment password',
   'verificationFailedMsg': 'Verification failed, please try again',
   'transferSuccessful': 'Transfer successful',
@@ -872,7 +923,8 @@ const Map<String, String> en_US = {
   'paymentFailed': 'Payment failed',
   'paymentSuccessful': 'Payment successful',
   'amountCredited': 'Amount credited',
-  'reminderStr': 'Payment was successfully received, but there was an error during processing. Please contact support if the issue persists.',
+  'reminderStr':
+      'Payment was successfully received, but there was an error during processing. Please contact support if the issue persists.',
   'identicalAmount': 'Identical Amount',
   'randomAmount': 'Random Amount',
   'exclusive': 'Exclusive',
@@ -918,7 +970,7 @@ const Map<String, String> en_US = {
   'selectType': 'Select Type',
   'currency': 'Currency',
   'selectCurrency': 'Select Currency',
-  'selectEmoji':'Select Emoji',
+  'selectEmoji': 'Select Emoji',
 
   'wallet.viewDetails': 'View Details',
   'wallet.redPacketFull': 'Too late, red packet is gone',
@@ -928,7 +980,8 @@ const Map<String, String> en_US = {
 
   'wallet.title': 'Wallet',
   'wallet.activate': 'Activate Wallet',
-  "toCreateWallet": "Your wallet has not been activated yet. Would you like to activate it now?",
+  "toCreateWallet":
+      "Your wallet has not been activated yet. Would you like to activate it now?",
   'wallet.balance': 'Balance',
   'wallet.recharge': 'Recharge',
   'wallet.withdraw': 'Withdraw',
@@ -979,7 +1032,8 @@ const Map<String, String> en_US = {
   'wallet.operationFailed': 'Operation Failed',
   'wallet.verifyLoginPassword': 'Verify Login Password',
   'wallet.activateSuccess': 'Wallet Activated Successfully',
-  'wallet.activateSuccessDesc': 'Your wallet has been successfully activated. You can now view your balance and use wallet functions. If this is your first activation, the system may initialize your compensation balance within a few seconds.',
+  'wallet.activateSuccessDesc':
+      'Your wallet has been successfully activated. You can now view your balance and use wallet functions. If this is your first activation, the system may initialize your compensation balance within a few seconds.',
   'wallet.activateNotice': 'Wallet Activation Notice',
   'wallet.compensationBalance': 'Compensation Balance',
   'wallet.compensationRecords': 'Compensation Records',
@@ -992,7 +1046,8 @@ const Map<String, String> en_US = {
   'wallet.withdrawDeveloping': 'Withdraw feature is under development',
   'wallet.transactionRecord': 'Transaction Record',
   'wallet.viewAll': 'View All',
-  'wallet.verifyIdentityForModify': 'Verify identity to modify payment password',
+  'wallet.verifyIdentityForModify':
+      'Verify identity to modify payment password',
   'wallet.verifyIdentityForSet': 'Verify identity to set payment password',
   'wallet.modifyPasswordSuccess': 'Payment password modified successfully',
   'wallet.setPasswordSuccess': 'Payment password set successfully',
@@ -1008,13 +1063,17 @@ const Map<String, String> en_US = {
   "timeCredited": 'Time Credited',
   "deleteChatWarning": 'Confirm deletion? All messages will be erased',
   "clickToView": 'Click to View',
-  
+
   // Permission related
-  'permission.needPhotoPermission': 'Photo library access is required to select photos',
-  'permission.needPhotoFullAccess': 'Please allow full access to photo library in system settings',
-  'permission.needCameraPermission': 'Camera permission is required to take photos',
+  'permission.needPhotoPermission':
+      'Photo library access is required to select photos',
+  'permission.needPhotoFullAccess':
+      'Please allow full access to photo library in system settings',
+  'permission.needCameraPermission':
+      'Camera permission is required to take photos',
   'permission.needPhotoFullAccessTitle': 'Full Photo Library Access Required',
-  'permission.needPhotoFullAccessDesc': 'To select photos and videos normally, please allow full access to photo library in system settings.',
+  'permission.needPhotoFullAccessDesc':
+      'To select photos and videos normally, please allow full access to photo library in system settings.',
   'permission.goToSettings': 'Go to Settings',
 
   // System errors
@@ -1042,7 +1101,8 @@ const Map<String, String> en_US = {
   'errCode.noRemaining': 'No Remaining Available',
   'errCode.distributedLock': 'Failed to Get Distributed Lock',
   'errCode.redPacketCountExceed': 'Red Packet Count Exceeds Group Members',
-  'errCode.redPacketAmountNotDivisible': 'Red Packet Amount Not Divisible by Count',
+  'errCode.redPacketAmountNotDivisible':
+      'Red Packet Amount Not Divisible by Count',
   'errCode.walletBalanceNotOpen': 'Wallet Balance Not Opened',
 
   // Balance errors
@@ -1058,8 +1118,10 @@ const Map<String, String> en_US = {
 
   // Live stream errors
   'errCode.liveStreamRoomNotFound': 'Live Stream Room Not Found',
-  'errCode.liveStreamRoomExecutePermission': 'Insufficient Execution Permission',
-  'errCode.liveStreamRoomParticipantPermission': 'Insufficient Participant Permission',
+  'errCode.liveStreamRoomExecutePermission':
+      'Insufficient Execution Permission',
+  'errCode.liveStreamRoomParticipantPermission':
+      'Insufficient Participant Permission',
   'errCode.liveStreamParticipantBlocked': 'Participant is Blocked',
   'errCode.liveStreamSystemError': 'Live Stream System Error',
 
@@ -1068,10 +1130,12 @@ const Map<String, String> en_US = {
   'errCode.accountNotExist': 'Account Does Not Exist',
   'errCode.phoneNumberRegistered': 'Phone Number Already Registered',
   'errCode.accountRegistered': 'Account Already Registered',
-  'errCode.operationTooFrequent': 'Operation Too Frequent, Please Try Again Later',
+  'errCode.operationTooFrequent':
+      'Operation Too Frequent, Please Try Again Later',
   'errCode.verificationCodeError': 'Verification Code Error',
   'errCode.verificationCodeExpired': 'Verification Code Expired',
-  'errCode.verificationCodeErrorLimitExceed': 'Too Many Verification Code Errors, Please Try Again Later',
+  'errCode.verificationCodeErrorLimitExceed':
+      'Too Many Verification Code Errors, Please Try Again Later',
   'errCode.verificationCodeUsed': 'Verification Code Already Used',
   'errCode.invitationCodeUsed': 'Invitation Code Already Used',
   'errCode.invitationCodeNotExist': 'Invitation Code Does Not Exist',
@@ -1084,10 +1148,12 @@ const Map<String, String> en_US = {
   'amountExceedMax': 'Single red packet amount cannot exceed %s',
   "balanceExceeded": "Amount exceeds your balance (%s)",
   "selectOrg": "Select Organization",
-  "exceedGroupMemberLimit": "Number of red packets cannot exceed current group members",
+  "exceedGroupMemberLimit":
+      "Number of red packets cannot exceed current group members",
   "invalidAmount": "Please enter a valid red envelope amount",
   "avaterchangeAction": "Click to change avatar",
-  "invitationInputPrompt": "Please enter the invitation code provided by your organization",
+  "invitationInputPrompt":
+      "Please enter the invitation code provided by your organization",
   "addAcountTitle": "Join Organization",
   "redPacketPassword": "Password Red Packet",
   "redPacketCommandContent": "Red Packet Password",
@@ -1098,29 +1164,38 @@ const Map<String, String> en_US = {
   "redPacketSentByUser": "Red packet from %s",
   "passwordIncorrect": "Password incorrect, please try again",
   "receiverNotInOrganization": "Receiver is not in this organization",
-  "userNotInSameOrganization": "Receiver and sender are not in the same organization",
+  "userNotInSameOrganization":
+      "Receiver and sender are not in the same organization",
   "cannotReceiveOwnTransfer": "Transfer type does not allow sender to receive",
-  "receiverNotTargetUser": "Receiver is not the target user of this transaction",
-  "orgTransferReceiverMustBeAdmin": "Organization transfer receiver must be an admin",
-  "receiverNotExclusiveReceiver": "Receiver is not the designated recipient of this exclusive red packet",
+  "receiverNotTargetUser":
+      "Receiver is not the target user of this transaction",
+  "orgTransferReceiverMustBeAdmin":
+      "Organization transfer receiver must be an admin",
+  "receiverNotExclusiveReceiver":
+      "Receiver is not the designated recipient of this exclusive red packet",
   "unknownTransactionType": "Unknown transaction type",
   "incorrectPassword": "Incorrect red packet password",
   "passwordCannotBeEmpty": "Red packet password cannot be empty",
   "editInfo": "Edit Information",
   "pleaseEnterNewInfo": "Please enter your new information",
-  "pleaseEnterContent": "Please enter content", 
+  "pleaseEnterContent": "Please enter content",
   "emailVerification": "Email Verification",
   "featureInDevelopment": "Feature in development. Stay tuned!",
   "errCode.captchaError": "Captcha error, please try again",
-  "errCode.deviceRegisterNumExceed": "Device registration limit exceeded, please contact support",
-  "errCode.invalidInvitationCode": "Invalid invitation code, please check and try again",
+  "errCode.deviceRegisterNumExceed":
+      "Device registration limit exceeded, please contact support",
+  "errCode.invalidInvitationCode":
+      "Invalid invitation code, please check and try again",
   "captchaRefreshPrompt": "Click to refresh captcha",
-  "accountFormatError": "Invalid account format. Please enter 5-20 characters containing only numbers, letters, \"-\", and \"_\"",  "accountFormatHint": "5-20 characters, containing only numbers, letters, \"-\", and \"_\"",
-    // Check-in page
+  "accountFormatError":
+      "Invalid account format. Please enter 5-20 characters containing only numbers, letters, \"-\", and \"_\"",
+  "accountFormatHint":
+      "5-20 characters, containing only numbers, letters, \"-\", and \"_\"",
+  // Check-in page
   "checkin": "Check-in",
   "checkinReward": "Check-in Reward",
   "dailyCheckinReward": "Daily Rewards",
-  "myRewards": "My Rewards",  "consecutiveCheckin": "Streak",
+  "myRewards": "My Rewards", "consecutiveCheckin": "Streak",
   "remindMeTomorrow": "Remind me tomorrow",
   "congratulationsCheckinSuccess": "Congratulations! Check-in successful",
   "complete": "Complete",
@@ -1158,7 +1233,7 @@ const Map<String, String> en_US = {
   "lotteryTicket": "ticket(s)",
   "points": "points",
   "rewardReceived": "Got %s: %s%s",
-  
+
   // File preview related
   "processingFile": "Processing file...",
   "fileDownloading": "File is downloading, please wait...",
@@ -1175,7 +1250,7 @@ const Map<String, String> en_US = {
   "participateToGetTickets": "Participate in activities to get tickets",
   "loadFailed": "Load failed",
   "retry": "Retry",
-  
+
   // Lottery tickets related
   "useNow": "Use Now",
   "loadingMore": "Loading more...",
@@ -1187,7 +1262,7 @@ const Map<String, String> en_US = {
   "unknownTicket": "Unknown ticket",
   "lotteryActivity": "Lottery Activity",
   "loadTicketsFailed": "Failed to load tickets",
-  
+
   // Prize records related
   "prizeRecords": "Prize Records",
   "all": "All",
@@ -1200,7 +1275,7 @@ const Map<String, String> en_US = {
   "loadFailedRetry": "Load failed, please retry",
   "noPrizeRecords": "No prize records yet",
   "participateToWinPrizes": "Participate in activities to win prizes",
-  
+
   // Lottery wheel related
   "luckWheel": "Lucky Wheel",
   "spinToWin": "Tap the button to start spinning",
@@ -1215,11 +1290,12 @@ const Map<String, String> en_US = {
   "lotteryFailed": "Lottery failed",
   "getPrizesError": "Failed to get prizes",
   "lotteryError": "Lottery failed, please retry",
-  
+
+  // dawn 2026-05-21 修复上传文件限制：聊天文件和视频上传提示调整为200MB。
   // Chat related translations
   "imageSizeLimit": "Image size cannot exceed 5MB",
-  "videoSizeLimit": "Video size cannot exceed 50MB", 
-  "fileSizeLimit": "File size cannot exceed 20MB",
+  "videoSizeLimit": "Video size cannot exceed 200MB",
+  "fileSizeLimit": "File size cannot exceed 200MB",
   "sendingFile": "Sending file...",
   "sendFileSuccess": "File sent successfully",
   "sendFileFailed": "Failed to send file",
@@ -1228,14 +1304,15 @@ const Map<String, String> en_US = {
   "revokeFailed": "Failed to revoke",
   "joinMeetingContent": "Would you like to join the meeting: %s?",
   "joinMeetingFailed": "Failed to join meeting",
-  
+
   // Discover page related strings
   "dailyCheckinGetReward": "Daily check-in to get rewards",
   "videoConferenceFunction": "Video conference feature",
   "myTicketsDesc": "My Tickets",
   "winningRecords": "Winning Records",
   "needMorePhotosAccess": "Need Access to More Photos",
-  "needMorePhotosAccessDesc": "Currently, only some photos can be accessed. Please allow access to more photos to select and send videos",
+  "needMorePhotosAccessDesc":
+      "Currently, only some photos can be accessed. Please allow access to more photos to select and send videos",
   "updateTime": "Last updated",
 
   "paymentMethod": "Payment Methods",
@@ -1287,7 +1364,8 @@ const Map<String, String> en_US = {
   "uploadFrontHint": "Upload front of ID card",
   "uploadBackHint": "Upload back of ID card",
   "verifyTipsTitle": "Verification Notes",
-  "verifyTipsContent": "1. Ensure information is true and valid\n2. ID card photos must be clear and visible\n3. Review usually takes 1-3 working days\n4. Information is strictly confidential for identity verification only",
+  "verifyTipsContent":
+      "1. Ensure information is true and valid\n2. ID card photos must be clear and visible\n3. Review usually takes 1-3 working days\n4. Information is strictly confidential for identity verification only",
   "submitVerify": "Submit Verification",
   "verifyInfo": "Identity Information",
   "verifyTime": "Verification Time",
@@ -1303,7 +1381,8 @@ const Map<String, String> en_US = {
   "submitSuccessMsg": "Identity verification submitted, please wait for review",
   "submitFailed": "Submission Failed",
   "reviewingStatus": "Review Status",
-  "reviewingMsg": "Your identity verification is under review, please wait patiently...",
+  "reviewingMsg":
+      "Your identity verification is under review, please wait patiently...",
   "withdrawal": "Withdrawal",
   "withdrawalAmount": "Withdrawal Amount",
   "enterAmount": "Enter amount",
@@ -1321,13 +1400,13 @@ const Map<String, String> en_US = {
   "withdrawalFailed": "Withdrawal Failed",
   "withdrawalRejected": "Withdrawal Rejected",
   "contactCustomerService": "Please contact customer service",
-  
+
   "minWithdrawal": "Minimum Withdrawal",
   "maxWithdrawal": "Maximum Withdrawal",
   "needRealName": "Real-name verification required",
   "needBindAccount": "Account binding required",
   "enter6DigitPassword": "Enter 6-digit password",
- 
+
   "fee": "Fee",
   "actualAmount": "Actual Amount",
   "bank": "Bank",
@@ -1361,6 +1440,6 @@ const Map<String, String> en_US = {
   "resend": "Resend",
   "s": "s",
   "tips": "Tips",
-  "verifyBeforeCheckin": "Sign-in requires identity verification first. Do you want to go to verification?",
+  "verifyBeforeCheckin":
+      "Sign-in requires identity verification first. Do you want to go to verification?",
 };
-

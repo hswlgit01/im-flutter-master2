@@ -67,7 +67,8 @@ function check_docker {
 function build_apk {
   local env=${1:-dev}
   echo -e "${YELLOW}开始构建Android APK (环境: ${env})...${NC}"
-  docker compose run --rm -e BUILD_ENV=${env} build_apk bash -c "flutter clean && flutter pub get && flutter build apk --release --dart-define=ENV=${env}"
+  # dawn 2026-05-21 修复安装包体积：本地 Docker 构建也输出真机 ABI 拆分包，并保留 arm64 为 app-release.apk。
+  docker compose run --rm -e BUILD_ENV=${env} build_apk bash -c "flutter clean && flutter pub get && flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --dart-define=ENV=${env} && cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/app-release.apk"
   if [ $? -eq 0 ]; then
     echo -e "${GREEN}APK构建成功!${NC}"
     echo -e "环境: ${BLUE}${env}${NC}"
