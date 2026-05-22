@@ -4,10 +4,8 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
-import 'package:get/get.dart';
 import 'package:openim_common/openim_common.dart' hide ApiService;
 import 'package:path/path.dart' as path;
-import 'package:uuid/uuid.dart';
 import '../core/api_service.dart';
 import '../utils/log_util.dart';
 
@@ -81,14 +79,11 @@ class UploadUtil {
     return _mimeTypes[extension] ?? 'application/octet-stream';
   }
 
-  /// 计算文件MD5哈希（完全仿照JavaScript SparkMD5逻辑）
+  /// 计算文件MD5哈希（按每个分片MD5拼接后再MD5，和Web端SparkMD5逻辑保持一致）
   static Future<String> calculateFileHash(File file, int partSize) async {
     final fileSize = await file.length();
     final chunks = (fileSize / partSize).ceil();
     final chunkHashList = <String>[];
-
-    // 模拟JavaScript的SparkMD5.ArrayBuffer()累积逻辑
-    var cumulativeBytes = <int>[];
 
     for (int i = 0; i < chunks; i++) {
       final start = i * partSize;
@@ -98,15 +93,11 @@ class UploadUtil {
       final chunkBytes = await file.openRead(start, end).toList();
       final chunk = chunkBytes.expand((x) => x).toList();
 
-      // 累积所有字节（模拟JavaScript的fileSpark.append()）
-      cumulativeBytes.addAll(chunk);
-
-      // 计算累积哈希（模拟JavaScript的fileSpark.end()）
-      final cumulativeHash = md5.convert(cumulativeBytes).toString();
-      chunkHashList.add(cumulativeHash);
+      // dawn 2026-05-22 修复手机端大文件合并失败：SparkMD5.end() 会重置，服务端需要的是每个分片自己的MD5/ETag。
+      chunkHashList.add(md5.convert(chunk).toString());
     }
 
-    // 用逗号连接所有累积哈希，然后计算最终哈希（模拟JavaScript的textSpark逻辑）
+    // 用逗号连接所有分片哈希，然后计算最终哈希（模拟JavaScript的textSpark逻辑）
     final totalFileHash = chunkHashList.join(',');
     final finalHash = md5.convert(utf8.encode(totalFileHash)).toString();
 
@@ -219,12 +210,9 @@ class UploadUtil {
       LogUtil.i(TAG,
           '开始分片上传: 文件大小=${fileSize ~/ (1024 * 1024)}MB, 分片大小=${partSize ~/ (1024 * 1024)}MB, 分片数量=$chunks');
 
-      // 预先计算所有分片信息和哈希（完全仿照JavaScript SparkMD5逻辑）
+      // 预先计算所有分片信息和哈希（和Web端SparkMD5逻辑保持一致）
       final List<Map<String, int>> chunkGapList = [];
       final List<String> chunkHashList = [];
-
-      // 模拟JavaScript的SparkMD5.ArrayBuffer()累积逻辑
-      var cumulativeBytes = <int>[];
 
       for (int i = 0; i < chunks; i++) {
         final start = i * partSize;
@@ -236,16 +224,13 @@ class UploadUtil {
         final chunkBytes = await file.openRead(start, end).toList();
         final chunk = chunkBytes.expand((x) => x).toList();
 
-        // 累积所有字节（模拟JavaScript的fileSpark.append()）
-        cumulativeBytes.addAll(chunk);
-
-        // 计算累积哈希（模拟JavaScript的fileSpark.end()）
-        final cumulativeHash = md5.convert(cumulativeBytes).toString();
-        chunkHashList.add(cumulativeHash);
+        // dawn 2026-05-22 修复手机端大文件合并失败：每个分片上传完成后服务端用该分片MD5作为ETag合并。
+        chunkHashList.add(md5.convert(chunk).toString());
+        onProgress?.call(((i + 1) / chunks) * 0.1);
       }
 
       // 计算最终文件哈希（仿照JavaScript SparkMD5逻辑）
-      // 用逗号连接所有累积哈希，然后计算最终哈希（模拟JavaScript的textSpark逻辑）
+      // 用逗号连接所有分片哈希，然后计算最终哈希（模拟JavaScript的textSpark逻辑）
       final totalFileHash = chunkHashList.join(',');
       final finalHash = md5.convert(utf8.encode(totalFileHash)).toString();
 
@@ -280,25 +265,35 @@ class UploadUtil {
       final signQuery = sign['query'];
       final signHeader = sign['header'];
 
-      // 并行上传所有分片
       final dio = Dio();
-      final uploadFutures = <Future<void>>[];
 
-      for (int i = 0; i < chunks; i++) {
-        uploadFutures.add(_uploadChunk(
-          dio: dio,
-          file: file,
-          chunkIndex: i,
-          chunkGap: chunkGapList[i],
-          partInfo: uploadParts[i],
-          signUrl: sign['url'],
-          signQuery: signQuery,
-          signHeader: signHeader,
-        ));
+      // dawn 2026-05-22 修复手机端大文件上传卡0%：限制分片并发并按完成数更新进度，避免一次性并发32片造成合并不稳定。
+      var nextChunkIndex = 0;
+      var completedChunks = 0;
+      final workerCount = chunks < 3 ? chunks : 3;
+
+      Future<void> uploadWorker() async {
+        while (true) {
+          final i = nextChunkIndex++;
+          if (i >= chunks) {
+            return;
+          }
+          await _uploadChunk(
+            dio: dio,
+            file: file,
+            chunkIndex: i,
+            chunkGap: chunkGapList[i],
+            partInfo: uploadParts[i],
+            signUrl: sign['url'],
+            signQuery: signQuery,
+            signHeader: signHeader,
+          );
+          completedChunks++;
+          onProgress?.call(0.1 + (completedChunks / chunks) * 0.8);
+        }
       }
 
-      // 等待所有分片上传完成
-      await Future.wait(uploadFutures);
+      await Future.wait(List.generate(workerCount, (_) => uploadWorker()));
 
       LogUtil.i(TAG, '所有分片上传完成');
       onProgress?.call(0.9);
@@ -314,6 +309,9 @@ class UploadUtil {
       );
 
       final finalUrl = confirmResult?['url'] ?? '';
+      if (finalUrl.isEmpty) {
+        throw Exception('确认上传未返回URL');
+      }
       LogUtil.i(TAG, '分片上传完成: $finalUrl');
       onProgress?.call(1.0);
 
@@ -535,6 +533,9 @@ class UploadUtil {
       );
 
       final finalUrl = confirmResult?['url'] ?? '';
+      if (finalUrl.isEmpty) {
+        throw Exception('确认上传未返回URL');
+      }
       onProgress?.call(1.0);
 
       return {
