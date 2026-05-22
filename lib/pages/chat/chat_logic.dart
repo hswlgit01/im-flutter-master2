@@ -39,6 +39,8 @@ import '../../core/controller/app_controller.dart';
 import '../../core/controller/im_controller.dart';
 import '../../core/im_callback.dart';
 import '../../routes/app_navigator.dart';
+import '../../utils/file_upload_helper.dart';
+import '../../utils/log_util.dart' as app_log;
 import '../contacts/select_contacts/select_contacts_logic.dart';
 import '../conversation/conversation_logic.dart';
 import 'group_setup/group_member_list/group_member_list_logic.dart';
@@ -1898,6 +1900,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   void _senFailed(
       Message message, String? groupId, String? userId, error, stack) async {
+    // dawn 2026-05-22 修复手机端发送失败难排查：记录SDK真实错误，App退出后可在后台App日志查看。
+    app_log.LogUtil.e(
+      'ChatLogic',
+      '消息发送失败: contentType=${message.contentType}, clientMsgID=${message.clientMsgID}, groupID=${groupId ?? groupID}, userID=${userId ?? userID}',
+      error,
+      stack is StackTrace ? stack : null,
+    );
     message.status = MessageStatus.failed;
     sendStatusSub.addSafely(MsgStreamEv<bool>(
       id: message.clientMsgID!,
@@ -4018,19 +4027,38 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
                 snapshotPath: file.path!, // 暂时使用视频文件路径作为缩略图路径
               );
             } else {
-              // 发送普通文件消息
-              message = await OpenIM.iMManager.messageManager
-                  .createFileMessageFromFullPath(
+              // dawn 2026-05-22 修复手机端大文件发送失败：普通文件先走业务分片上传，再用URL消息发送，避免SDK内部上传失败只返回泛化错误。
+              final uploadedUrl = await FileUploadHelper.uploadFile(
                 filePath: file.path!,
-                fileName: file.name,
+                customFileName:
+                    '${DateTime.now().millisecondsSinceEpoch}_${file.name}',
+                progressTitle: StrRes.sendingFile,
+                progressMessage: StrRes.sendingFile,
+              );
+              if (uploadedUrl == null || uploadedUrl.isEmpty) {
+                throw Exception('文件上传未返回URL');
+              }
+              message =
+                  await OpenIM.iMManager.messageManager.createFileMessageByURL(
+                fileElem: FileElem(
+                  uuid: '${DateTime.now().millisecondsSinceEpoch}_${file.name}',
+                  sourceUrl: uploadedUrl,
+                  fileName: file.name,
+                  fileSize: fileSize,
+                ),
               );
             }
 
             // 发送消息
             await _sendMessage(message);
             IMViews.showToast(StrRes.sendFileSuccess);
-          } catch (e) {
-            ILogger.d('发送文件失败: $e');
+          } catch (e, s) {
+            app_log.LogUtil.e(
+              'ChatLogic',
+              '发送文件失败: file=${file.name}, size=${file.size}',
+              e,
+              s,
+            );
             IMViews.showToast(StrRes.sendFileFailed);
           }
         }
