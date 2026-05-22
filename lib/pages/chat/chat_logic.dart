@@ -1686,12 +1686,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       required int duration,
       required String snapshotPath}) async {
     final file = await IMUtils.compressVideoAndGetFile(File(path));
-    var message = await OpenIM.iMManager.messageManager
-        .createVideoMessageFromFullPath(
-            videoPath: file!.path,
-            videoType: mimeType,
-            duration: duration,
-            snapshotPath: snapshotPath);
+    // dawn 2026-05-22 修复手机端视频发送失败：视频也走业务分片上传后创建URL消息，绕开SDK本地视频解析/上传异常。
+    var message = await _createUploadedVideoMessage(
+      videoPath: file!.path,
+      fileName: _fileNameFromPath(file.path),
+      fileSize: await file.length(),
+      mimeType: mimeType,
+      duration: duration,
+      snapshotPath: snapshotPath,
+    );
 
     if (sendNow) {
       return _sendMessage(message);
@@ -1712,6 +1715,76 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       text: filteredContent,
     );
     _sendMessage(message, userId: userId, groupId: groupId);
+  }
+
+  String _fileNameFromPath(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final index = normalized.lastIndexOf('/');
+    return index >= 0 ? normalized.substring(index + 1) : normalized;
+  }
+
+  String _fileExtension(String fileName, String fallback) {
+    final index = fileName.lastIndexOf('.');
+    if (index >= 0 && index < fileName.length - 1) {
+      return fileName.substring(index + 1).toLowerCase();
+    }
+    return fallback;
+  }
+
+  Future<Message> _createUploadedVideoMessage({
+    required String videoPath,
+    required String fileName,
+    required int fileSize,
+    required String mimeType,
+    required int duration,
+    String? snapshotPath,
+  }) async {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final videoUrl = await FileUploadHelper.uploadVideo(
+      videoPath: videoPath,
+      customFileName: '${timestamp}_$fileName',
+      progressTitle: StrRes.sendingFile,
+      progressMessage: StrRes.sendingFile,
+    );
+    if (videoUrl == null || videoUrl.isEmpty) {
+      throw Exception('视频上传未返回URL');
+    }
+
+    File snapshotFile;
+    final candidateSnapshot = snapshotPath != null && snapshotPath.isNotEmpty
+        ? File(snapshotPath)
+        : null;
+    if (candidateSnapshot != null && await candidateSnapshot.exists()) {
+      snapshotFile = candidateSnapshot;
+    } else {
+      snapshotFile = await IMUtils.getVideoThumbnail(File(videoPath));
+    }
+
+    final snapshotSize = await snapshotFile.length();
+    final snapshotUrl = await FileUploadHelper.uploadImage(
+      imagePath: snapshotFile.path,
+      customFileName: '${timestamp}_${fileName}_snapshot.png',
+      showProgress: false,
+    );
+    if (snapshotUrl == null || snapshotUrl.isEmpty) {
+      throw Exception('视频封面上传未返回URL');
+    }
+
+    return OpenIM.iMManager.messageManager.createVideoMessageByURL(
+      videoElem: VideoElem(
+        videoUUID: '${timestamp}_$fileName',
+        videoUrl: videoUrl,
+        videoType:
+            mimeType.isNotEmpty ? mimeType : _fileExtension(fileName, 'mp4'),
+        videoSize: fileSize,
+        duration: duration,
+        snapshotUUID: '${timestamp}_${fileName}_snapshot',
+        snapshotUrl: snapshotUrl,
+        snapshotSize: snapshotSize,
+        snapshotWidth: 1,
+        snapshotHeight: 1,
+      ),
+    );
   }
 
   sendForwardMsg(
@@ -4018,13 +4091,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
                 imagePath: file.path!,
               );
             } else if (isVideo) {
-              // 发送视频消息
-              message = await OpenIM.iMManager.messageManager
-                  .createVideoMessageFromFullPath(
+              // dawn 2026-05-22 修复手机端视频文件发送失败：文件选择器里的视频也走业务分片上传后创建URL消息。
+              message = await _createUploadedVideoMessage(
                 videoPath: file.path!,
-                videoType: file.extension ?? 'mp4',
-                duration: 0, // 视频时长，如果需要可以添加获取视频时长的逻辑
-                snapshotPath: file.path!, // 暂时使用视频文件路径作为缩略图路径
+                fileName: file.name,
+                fileSize: fileSize,
+                mimeType: file.extension ?? 'mp4',
+                duration: 0,
               );
             } else {
               // dawn 2026-05-22 修复手机端大文件发送失败：普通文件先走业务分片上传，再用URL消息发送，避免SDK内部上传失败只返回泛化错误。
