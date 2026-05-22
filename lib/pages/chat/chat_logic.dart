@@ -1787,6 +1787,33 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     );
   }
 
+  Future<Message> _createUploadedFileMessage({
+    required String filePath,
+    required String fileName,
+    required int fileSize,
+  }) async {
+    final uuid = '${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    final uploadedUrl = await FileUploadHelper.uploadFile(
+      filePath: filePath,
+      customFileName: uuid,
+      progressTitle: StrRes.sendingFile,
+      progressMessage: StrRes.sendingFile,
+    );
+    if (uploadedUrl == null || uploadedUrl.isEmpty) {
+      throw Exception('文件上传未返回URL');
+    }
+    // dawn 2026-05-22 修复手机端视频文件发送失败：文件选择器入口统一创建普通文件URL消息，避免SDK视频消息contentType=104发送失败。
+    return OpenIM.iMManager.messageManager.createFileMessageByURL(
+      fileElem: FileElem(
+        filePath: filePath,
+        uuid: uuid,
+        sourceUrl: uploadedUrl,
+        fileName: fileName,
+        fileSize: fileSize,
+      ),
+    );
+  }
+
   sendForwardMsg(
     Message originalMessage, {
     String? userId,
@@ -4091,34 +4118,18 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
                 imagePath: file.path!,
               );
             } else if (isVideo) {
-              // dawn 2026-05-22 修复手机端视频文件发送失败：文件选择器里的视频也走业务分片上传后创建URL消息。
-              message = await _createUploadedVideoMessage(
-                videoPath: file.path!,
+              // dawn 2026-05-22 修复手机端视频文件发送失败：文件入口选择的视频按文件消息发送，不走contentType=104视频消息。
+              message = await _createUploadedFileMessage(
+                filePath: file.path!,
                 fileName: file.name,
                 fileSize: fileSize,
-                mimeType: file.extension ?? 'mp4',
-                duration: 0,
               );
             } else {
               // dawn 2026-05-22 修复手机端大文件发送失败：普通文件先走业务分片上传，再用URL消息发送，避免SDK内部上传失败只返回泛化错误。
-              final uploadedUrl = await FileUploadHelper.uploadFile(
+              message = await _createUploadedFileMessage(
                 filePath: file.path!,
-                customFileName:
-                    '${DateTime.now().millisecondsSinceEpoch}_${file.name}',
-                progressTitle: StrRes.sendingFile,
-                progressMessage: StrRes.sendingFile,
-              );
-              if (uploadedUrl == null || uploadedUrl.isEmpty) {
-                throw Exception('文件上传未返回URL');
-              }
-              message =
-                  await OpenIM.iMManager.messageManager.createFileMessageByURL(
-                fileElem: FileElem(
-                  uuid: '${DateTime.now().millisecondsSinceEpoch}_${file.name}',
-                  sourceUrl: uploadedUrl,
-                  fileName: file.name,
-                  fileSize: fileSize,
-                ),
+                fileName: file.name,
+                fileSize: fileSize,
               );
             }
 
