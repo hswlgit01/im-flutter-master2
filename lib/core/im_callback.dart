@@ -252,7 +252,14 @@ mixin IMCallback {
       }
 
       _promptedConversationMessageKeys[conversationID] = messageKey;
-      unawaited(initLogic.showNotification(latestMsg));
+      final forceVisiblePrompt =
+          reason == 'sync_ended' || reason == 'recv_offline_message';
+      unawaited(initLogic.showNotification(
+        latestMsg,
+        // dawn 2026-05-23 修复离线文件消息登录后无提示：登录/离线补刷出的 latestMsg 前台也弹可见通知，并允许恢复到原聊天页时补发。
+        forceForegroundNotification: forceVisiblePrompt,
+        allowActiveConversationPrompt: forceVisiblePrompt,
+      ));
     }
   }
 
@@ -879,7 +886,12 @@ mixin IMCallback {
       }
     }
 
-    initLogic.showNotification(msg);
+    initLogic.showNotification(
+      msg,
+      // dawn 2026-05-23 修复离线文件消息登录后无提示：离线回调消息即使 App 恢复到当前会话，也补发一次可见提示。
+      forceForegroundNotification: true,
+      allowActiveConversationPrompt: true,
+    );
     _markPromptedMessage(msg);
     onRecvOfflineMessage?.call(msg);
     // dawn 2026-05-11 修复手机端离线/弱网消息进库但页面无感知：离线消息也广播给当前聊天页并补刷会话。

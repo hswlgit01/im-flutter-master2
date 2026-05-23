@@ -38,7 +38,10 @@ class AppController extends GetxController with UpgradeManger {
   final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   String? currentActiveConversationId;
   final _pendingMessagePrompts = <String, im.Message>{};
+  final _pendingForceForegroundPromptKeys = <String>{};
+  final _pendingAllowActivePromptKeys = <String>{};
   Timer? _pendingPromptFlushTimer;
+  bool _localNotificationsInitialized = false;
 
   final initializationSettingsAndroid =
       const AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -121,7 +124,9 @@ class AppController extends GetxController with UpgradeManger {
   }
 
   Future<void> showNotification(im.Message message,
-      {bool showNotification = true}) async {
+      {bool showNotification = true,
+      bool forceForegroundNotification = false,
+      bool allowActiveConversationPrompt = false}) async {
     // 允许的系统通知类型: 1400(OA通知), 1201(好友申请通过), 1204(好友添加)
     final allowedSystemNotifications = [1400, 1201, 1204];
 
@@ -163,8 +168,14 @@ class AppController extends GetxController with UpgradeManger {
       );
       if (i.recvMsgOpt != 0) return;
 
-      if (showNotification && !_isMessageFromActiveConversation(message, i)) {
-        promptSoundOrNotification(message);
+      final isActiveConversation = _isMessageFromActiveConversation(message, i);
+      if (showNotification &&
+          (allowActiveConversationPrompt || !isActiveConversation)) {
+        promptSoundOrNotification(
+          message,
+          forceForegroundNotification: forceForegroundNotification,
+          allowActiveConversationPrompt: allowActiveConversationPrompt,
+        );
       }
     }
   }
@@ -193,38 +204,78 @@ class AppController extends GetxController with UpgradeManger {
     return conversationInfo.conversationID == currentActiveConversationId;
   }
 
-  Future<void> promptSoundOrNotification(im.Message message) async {
+  Future<void> promptSoundOrNotification(
+    im.Message message, {
+    bool forceForegroundNotification = false,
+    bool allowActiveConversationPrompt = false,
+  }) async {
     if (!_isImSynced) {
       // dawn 2026-05-11 修复手机端弱网私聊无提示：同步未完成时不直接丢提示，按会话缓存最后一条，待同步完成/回前台再补发。
-      _cachePendingMessagePrompt(message);
+      _cachePendingMessagePrompt(
+        message,
+        forceForegroundNotification: forceForegroundNotification,
+        allowActiveConversationPrompt: allowActiveConversationPrompt,
+      );
       return;
     }
-    if (!isRunningBackground) {
+    // dawn 2026-05-23 修复离线文件消息登录后无可见提示：登录同步补发时，前台也展示系统通知，避免只播放声音被误认为无提示。
+    if (!isRunningBackground && !forceForegroundNotification) {
       _playMessageSound();
     } else {
-      if (Platform.isAndroid) {
-        // dawn 2026-05-12 修复手机端弱网私聊无提示：兜底会话 latestMsg 可能没有 seq，通知 id 改为可回退。
-        final id = message.seq ?? message.clientMsgID.hashCode;
-
-        const androidPlatformChannelSpecifics = AndroidNotificationDetails(
-            'chat', 'FreeChat message',
-            channelDescription: 'from FreeChat message',
-            importance: Importance.max,
-            priority: Priority.high,
-            visibility: NotificationVisibility.public,
-            ticker: 'ticker');
-        const NotificationDetails platformChannelSpecifics =
-            NotificationDetails(android: androidPlatformChannelSpecifics);
-        final sourceID = message.sessionType == ConversationType.single
-            ? message.sendID
-            : message.groupID;
-
-        final sessionType = message.sessionType;
-        await flutterLocalNotificationsPlugin.show(id, message.senderNickname,
-            IMUtils.parseMsg(message), platformChannelSpecifics,
-            payload: "chat://$sessionType/$sourceID");
+      if (!isRunningBackground) {
+        _playMessageSound();
       }
+      await _showAndroidMessageNotification(message);
     }
+  }
+
+  Future<void> _ensureLocalNotificationsInitialized() async {
+    if (_localNotificationsInitialized) return;
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    try {
+      if (Platform.isAndroid) {
+        await flutterLocalNotificationsPlugin.initialize(
+          InitializationSettings(android: initializationSettingsAndroid),
+        );
+      } else {
+        await flutterLocalNotificationsPlugin.initialize(
+          InitializationSettings(iOS: initializationSettingsDarwin),
+        );
+      }
+      _localNotificationsInitialized = true;
+      _requestPermissions();
+      Logger.print('[AppController] 本地通知初始化完成');
+    } catch (e) {
+      Logger.print('[AppController] 本地通知初始化失败: $e');
+    }
+  }
+
+  Future<void> _showAndroidMessageNotification(im.Message message) async {
+    if (!Platform.isAndroid) return;
+    await _ensureLocalNotificationsInitialized();
+
+    // dawn 2026-05-12 修复手机端弱网私聊无提示：兜底会话 latestMsg 可能没有 seq，通知 id 改为可回退。
+    final id = message.seq ?? message.clientMsgID.hashCode;
+
+    const androidPlatformChannelSpecifics = AndroidNotificationDetails(
+        'chat', 'FreeChat message',
+        channelDescription: 'from FreeChat message',
+        importance: Importance.max,
+        priority: Priority.high,
+        visibility: NotificationVisibility.public,
+        ticker: 'ticker',
+        playSound: true,
+        enableVibration: true);
+    const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+    final sourceID = message.sessionType == ConversationType.single
+        ? message.sendID
+        : message.groupID;
+
+    final sessionType = message.sessionType;
+    await flutterLocalNotificationsPlugin.show(id, message.senderNickname,
+        IMUtils.parseMsg(message), platformChannelSpecifics,
+        payload: "chat://$sessionType/$sourceID");
   }
 
   bool get _isImSynced {
@@ -240,10 +291,28 @@ class AppController extends GetxController with UpgradeManger {
     return '${message.sessionType ?? 0}:$sourceID';
   }
 
-  void _cachePendingMessagePrompt(im.Message message) {
-    _pendingMessagePrompts[_pendingPromptKey(message)] = message;
+  void _cachePendingMessagePrompt(
+    im.Message message, {
+    bool forceForegroundNotification = false,
+    bool allowActiveConversationPrompt = false,
+  }) {
+    final key = _pendingPromptKey(message);
+    _pendingMessagePrompts[key] = message;
+    if (forceForegroundNotification) {
+      _pendingForceForegroundPromptKeys.add(key);
+    } else {
+      _pendingForceForegroundPromptKeys.remove(key);
+    }
+    if (allowActiveConversationPrompt) {
+      _pendingAllowActivePromptKeys.add(key);
+    } else {
+      _pendingAllowActivePromptKeys.remove(key);
+    }
     if (_pendingMessagePrompts.length > 20) {
-      _pendingMessagePrompts.remove(_pendingMessagePrompts.keys.first);
+      final removedKey = _pendingMessagePrompts.keys.first;
+      _pendingMessagePrompts.remove(removedKey);
+      _pendingForceForegroundPromptKeys.remove(removedKey);
+      _pendingAllowActivePromptKeys.remove(removedKey);
     }
     _pendingPromptFlushTimer?.cancel();
     _pendingPromptFlushTimer = Timer(const Duration(seconds: 2), () {
@@ -253,11 +322,19 @@ class AppController extends GetxController with UpgradeManger {
 
   Future<void> flushPendingMessagePrompts() async {
     if (_pendingMessagePrompts.isEmpty || !_isImSynced) return;
-    final messages = _pendingMessagePrompts.values.toList();
+    final entries = _pendingMessagePrompts.entries.toList();
     _pendingMessagePrompts.clear();
-    for (final message in messages) {
-      await showNotification(message);
+    for (final entry in entries) {
+      await showNotification(
+        entry.value,
+        forceForegroundNotification:
+            _pendingForceForegroundPromptKeys.contains(entry.key),
+        allowActiveConversationPrompt:
+            _pendingAllowActivePromptKeys.contains(entry.key),
+      );
     }
+    _pendingForceForegroundPromptKeys.clear();
+    _pendingAllowActivePromptKeys.clear();
   }
 
   /// 显示好友申请系统通知
@@ -469,6 +546,8 @@ class AppController extends GetxController with UpgradeManger {
   void onReady() {
     queryClientConfig();
     _getDeviceInfo();
+    // dawn 2026-05-23 修复离线文件消息登录后无系统提示：启动后初始化本地通知并主动申请通知权限。
+    unawaited(_ensureLocalNotificationsInitialized());
     _cancelAllNotifications();
     _restoreSecurityServices();
     _initAppUpdates(); // 统一初始化更新检查
