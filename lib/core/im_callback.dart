@@ -226,10 +226,14 @@ mixin IMCallback {
 
   void _promptLatestMessagesFromConversations(
       List<ConversationInfo> list, String reason) {
-    // dawn 2026-05-12 修复手机端弱网私聊无提示：SDK 只回调会话/未读时，用会话 latestMsg 兜底触发一次提示。
+    // dawn 2026-05-23 修复离线文件消息登录后无提示：登录同步/前台补刷也可能只拿到会话 latestMsg，不一定触发离线消息回调。
     final shouldPrompt = reason == 'conversation_changed' ||
         reason == 'new_conversation' ||
-        reason == 'total_unread_changed';
+        reason == 'total_unread_changed' ||
+        reason == 'sync_ended' ||
+        reason == 'foreground' ||
+        reason == 'recv_offline_message' ||
+        reason == 'recv_new_message';
     if (!shouldPrompt) return;
 
     for (final conversation in list) {
