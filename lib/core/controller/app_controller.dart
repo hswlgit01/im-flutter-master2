@@ -27,6 +27,8 @@ import 'im_controller.dart';
 import '../security_manager.dart';
 
 class AppController extends GetxController with UpgradeManger {
+  static const _messageNotificationChannelId = 'freechat_message_high_v2';
+
   var isRunningBackground = false;
 
   // 热更新状态管理,防止重复操作
@@ -224,9 +226,20 @@ class AppController extends GetxController with UpgradeManger {
     } else {
       if (!isRunningBackground) {
         _playMessageSound();
+        // dawn 2026-05-24 修复手机端登录后消息无明显提示：前台补发时同时给轻提示，避免系统通知权限/通道被关闭时用户完全无感。
+        _showForegroundMessageToast(message);
       }
       await _showAndroidMessageNotification(message);
     }
+  }
+
+  void _showForegroundMessageToast(im.Message message) {
+    final title = message.senderNickname?.trim().isNotEmpty == true
+        ? message.senderNickname!.trim()
+        : '新消息';
+    final content = IMUtils.parseMsg(message);
+    final body = content.trim().isNotEmpty ? content.trim() : '收到一条新消息';
+    IMViews.showToast('$title：$body');
   }
 
   Future<void> _ensureLocalNotificationsInitialized() async {
@@ -258,7 +271,7 @@ class AppController extends GetxController with UpgradeManger {
     final id = message.seq ?? message.clientMsgID.hashCode;
 
     const androidPlatformChannelSpecifics = AndroidNotificationDetails(
-        'chat', 'FreeChat message',
+        _messageNotificationChannelId, 'FreeChat message',
         channelDescription: 'from FreeChat message',
         importance: Importance.max,
         priority: Priority.high,

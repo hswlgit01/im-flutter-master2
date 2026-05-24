@@ -235,13 +235,17 @@ mixin IMCallback {
         reason == 'recv_offline_message' ||
         reason == 'recv_new_message';
     if (!shouldPrompt) return;
+    final allowRecentReadPrompt =
+        reason == 'sync_ended' || reason == 'recv_offline_message';
 
     for (final conversation in list) {
       final latestMsg = conversation.latestMsg;
       if (latestMsg == null ||
-          conversation.unreadCount <= 0 ||
           latestMsg.sendID == OpenIM.iMManager.userID ||
           !_isRecentEnoughForPrompt(latestMsg)) {
+        continue;
+      }
+      if (conversation.unreadCount <= 0 && !allowRecentReadPrompt) {
         continue;
       }
 
