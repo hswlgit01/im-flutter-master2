@@ -48,6 +48,12 @@ class ConversationLogic extends GetxController {
   Map<String, String> _packetOverallStatusCache = {};
   final _apiService = core.ApiService();
 
+  // dawn 2026-05-25 修复手机端文件消息无列表提示：SDK 弱网/文件消息场景偶发会话 unreadCount 为 0，
+  // 但 latestMsg 已经更新；这里给最近收到的对方消息补一个本地未读提示，进入会话或标记已读后清除。
+  static const _fallbackUnreadWindow = Duration(minutes: 10);
+  final _fallbackUnreadCounts = <String, int>{};
+  final _fallbackReadLatestMsgKeys = <String, String>{};
+
   @override
   void onInit() {
     getFirstPage();
@@ -198,6 +204,69 @@ class ConversationLogic extends GetxController {
   // Removed _isCallSignalingMessage and _fixUnreadCount methods
   // Backend now handles unread count correctly via Options mechanism
 
+  String? _latestMessageKey(ConversationInfo info) {
+    final msg = info.latestMsg;
+    if (msg == null) return null;
+    final msgID =
+        msg.serverMsgID?.isNotEmpty == true ? msg.serverMsgID : msg.clientMsgID;
+    return [
+      msgID ?? '',
+      msg.sendID ?? '',
+      msg.recvID ?? '',
+      msg.groupID ?? '',
+      msg.sendTime ?? 0,
+      msg.contentType ?? 0,
+    ].join('|');
+  }
+
+  bool _shouldFallbackUnread(ConversationInfo info) {
+    final msg = info.latestMsg;
+    if (msg == null || info.unreadCount > 0) return false;
+    if (msg.sendID == OpenIM.iMManager.userID) return false;
+    if ((info.recvMsgOpt ?? 0) != 0) return false;
+
+    final key = _latestMessageKey(info);
+    if (key == null || _fallbackReadLatestMsgKeys[info.conversationID] == key) {
+      return false;
+    }
+
+    final sendTime = msg.sendTime ?? info.latestMsgSendTime;
+    if (sendTime == null || sendTime <= 0) return true;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return (now - sendTime).abs() <= _fallbackUnreadWindow.inMilliseconds;
+  }
+
+  void _syncFallbackUnreadCounts(
+    Iterable<ConversationInfo> conversations, {
+    bool pruneMissing = false,
+  }) {
+    final seen = <String>{};
+    for (final info in conversations) {
+      seen.add(info.conversationID);
+      if (info.unreadCount > 0) {
+        _fallbackUnreadCounts.remove(info.conversationID);
+      } else if (_shouldFallbackUnread(info)) {
+        _fallbackUnreadCounts[info.conversationID] = 1;
+      } else {
+        _fallbackUnreadCounts.remove(info.conversationID);
+      }
+    }
+    if (pruneMissing) {
+      _fallbackUnreadCounts.removeWhere((id, _) => !seen.contains(id));
+      _fallbackReadLatestMsgKeys.removeWhere((id, _) => !seen.contains(id));
+    }
+  }
+
+  void _markFallbackUnreadRead(ConversationInfo info) {
+    final key = _latestMessageKey(info);
+    if (key != null) {
+      _fallbackReadLatestMsgKeys[info.conversationID] = key;
+    }
+    if (_fallbackUnreadCounts.remove(info.conversationID) != null) {
+      list.refresh();
+    }
+  }
+
   void onChanged(List<ConversationInfo> newList) async {
     print('[ConversationLogic] onChanged 被调用, 会话数: ${newList.length}');
 
@@ -255,7 +324,7 @@ class ConversationLogic extends GetxController {
 
     print('[ConversationLogic] 过滤后会话数: ${filteredList.length}');
 
-    // Removed unread count fixing logic - backend handles this correctly now
+    _syncFallbackUnreadCounts(filteredList);
 
     if (reInstall) {
       onChangeConversations.addAll(filteredList);
@@ -338,7 +407,7 @@ class ConversationLogic extends GetxController {
   void promptSoundOrNotification(ConversationInfo info) {
     if (imLogic.userInfo.value.globalRecvMsgOpt == 0 &&
         info.recvMsgOpt == 0 &&
-        info.unreadCount > 0 &&
+        getUnreadCount(info) > 0 &&
         info.latestMsg?.sendID != OpenIM.iMManager.userID) {
       appLogic.promptSoundOrNotification(info.latestMsg!);
     }
@@ -355,6 +424,7 @@ class ConversationLogic extends GetxController {
 
   /// 设为已读
   setReadConversation(ConversationInfo info) async {
+    _markFallbackUnreadRead(info);
     await OpenIM.iMManager.conversationManager.markConversationMessageAsRead(
       conversationID: info.conversationID,
     );
@@ -368,6 +438,8 @@ class ConversationLogic extends GetxController {
       await OpenIM.iMManager.conversationManager
           .deleteConversationAndDeleteAllMsg(
               conversationID: info.conversationID);
+      _fallbackUnreadCounts.remove(info.conversationID);
+      _fallbackReadLatestMsgKeys.remove(info.conversationID);
       list.removeWhere((item) => item.conversationID == info.conversationID);
     }
   }
@@ -609,7 +681,8 @@ class ConversationLogic extends GetxController {
   }
 
   int getUnreadCount(ConversationInfo info) {
-    return info.unreadCount;
+    if (info.unreadCount > 0) return info.unreadCount;
+    return _fallbackUnreadCounts[info.conversationID] ?? 0;
   }
 
   bool existUnreadMsg(ConversationInfo info) {
@@ -705,6 +778,7 @@ class ConversationLogic extends GetxController {
     late List<ConversationInfo> list;
     try {
       list = await _request();
+      _syncFallbackUnreadCounts(list, pruneMissing: true);
       this.list.assignAll(list);
 
       if (list.isEmpty || list.length < pageSize) {
@@ -775,6 +849,7 @@ class ConversationLogic extends GetxController {
       return true;
     }).toList();
 
+    _syncFallbackUnreadCounts(filteredResult, pruneMissing: true);
     list.assignAll(filteredResult);
     _sortConversationList();
     _loadRedPacketStatusCache();
@@ -857,11 +932,13 @@ class ConversationLogic extends GetxController {
     );
 
     if (await _jumpOANtf(conversationInfo)) {
+      _markFallbackUnreadRead(conversationInfo);
       await AppNavigator.startChatNotification(
           conversationInfo: conversationInfo);
       return;
     }
 
+    _markFallbackUnreadRead(conversationInfo);
     await AppNavigator.startChat(
       offUntilHome: offUntilHome,
       draftText: conversationInfo.draftText,

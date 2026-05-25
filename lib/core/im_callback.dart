@@ -235,8 +235,13 @@ mixin IMCallback {
         reason == 'recv_offline_message' ||
         reason == 'recv_new_message';
     if (!shouldPrompt) return;
-    final allowRecentReadPrompt =
-        reason == 'sync_ended' || reason == 'recv_offline_message';
+    // dawn 2026-05-25 修复手机端文件消息无提示：文件/弱网场景会话 latestMsg 已更新但 unreadCount 偶发为 0，
+    // 会话变更和新消息补刷也允许最近收到的对方消息触发提示，后续用消息 key 去重避免重复响。
+    final allowRecentReadPrompt = reason == 'sync_ended' ||
+        reason == 'recv_offline_message' ||
+        reason == 'conversation_changed' ||
+        reason == 'new_conversation' ||
+        reason == 'recv_new_message';
 
     for (final conversation in list) {
       final latestMsg = conversation.latestMsg;
