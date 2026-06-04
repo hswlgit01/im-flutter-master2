@@ -41,6 +41,7 @@ export 'src/widgets/bottom_sheet_view.dart';
 export 'src/widgets/button.dart';
 export 'src/widgets/chat/chat_bubble.dart';
 export 'src/widgets/chat/chat_call_item_view.dart';
+export 'src/widgets/chat/chat_custom_face_view.dart';
 export 'src/widgets/chat/chat_delayed_status_view.dart';
 export 'src/widgets/chat/chat_disable_input_box.dart';
 export 'src/widgets/chat/chat_friend_relationship_hint_view.dart';

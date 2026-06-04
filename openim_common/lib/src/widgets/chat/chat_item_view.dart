@@ -215,6 +215,12 @@ class _ChatItemViewState extends State<ChatItemView> {
             isISend: _isISend,
             message: _message,
           );
+    } else if (_message.isCustomFaceType) {
+      // dawn 2026-06-04 修复移动端无法查看收藏图片：Web 收藏图片使用 OpenIM customFace 消息。
+      child = ChatCustomFaceView(
+        message: _message,
+        isISend: _isISend,
+      );
     } else if (_message.contentType == MessageType.card) {
       child = widget.mediaItemBuilder?.call(context, _message);
     } else if (_message.isNotificationType) {
@@ -246,7 +252,6 @@ class _ChatItemViewState extends State<ChatItemView> {
           return child;
         }
       }
-      
     } else if (_message.contentType == MessageType.quote) {
       child = _quoteMessageView(
         context: context,
@@ -334,6 +339,12 @@ class _ChatItemViewState extends State<ChatItemView> {
           ],
         );
         break;
+      case MessageType.customFace:
+        quoteMessageElm = Text(
+          "${message.quoteElem?.quoteMessage?.senderNickname}: [${StrRes.emoji}]",
+          style: Styles.ts_8E9AB0_12sp,
+        );
+        break;
       case MessageType.voice:
         quoteMessageElm = Row(
           mainAxisSize: MainAxisSize.min,
@@ -394,7 +405,8 @@ class _ChatItemViewState extends State<ChatItemView> {
         quoteMessageElm = ChatText(text: StrRes.unsupportedMessage);
     }
     return Column(
-      crossAxisAlignment: isISend ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment:
+          isISend ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         ChatBubble(
           bubbleType: isISend ? BubbleType.send : BubbleType.receiver,

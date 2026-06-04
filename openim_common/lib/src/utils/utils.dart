@@ -814,6 +814,10 @@ class IMUtils {
         case MessageType.picture:
           content = '[${StrRes.picture}]';
           break;
+        case MessageType.customFace:
+          // dawn 2026-06-04 修复移动端无法查看收藏图片：会话列表将 Web 收藏图片显示为自定义表情摘要。
+          content = '[${StrRes.emoji}]';
+          break;
         case MessageType.custom:
           final map = _unwrapCustomData(message.customElem?.data);
           final customType = map?['customType'];
@@ -1331,7 +1335,7 @@ class IMUtils {
           EasyLoading.showToast(StrRes.fileDownloading);
           return;
         }
-        
+
         // 标记为正在下载
         _downloadingFiles.add(fileKey);
         Logger.print('开始下载文件...');
