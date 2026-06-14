@@ -29,7 +29,9 @@ class GroupMemberListLogic extends GetxController {
   final filteredMemberList = <GroupMembersInfo>[].obs; // 过滤后的成员列表
   final checkedList = <GroupMembersInfo>[].obs;
   final poController = CustomPopupMenuController();
-  int count = 500;
+  // dawn 2026-06-14 优化3万人群成员加载：成员页按50个一页滚动加载，避免首次进入拉取500个成员和头像。
+  static const int _memberPageSize = 50;
+  int count = _memberPageSize;
   final myGroupMemberLevel = 1.obs;
   late GroupInfo groupInfo;
   late GroupMemberOpType opType;
@@ -42,10 +44,14 @@ class GroupMemberListLogic extends GetxController {
   final searchContent = ''.obs;
 
   bool get isMultiSelMode =>
-      opType == GroupMemberOpType.call || opType == GroupMemberOpType.at || opType == GroupMemberOpType.del;
+      opType == GroupMemberOpType.call ||
+      opType == GroupMemberOpType.at ||
+      opType == GroupMemberOpType.del;
 
   bool get excludeSelfFromList =>
-      opType == GroupMemberOpType.call || opType == GroupMemberOpType.at || opType == GroupMemberOpType.transferRight;
+      opType == GroupMemberOpType.call ||
+      opType == GroupMemberOpType.at ||
+      opType == GroupMemberOpType.transferRight;
 
   bool get isDelMember => opType == GroupMemberOpType.del;
 
@@ -125,8 +131,6 @@ class GroupMemberListLogic extends GetxController {
       filter: isDelMember ? (isOwner ? 4 : (isAdmin ? 3 : 0)) : 0,
     );
 
-    count = 100;
-
     return result;
   }
 
@@ -158,12 +162,12 @@ class GroupMemberListLogic extends GetxController {
       // 匹配用户ID
       final userID = member.userID?.toLowerCase() ?? '';
 
-      return nickname.contains(keyword) ||
-             userID.contains(keyword);
+      return nickname.contains(keyword) || userID.contains(keyword);
     }).toList();
   }
 
-  bool isChecked(GroupMembersInfo membersInfo) => checkedList.contains(membersInfo);
+  bool isChecked(GroupMembersInfo membersInfo) =>
+      checkedList.contains(membersInfo);
 
   clickMember(GroupMembersInfo membersInfo) async {
     if (opType == GroupMemberOpType.transferRight) {

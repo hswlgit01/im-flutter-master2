@@ -358,6 +358,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   String? groupOwnerID;
 
   final _pageSize = 20;
+  // dawn 2026-06-14 优化大群历史加载：首屏固定最近50条，上滑历史最多展示最新消息往前5小时。
+  static const int _initialHistoryPageSize = 50;
+  static const Duration _groupHistoryWindow = Duration(hours: 5);
+  bool _groupHistoryReachTimeLimit = false;
+  int? _groupHistoryCutoffMs;
 
   RTCBridge? get rtcBridge => PackageBridge.rtcBridge;
 
@@ -1290,6 +1295,43 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final list = List<Message>.from(messages);
     list.sort((a, b) => (a.sendTime ?? 0).compareTo(b.sendTime ?? 0));
     return list;
+  }
+
+  int _messageTimeMs(Message message) =>
+      message.sendTime ?? message.createTime ?? 0;
+
+  void _ensureGroupHistoryCutoff(List<Message> messages) {
+    if (searchMessage != null ||
+        !isGroupChat ||
+        _groupHistoryCutoffMs != null) {
+      return;
+    }
+    var latest = 0;
+    for (final message in messages) {
+      final time = _messageTimeMs(message);
+      if (time > latest) latest = time;
+    }
+    if (latest > 0) {
+      _groupHistoryCutoffMs = latest - _groupHistoryWindow.inMilliseconds;
+    }
+  }
+
+  List<Message> _applyGroupHistoryWindow(List<Message> messages) {
+    if (searchMessage != null || !isGroupChat || messages.isEmpty) {
+      return messages;
+    }
+    _ensureGroupHistoryCutoff(messages);
+    final cutoff = _groupHistoryCutoffMs;
+    if (cutoff == null) return messages;
+
+    final filtered = messages.where((message) {
+      final time = _messageTimeMs(message);
+      return time == 0 || time >= cutoff;
+    }).toList();
+    if (filtered.length < messages.length) {
+      _groupHistoryReachTimeLimit = true;
+    }
+    return filtered;
   }
 
   // 处理新消息的统一方法
@@ -3433,15 +3475,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   Future<AdvancedMessage> _fetchHistoryMessages(Message? startMsg) {
-    // 首次进入会话时,未读很多会导致一次性拉取过多历史消息,影响进入速度。
-    // 这里为 pageSize 设置一个合理上限,保证首屏加载更快,更多历史由用户上滑按需加载。
-    var pageSize = _isFirstLoad
-        ? max(conversationInfo.unreadCount + 1, _pageSize)
+    // dawn 2026-06-14 优化大群首屏：长时间未读也只取最近50条，避免进群一次性拉大量历史消息。
+    final pageSize = _isFirstLoad && searchMessage == null
+        ? _initialHistoryPageSize
         : _pageSize;
-    const int kMaxFirstPageSize = 100;
-    if (pageSize > kMaxFirstPageSize) {
-      pageSize = kMaxFirstPageSize;
-    }
     return OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
       conversationID: conversationInfo.conversationID,
       count: pageSize,
@@ -3490,6 +3527,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   Future<bool> onScrollToTopLoad() async {
+    if (searchMessage == null && _groupHistoryReachTimeLimit) {
+      return false;
+    }
     Message? startMsg = customChatListViewController.list.firstOrNull;
     var result = await _fetchHistoryMessages(startMsg);
     bool serverPulledIsEnd = true;
@@ -3505,7 +3545,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         conversationID: conversationID,
         groupID: groupID,
         endSeq: endSeq,
-        count: _pageSize,
+        count: _isFirstLoad ? _initialHistoryPageSize : _pageSize,
       );
       serverPulledIsEnd = isEnd;
       didServerPull = true;
@@ -3527,7 +3567,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     var list = result.messageList!;
 
     // 过滤通话信令及群通知消息，并按 sendTime 升序保证顺序一致
-    var filteredList = _sortMessagesBySendTimeAsc(_filterMessagesForChat(list));
+    _ensureGroupHistoryCutoff(list);
+    var filteredList = _applyGroupHistoryWindow(
+      _sortMessagesBySendTimeAsc(_filterMessagesForChat(list)),
+    );
 
     // 首次加载时若本页全是群通知等被过滤消息，则继续向后拉取直到有可展示消息或到末尾，避免群聊只显示“空+一直转圈”
     const int maxIterations = 10;
@@ -3535,6 +3578,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     while (searchMessage == null &&
         _isFirstLoad &&
         filteredList.isEmpty &&
+        !_groupHistoryReachTimeLimit &&
         list.isNotEmpty &&
         result.isEnd != true &&
         iterations < maxIterations) {
@@ -3542,9 +3586,16 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       if (nextResult.messageList == null || nextResult.messageList!.isEmpty)
         break;
       list = [...list, ...nextResult.messageList!];
-      filteredList = _sortMessagesBySendTimeAsc(_filterMessagesForChat(list));
+      _ensureGroupHistoryCutoff(list);
+      filteredList = _applyGroupHistoryWindow(
+        _sortMessagesBySendTimeAsc(_filterMessagesForChat(list)),
+      );
       result = nextResult;
       iterations++;
+    }
+
+    if (filteredList.isEmpty && _groupHistoryReachTimeLimit) {
+      return false;
     }
 
     if (searchMessage == null && _isFirstLoad) {

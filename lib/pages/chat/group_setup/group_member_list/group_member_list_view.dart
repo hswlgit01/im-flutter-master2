@@ -9,7 +9,8 @@ import 'package:sprintf/sprintf.dart';
 import 'group_member_list_logic.dart';
 
 class GroupMemberListPage extends StatelessWidget {
-  final logic = Get.find<GroupMemberListLogic>(tag: (Get.arguments['opType'] as GroupMemberOpType).name);
+  final logic = Get.find<GroupMemberListLogic>(
+      tag: (Get.arguments['opType'] as GroupMemberOpType).name);
 
   GroupMemberListPage({super.key});
 
@@ -17,14 +18,19 @@ class GroupMemberListPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() => Scaffold(
           appBar: TitleBar.back(
-            title: logic.opType == GroupMemberOpType.del ? StrRes.removeGroupMember : StrRes.groupMember,
+            title: logic.opType == GroupMemberOpType.del
+                ? StrRes.removeGroupMember
+                : StrRes.groupMember,
             right: logic.opType == GroupMemberOpType.view
                 ? PopButton(
                     popCtrl: logic.poController,
                     horizontalMargin: 1.w,
                     menus: [
-                      PopMenuInfo(text: StrRes.addMember, onTap: logic.addMember),
-                      if (logic.isOwnerOrAdmin) PopMenuInfo(text: StrRes.delMember, onTap: logic.delMember),
+                      PopMenuInfo(
+                          text: StrRes.addMember, onTap: logic.addMember),
+                      if (logic.isOwnerOrAdmin)
+                        PopMenuInfo(
+                            text: StrRes.delMember, onTap: logic.delMember),
                     ],
                     child: ImageRes.moreBlack.toImage
                       ..width = 28.w
@@ -79,7 +85,8 @@ class GroupMemberListPage extends StatelessWidget {
                   footer: IMViews.buildFooter(),
                   child: ListView.builder(
                     itemCount: logic.filteredMemberList.length,
-                    itemBuilder: (_, index) => Obx(() => _buildItemView(logic.filteredMemberList[index])),
+                    itemBuilder: (_, index) => Obx(
+                        () => _buildItemView(logic.filteredMemberList[index])),
                   ),
                 ),
               ),
@@ -89,41 +96,43 @@ class GroupMemberListPage extends StatelessWidget {
         ));
   }
 
-  Widget _buildItemView(GroupMembersInfo membersInfo) => logic.hiddenMember(membersInfo)
-      ? const SizedBox()
-      : GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () => logic.clickMember(membersInfo),
-          child: Container(
-            height: 64.h,
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            color: Styles.c_FFFFFF,
-            child: Row(
-              children: [
-                if (logic.isMultiSelMode)
-                  Padding(
-                    padding: EdgeInsets.only(right: 15.w),
-                    child: ChatRadio(checked: logic.isChecked(membersInfo)),
-                  ),
-                AvatarView(
-                  url: membersInfo.faceURL,
-                  text: membersInfo.nickname,
+  Widget _buildItemView(GroupMembersInfo membersInfo) =>
+      logic.hiddenMember(membersInfo)
+          ? const SizedBox()
+          : GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => logic.clickMember(membersInfo),
+              child: Container(
+                height: 64.h,
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                color: Styles.c_FFFFFF,
+                child: Row(
+                  children: [
+                    if (logic.isMultiSelMode)
+                      Padding(
+                        padding: EdgeInsets.only(right: 15.w),
+                        child: ChatRadio(checked: logic.isChecked(membersInfo)),
+                      ),
+                    AvatarView(
+                      url: membersInfo.faceURL,
+                      text: membersInfo.nickname,
+                      lowMemory: true,
+                    ),
+                    10.horizontalSpace,
+                    Expanded(
+                      child: (membersInfo.nickname ?? '').toText
+                        ..style = Styles.ts_0C1C33_17sp
+                        ..maxLines = 1
+                        ..overflow = TextOverflow.ellipsis,
+                    ),
+                    if (membersInfo.roleLevel == GroupRoleLevel.owner)
+                      StrRes.groupOwner.toText..style = Styles.ts_8E9AB0_17sp,
+                    if (membersInfo.roleLevel == GroupRoleLevel.admin)
+                      StrRes.groupAdmin.toText..style = Styles.ts_8E9AB0_17sp,
+                  ],
                 ),
-                10.horizontalSpace,
-                Expanded(
-                  child: (membersInfo.nickname ?? '').toText
-                    ..style = Styles.ts_0C1C33_17sp
-                    ..maxLines = 1
-                    ..overflow = TextOverflow.ellipsis,
-                ),
-                if (membersInfo.roleLevel == GroupRoleLevel.owner)
-                  StrRes.groupOwner.toText..style = Styles.ts_8E9AB0_17sp,
-                if (membersInfo.roleLevel == GroupRoleLevel.admin)
-                  StrRes.groupAdmin.toText..style = Styles.ts_8E9AB0_17sp,
-              ],
-            ),
-          ),
-        );
+              ),
+            );
 
   Widget _buildCheckedConfirmView() => Container(
         height: 66.h,
@@ -155,7 +164,8 @@ class GroupMemberListPage extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        sprintf(StrRes.selectedPeopleCount, [logic.checkedList.length]).toText
+                        sprintf(StrRes.selectedPeopleCount,
+                            [logic.checkedList.length]).toText
                           ..style = Styles.ts_0089FF_14sp,
                         ImageRes.expandUpArrow.toImage
                           ..width = 24.w
@@ -163,7 +173,10 @@ class GroupMemberListPage extends StatelessWidget {
                       ],
                     ),
                     if (logic.checkedList.isNotEmpty) 4.verticalSpace,
-                    logic.checkedList.map((e) => e.nickname ?? '').join('、').toText
+                    logic.checkedList
+                        .map((e) => e.nickname ?? '')
+                        .join('、')
+                        .toText
                       ..style = Styles.ts_8E9AB0_14sp
                       ..maxLines = 1
                       ..overflow = TextOverflow.ellipsis,
@@ -188,7 +201,8 @@ class GroupMemberListPage extends StatelessWidget {
 
 class SelectedMemberListView extends StatelessWidget {
   SelectedMemberListView({Key? key}) : super(key: key);
-  final logic = Get.find<GroupMemberListLogic>(tag: (Get.arguments['opType'] as GroupMemberOpType).name);
+  final logic = Get.find<GroupMemberListLogic>(
+      tag: (Get.arguments['opType'] as GroupMemberOpType).name);
 
   @override
   Widget build(BuildContext context) {
@@ -212,7 +226,8 @@ class SelectedMemberListView extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    sprintf(StrRes.selectedPeopleCount, [logic.checkedList.length]).toText
+                    sprintf(StrRes.selectedPeopleCount,
+                        [logic.checkedList.length]).toText
                       ..style = Styles.ts_0C1C33_17sp_medium,
                     const Spacer(),
                     GestureDetector(
@@ -221,7 +236,8 @@ class SelectedMemberListView extends StatelessWidget {
                       child: Container(
                         height: 52.h,
                         alignment: Alignment.center,
-                        child: StrRes.confirm.toText..style = Styles.ts_0089FF_17sp,
+                        child: StrRes.confirm.toText
+                          ..style = Styles.ts_0089FF_17sp,
                       ),
                     ),
                   ],
@@ -231,7 +247,8 @@ class SelectedMemberListView extends StatelessWidget {
                 child: ListView.builder(
                   itemCount: logic.checkedList.length,
                   shrinkWrap: true,
-                  itemBuilder: (_, index) => _buildItemView(logic.checkedList[index]),
+                  itemBuilder: (_, index) =>
+                      _buildItemView(logic.checkedList[index]),
                 ),
               ),
             ],
@@ -248,6 +265,7 @@ class SelectedMemberListView extends StatelessWidget {
             AvatarView(
               url: membersInfo.faceURL,
               text: membersInfo.nickname,
+              lowMemory: true,
             ),
             10.horizontalSpace,
             Expanded(

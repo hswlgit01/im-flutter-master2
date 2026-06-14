@@ -138,6 +138,7 @@ class GroupProfilePanelPage extends StatelessWidget {
                   height: 44.h,
                   text: member.nickname,
                   url: member.faceURL,
+                  lowMemory: true,
                 );
               },
             ),
