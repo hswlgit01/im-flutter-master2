@@ -30,7 +30,8 @@ class FriendConversationHelper {
       await ensureConversationsForAllFriends();
       return OpenIM.iMManager.conversationManager.getConversationListSplit(
         offset: 0,
-        count: 400,
+        // dawn 2026-06-16 优化移动端注册后进入首页速度：只返回首屏会话，后续由 SDK 同步/刷新补齐。
+        count: 50,
       );
     } catch (e, s) {
       Logger.print(

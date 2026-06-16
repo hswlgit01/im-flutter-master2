@@ -29,7 +29,9 @@ class ConversationLogic extends GetxController {
   final refreshController = RefreshController();
   final orgController = Get.find<OrgController>();
   final tempDraftText = <String, String>{};
-  final pageSize = 400;
+  // dawn 2026-06-16 优化移动端登录速度：会话首屏只拉 50 条，避免账号会话多时登录后长时间同步卡屏。
+  static const firstPageSize = 50;
+  final pageSize = firstPageSize;
 
   final imStatus = IMSdkStatus.connectionSucceeded.obs;
   bool reInstall = false;
@@ -165,16 +167,12 @@ class ConversationLogic extends GetxController {
 
       if (status == IMSdkStatus.syncStart) {
         reInstall = appReInstall;
-        if (reInstall) {
-          EasyLoading.showProgress(0, status: StrRes.synchronizing);
-        }
+        // dawn 2026-06-16 优化移动端登录体验：SDK 重建本地库时仍会同步，但不再用全屏“同步中”遮罩阻塞首页。
+        Logger.print('[ConversationLogic] SDK 开始同步, reInstall=$reInstall');
       }
 
       if (status == IMSdkStatus.syncProgress && reInstall) {
-        final p = (progress!).toDouble() / 100.0;
-
-        EasyLoading.showProgress(p,
-            status: '${StrRes.synchronizing}(${(p * 100.0).truncate()}%)');
+        Logger.print('[ConversationLogic] SDK 同步进度: ${progress ?? 0}%');
       } else if (status == IMSdkStatus.syncEnded ||
           status == IMSdkStatus.syncFailed) {
         EasyLoading.dismiss();
@@ -808,7 +806,7 @@ class ConversationLogic extends GetxController {
 
   static Future<List<ConversationInfo>> getConversationFirstPage() async {
     final result = await OpenIM.iMManager.conversationManager
-        .getConversationListSplit(offset: 0, count: 400);
+        .getConversationListSplit(offset: 0, count: firstPageSize);
 
     return result;
   }
@@ -885,7 +883,7 @@ class ConversationLogic extends GetxController {
       }
       temp.addAll(result);
 
-      if (result.length < pageSize) {
+      if (result.length < pageSize || temp.length >= pageSize) {
         break;
       }
     }

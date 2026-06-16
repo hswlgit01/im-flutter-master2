@@ -3814,7 +3814,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     _isFirstLoad = true;
     try {
       await OpenIM.iMManager.conversationManager
-          .getConversationListSplit(offset: 0, count: 400);
+          // dawn 2026-06-16 优化移动端空历史重试速度：触发同步只需补刷首屏会话，不再拉 400 条。
+          .getConversationListSplit(offset: 0, count: 50);
       await Future.delayed(const Duration(milliseconds: 1800));
       await onScrollToTopLoad();
     } catch (_) {}

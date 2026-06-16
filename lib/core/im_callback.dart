@@ -161,7 +161,8 @@ mixin IMCallback {
   Future<void> refreshConversationSnapshot({String reason = 'manual'}) async {
     try {
       final conversations = await OpenIM.iMManager.conversationManager
-          .getConversationListSplit(offset: 0, count: 400);
+          // dawn 2026-06-16 优化移动端登录/前台恢复速度：通知兜底只补刷首屏会话，避免每次同步结束拉 400 条。
+          .getConversationListSplit(offset: 0, count: 50);
       conversationChangedSubject.addSafely(conversations);
       _promptLatestMessagesFromConversations(conversations, reason);
       Logger.print(
