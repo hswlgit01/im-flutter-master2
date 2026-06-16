@@ -4,6 +4,7 @@ import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:get/get.dart';
 import 'package:openim_common/openim_common.dart';
 
+import '../../../core/controller/im_controller.dart';
 import '../group_profile_panel/group_profile_panel_logic.dart';
 
 class SendVerificationApplicationLogic extends GetxController {
@@ -55,6 +56,7 @@ class SendVerificationApplicationLogic extends GetxController {
       print('[SendVerification] ✅ SDK.addFriend 调用成功');
       print('[SendVerification] 准备返回上一页...');
 
+      await _syncAddedFriendToLocalList();
       Get.back();
       IMViews.showToast(StrRes.sendSuccessfully);
 
@@ -74,6 +76,23 @@ class SendVerificationApplicationLogic extends GetxController {
         }
       }
       IMViews.showToast(StrRes.sendFailed);
+    }
+  }
+
+  Future<void> _syncAddedFriendToLocalList() async {
+    final targetUserID = userID;
+    if (targetUserID == null || targetUserID.isEmpty) return;
+    try {
+      // dawn 2026-06-16 修复直加好友后通讯录为空：发送成功后主动查询好友并推送本地好友流。
+      final friends = await OpenIM.iMManager.friendshipManager.getFriendsInfo(
+        userIDList: [targetUserID],
+        filterBlack: true,
+      );
+      if (friends.isNotEmpty && Get.isRegistered<IMController>()) {
+        Get.find<IMController>().friendAddSubject.addSafely(friends.first);
+      }
+    } catch (e) {
+      Logger.print('[SendVerification] sync added friend ignored: $e');
     }
   }
 
