@@ -43,6 +43,7 @@ class FriendListLogic extends GetxController {
   }
 
   _getFriendList() async {
+    userIDList.clear();
     List<FriendInfo> list = [];
     for (int i = 0;; i++) {
       final temp = await OpenIM.iMManager.friendshipManager.getFriendListPage(
@@ -59,11 +60,22 @@ class FriendListLogic extends GetxController {
       _count = 1000;
     }
 
-    final result = list.map((e) {
-      userIDList.add(e.userID!);
+    final merged = <String, ISUserInfo>{};
+    for (final item in friendList) {
+      if (item.userID != null) {
+        merged[item.userID!] = item;
+      }
+    }
 
-      return ISUserInfo.fromJson(e.toJson());
-    }).toList();
+    for (final e in list) {
+      final info = ISUserInfo.fromJson(e.toJson());
+      if (info.userID != null) {
+        merged[info.userID!] = info;
+      }
+    }
+
+    final result = merged.values.toList();
+    userIDList.addAll(merged.keys);
 
     final convertResult = IMUtils.convertToAZList(result);
 

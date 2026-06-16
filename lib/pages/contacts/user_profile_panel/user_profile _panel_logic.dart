@@ -13,12 +13,10 @@ import 'package:openim_common/openim_common.dart';
 import 'package:sprintf/sprintf.dart';
 import 'package:openim_live/openim_live.dart';
 
-import '../../../core/controller/app_controller.dart';
 import '../../../core/controller/im_controller.dart';
 import '../../conversation/conversation_logic.dart';
 
 class UserProfilePanelLogic extends GetxController {
-  final appLogic = Get.find<AppController>();
   final imLogic = Get.find<IMController>();
   final conversationLogic = Get.find<ConversationLogic>();
   final orgController = Get.find<OrgController>();
@@ -120,11 +118,9 @@ class UserProfilePanelLogic extends GetxController {
 
   bool get isAllowAddFriend => userInfo.value.allowAddFriend == 1;
 
-  bool get allowSendMsgNotFriend {
-    final r = null == appLogic.clientConfigMap['allowSendMsgNotFriend'] ||
-        appLogic.clientConfigMap['allowSendMsgNotFriend'] == '1';
-    return r;
-  }
+  // dawn 2026-06-16 修复私聊权限默认放开：是否允许非好友直聊只看当前账号的 canSendFreeMsg，
+  // 不再吃客户端配置的默认值，避免普通用户在没有好友关系时也能直接发消息。
+  bool get allowSendMsgNotFriend => imLogic.userInfo.value.canSendFreeMsg == 1;
 
   void _getUsersInfo() async {
     final userID = userInfo.value.userID!;

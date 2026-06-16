@@ -943,6 +943,10 @@ mixin IMCallback {
       print('[IMCallback] 准备创建会话: friendUserID=$friendUserID');
       Logger.print('[IMCallback] 好友申请已通过，确保会话创建: friendUserID=$friendUserID');
       _ensureConversationExists(friendUserID);
+
+      // dawn 2026-06-16 修复好友关系只进会话不进通讯录：SDK 的 friendAdded/friendApplicationAccepted
+      // 在部分机型或弱网下会缺回调，这里再从服务端补一次好友详情并广播，确保好友列表实时刷新。
+      Future.microtask(() => _syncFriendAddedByUserID(friendUserID));
     }
   }
 
@@ -992,6 +996,22 @@ mixin IMCallback {
         print('[IMCallback] ❌ 刷新会话列表失败: $e');
       }
     });
+  }
+
+  /// 从服务端补发好友已建立事件，避免 SDK 回调缺失导致好友列表不同步
+  void _syncFriendAddedByUserID(String friendUserID) async {
+    try {
+      final friendInfo =
+          await OpenIM.iMManager.friendshipManager.getFriendsInfo(
+        userIDList: [friendUserID],
+      );
+
+      if (friendInfo.isNotEmpty) {
+        friendAdded(friendInfo.first);
+      }
+    } catch (e) {
+      Logger.print('[IMCallback] ⚠️ 补发好友添加事件失败: $e');
+    }
   }
 
   /// 确保会话存在
