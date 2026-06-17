@@ -83,7 +83,16 @@ class SendVerificationApplicationLogic extends GetxController {
     final targetUserID = userID;
     if (targetUserID == null || targetUserID.isEmpty) return;
     try {
-      // dawn 2026-06-16 修复直加好友后通讯录为空：发送成功后主动查询好友并推送本地好友流。
+      // dawn 2026-06-17 修复好友申请误入本地通讯录：addFriend 成功只代表申请提交成功，
+      // 只有服务端确认双方已是好友时，才补发本地好友变更事件。
+      final relationship = await OpenIM.iMManager.friendshipManager.checkFriend(
+        userIDList: [targetUserID],
+      );
+      final isFriend = relationship.any(
+        (e) => e.userID == targetUserID && e.result == 1,
+      );
+      if (!isFriend) return;
+
       final friends = await OpenIM.iMManager.friendshipManager.getFriendsInfo(
         userIDList: [targetUserID],
         filterBlack: true,

@@ -41,25 +41,33 @@ class HomeLogic extends SuperController {
     this.index.value = index;
   }
 
-
   void getUnhandledFriendApplicationCount() async {
-    var i = 0;
-    var list = await OpenIM.iMManager.friendshipManager.getFriendApplicationListAsRecipient();
-    var haveReadList = DataSp.getHaveReadUnHandleFriendApplication();
-    haveReadList ??= <String>[];
-    for (var info in list) {
-      var id = IMUtils.buildFriendApplicationID(info);
-      if (!haveReadList.contains(id)) {
-        if (info.handleResult == 0) i++;
+    try {
+      var i = 0;
+      final list = await OpenIM.iMManager.friendshipManager
+          .getFriendApplicationListAsRecipient(
+        // dawn 2026-06-17 修复新好友红点漏刷：显式分页拉取最近申请，避免默认空参数漏数据。
+        req: GetFriendApplicationListAsRecipientReq(offset: 0, count: 100),
+      );
+      var haveReadList = DataSp.getHaveReadUnHandleFriendApplication();
+      haveReadList ??= <String>[];
+      for (var info in list) {
+        var id = IMUtils.buildFriendApplicationID(info);
+        if (!haveReadList.contains(id)) {
+          if (info.handleResult == 0) i++;
+        }
       }
+      unhandledFriendApplicationCount.value = i;
+      unhandledCount.value = unhandledGroupApplicationCount.value + i;
+    } catch (e) {
+      Logger.print('[HomeLogic] getUnhandledFriendApplicationCount failed: $e');
     }
-    unhandledFriendApplicationCount.value = i;
-    unhandledCount.value = unhandledGroupApplicationCount.value + i;
   }
 
   void getUnhandledGroupApplicationCount() async {
     var i = 0;
-    var list = await OpenIM.iMManager.groupManager.getGroupApplicationListAsRecipient();
+    var list = await OpenIM.iMManager.groupManager
+        .getGroupApplicationListAsRecipient();
     var haveReadList = DataSp.getHaveReadUnHandleGroupApplication();
     haveReadList ??= <String>[];
     for (var info in list) {
@@ -199,10 +207,9 @@ class HomeLogic extends SuperController {
   /// 检查钱包是否开通
   Future<void> checkWalletStatus() async {
     try {
-     
       final apiService = app_api.ApiService();
       final exist = await apiService.checkWalletExist();
-     
+
       // 更新本地存储的钱包状态
       await app_sp.DataSp.putWalletStatus(exist);
     } catch (e) {

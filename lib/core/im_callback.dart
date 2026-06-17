@@ -521,28 +521,51 @@ mixin IMCallback {
         const Duration(seconds: 2), _handleFriendApplicationNotification);
   }
 
+  FriendApplicationInfo? _latestWaitingFriendApplication(
+      List<FriendApplicationInfo> list) {
+    final waitingList = list.where((e) => (e.handleResult ?? 0) == 0).toList();
+    if (waitingList.isEmpty) return null;
+    waitingList
+        .sort((a, b) => (b.createTime ?? 0).compareTo(a.createTime ?? 0));
+    return waitingList.first;
+  }
+
+  void _notifyFriendApplicationIfNeeded(FriendApplicationInfo info) {
+    final key =
+        'friend_application_${info.fromUserID}_${info.toUserID}_${info.createTime ?? 0}';
+    if (!_markRecent(_friendRelationshipNotifyMarks, key, windowMs: 3000)) {
+      Logger.print('[IMCallback] 跳过重复好友申请通知: $key');
+      return;
+    }
+    _showFriendApplicationNotification(info);
+  }
+
   void _handleFriendApplicationNotification() async {
     try {
       Logger.print('[IMCallback] 🔔 开始处理好友申请通知');
       Logger.print('[IMCallback] 正在获取最新好友申请列表...');
       var list = await OpenIM.iMManager.friendshipManager
-          .getFriendApplicationListAsRecipient();
+          .getFriendApplicationListAsRecipient(
+        // dawn 2026-06-17 修复新好友申请漏提示：显式拉取最近 100 条，避免 SDK 默认空参数漏数据。
+        req: GetFriendApplicationListAsRecipientReq(offset: 0, count: 100),
+      );
       Logger.print('[IMCallback] 获取到 ${list.length} 个好友申请');
 
-      if (list.isNotEmpty) {
+      final latest = _latestWaitingFriendApplication(list);
+      if (latest != null) {
         Logger.print(
-            '[IMCallback] 好友申请详情: fromUserID=${list.first.fromUserID}, fromNickname=${list.first.fromNickname}');
+            '[IMCallback] 好友申请详情: fromUserID=${latest.fromUserID}, fromNickname=${latest.fromNickname}');
 
         // 触发好友申请变更事件
-        friendApplicationChangedSubject.addSafely(list.first);
+        friendApplicationChangedSubject.addSafely(latest);
         Logger.print('[IMCallback] ✅ 已触发好友申请变更事件');
 
         // 播放声音和显示通知
         Logger.print('[IMCallback] 🔔 准备播放声音和显示通知');
-        _showFriendApplicationNotification(list.first);
+        _notifyFriendApplicationIfNeeded(latest);
         Logger.print('[IMCallback] 🔔 声音和通知处理完成');
       } else {
-        Logger.print('[IMCallback] ⚠️ 没有获取到好友申请');
+        Logger.print('[IMCallback] ⚠️ 没有获取到待处理好友申请');
       }
     } catch (e, stackTrace) {
       Logger.print('[IMCallback] ❌ 获取好友申请列表失败: $e');
@@ -954,6 +977,12 @@ mixin IMCallback {
     Logger.print(
         '[IMCallback] friendApplicationAdded: fromUserID=${u.fromUserID}, toUserID=${u.toUserID}, handleMsg=${u.handleMsg}');
     friendApplicationChangedSubject.addSafely(u);
+    final currentUserID = OpenIM.iMManager.userID;
+    if (u.toUserID == currentUserID && u.fromUserID != currentUserID) {
+      // dawn 2026-06-17 修复好友申请无提示：SDK listener 到达时也触发拉取和前后台通知。
+      _notifyFriendApplicationIfNeeded(u);
+      _scheduleFriendApplicationRefresh();
+    }
   }
 
   void friendApplicationDeleted(FriendApplicationInfo u) {
