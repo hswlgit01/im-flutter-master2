@@ -366,6 +366,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   // dawn 2026-06-18 修复3万人群消息不同步：限制当前群服务端最新页补拉频率。
   bool _syncingLatestGroupPage = false;
   int _lastLatestGroupPageSyncMs = 0;
+  Timer? _latestGroupPageSyncTimer;
+  // dawn 2026-06-18 修复3万人群消息不同步：当前打开的大群低频补拉服务端最新页，
+  // 避免弱网或压测直写消息没有实时推送时，两台手机长期停在不同 seq。
+  static const int _largeGroupLatestSyncThreshold = 1000;
+  static const int _largeGroupLatestSyncSeconds = 5;
 
   RTCBridge? get rtcBridge => PackageBridge.rtcBridge;
 
@@ -539,6 +544,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       _isJoinedGroup();
       _queryMyGroupMemberInfo();
       _queryGroupInfo();
+      unawaited(_syncLatestGroupPageFromServer(reason: 'ready'));
       _groupMutedRefreshTimer?.cancel();
       if (_kGroupMutedFallbackPollSeconds > 0) {
         _groupMutedRefreshTimer = Timer.periodic(
@@ -752,6 +758,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         setIsReadNotification();
         memberCount.value = value.memberCount ?? 0;
         lookMemberInfo.value = value.lookMemberInfo ?? 0;
+        _ensureLatestGroupPageSyncTimer(reason: 'groupInfoUpdated');
         // 刷新 UI，使禁言状态 isGroupMute / enabled 及时更新
         update();
       }
@@ -1430,6 +1437,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         message.groupID == groupID &&
         isNotificationType(message)) {
       _scheduleGroupInfoRefresh();
+    }
+    if (isGroupChat && message.isGroupChat && message.groupID == groupID) {
+      // dawn 2026-06-18 修复3万人群消息不同步：只要当前群有实时消息到达，
+      // 就低频补拉服务端最新页，补齐同一时间窗口内漏推的相邻消息。
+      unawaited(_syncLatestGroupPageFromServer(reason: 'recvGroupMessage'));
     }
 
     if (isCurrentChat(message)) {
@@ -2919,6 +2931,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     _groupMutedRefreshTimer?.cancel();
     _groupInfoDebounceTimer?.cancel();
     _groupMutedRetryTimer?.cancel();
+    _latestGroupPageSyncTimer?.cancel();
 
     _debounce?.cancel();
     GetTags.destroyChatTag();
@@ -2968,6 +2981,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             _syncRxListWithMessageList();
             customChatListViewController.refresh();
             update();
+          }
+          if (isGroupChat) {
+            // dawn 2026-06-18 修复3万人群消息不同步：从后台回前台时不能只读 SDK 本地库，
+            // 大群还要对服务端最新 seq 做一次补偿拉取。
+            await _syncLatestGroupPageFromServer(reason: 'resume');
           }
         } catch (e) {
           customChatListViewController.refresh();
@@ -3138,6 +3156,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         memberCount.value = groupInfo!.memberCount!;
         lookMemberInfo.value = groupInfo!.lookMemberInfo!;
       }
+      _ensureLatestGroupPageSyncTimer(reason: 'queryGroupInfo');
       _queryMyGroupMemberInfo();
       update();
       // 若本次拿到的是“已禁言”(3)，可能是 SDK 缓存；1.5s 后再拉一次以尽量拿到服务端最新状态（仅一次）
@@ -3363,11 +3382,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         groupID: groupID,
         senderID: sendID,
       );
-      return msg;
     } catch (e) {
+      // dawn 2026-06-18 修复3万人群消息不同步：服务端补拉到的消息即使写 SDK 本地缓存失败，
+      // 也先返回给当前 UI 合并展示；下次进入仍会再次从服务端补偿。
       ILogger.d('_insertServerMsgToLocal parse/insert error: $e');
-      return null;
     }
+    return msg;
   }
 
   // dawn 2026-06-18 修复3万人群消息不同步：复用服务端消息转换结果，补拉后可直接合并到 UI。
@@ -3516,6 +3536,23 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       return (0, true);
     }
     return (inserted, isEnd);
+  }
+
+  void _ensureLatestGroupPageSyncTimer({required String reason}) {
+    if (!isGroupChat) return;
+    final count = memberCount.value;
+    if (count < _largeGroupLatestSyncThreshold) return;
+    if (_latestGroupPageSyncTimer != null) return;
+
+    // dawn 2026-06-18 修复3万人群消息不同步：只对当前打开的大群启用低频补偿轮询。
+    // 普通群继续依赖 SDK 实时推送，避免无谓增加服务端请求。
+    _latestGroupPageSyncTimer = Timer.periodic(
+      const Duration(seconds: _largeGroupLatestSyncSeconds),
+      (_) => unawaited(
+        _syncLatestGroupPageFromServer(reason: 'largeGroupTimer'),
+      ),
+    );
+    unawaited(_syncLatestGroupPageFromServer(reason: reason));
   }
 
   Future<void> _syncLatestGroupPageFromServer({required String reason}) async {
