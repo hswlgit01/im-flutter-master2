@@ -363,6 +363,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   static const Duration _groupHistoryWindow = Duration(hours: 5);
   bool _groupHistoryReachTimeLimit = false;
   int? _groupHistoryCutoffMs;
+  // dawn 2026-06-18 修复3万人群消息不同步：限制当前群服务端最新页补拉频率。
+  bool _syncingLatestGroupPage = false;
+  int _lastLatestGroupPageSyncMs = 0;
 
   RTCBridge? get rtcBridge => PackageBridge.rtcBridge;
 
@@ -610,13 +613,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
     });
 
-    // 取消设置直接回调，防止双重监听
-    // imLogic.onRecvNewMessage = null; // 无法设为null，这是SDK中定义的回调
-    // 为了清晰起见，我们仍然设置回调，但在回调中什么也不做
+    // dawn 2026-06-18 修复3万人群消息不同步：恢复当前聊天页直接回调兜底。
+    // SDK 会先触发 onRecvNewMessage 再广播 newMessageSubject，_handleNewMessage
+    // 内部已有 MessageDeduplicator 去重，避免弱网/大群下只依赖全局广播导致当前会话漏消息。
     imLogic.onRecvNewMessage = (Message message) async {
-      print(
-          '[ChatLogic] ⚠️ onRecvNewMessage回调收到消息，但已被禁用: ${message.contentType}');
-      // 不再调用_handleNewMessage，避免重复处理
+      print('[ChatLogic] ✅ onRecvNewMessage兜底收到消息: ${message.contentType}');
+      _handleNewMessage(message);
     };
 
     print('[ChatLogic] ✅ 消息监听设置完成');
@@ -1293,7 +1295,18 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   /// 按 sendTime 升序排序，保证列表为「旧→新」避免 API 返回顺序不一致导致错乱
   List<Message> _sortMessagesBySendTimeAsc(List<Message> messages) {
     final list = List<Message>.from(messages);
-    list.sort((a, b) => (a.sendTime ?? 0).compareTo(b.sendTime ?? 0));
+    // dawn 2026-06-18 修复3万人群消息不同步：群聊优先按服务端 seq 排序。
+    // 压测并发发送时 sendTime 可能相近或乱序，seq 才是多端一致的消息顺序。
+    list.sort((a, b) {
+      if (isGroupChat) {
+        final aSeq = a.seq ?? 0;
+        final bSeq = b.seq ?? 0;
+        if (aSeq > 0 && bSeq > 0 && aSeq != bSeq) {
+          return aSeq.compareTo(bSeq);
+        }
+      }
+      return (a.sendTime ?? 0).compareTo(b.sendTime ?? 0);
+    });
     return list;
   }
 
@@ -1476,6 +1489,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       } else {
         _isReceivedMessageWhenSyncing = true;
         customChatListViewController.insertToBottom(message);
+        if (isGroupChat) {
+          // dawn 2026-06-18 修复3万人群消息不同步：实时消息插入后按 seq 规整顺序。
+          final fullList =
+              _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList));
+          customChatListViewController.clear();
+          customChatListViewController.insertAllToBottom(fullList);
+          _syncRxListWithMessageList();
+          customChatListViewController.refresh();
+        }
 
         // 处理自定义消息（转账消息和红包消息）
         if (message.contentType == MessageType.custom &&
@@ -1560,6 +1582,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     }
     // 非搜索：仅拉一页（本地或群聊服务端最近一页），上滑时 onScrollToTopLoad 再按需拉更早历史
     await onScrollToTopLoad();
+    unawaited(_syncLatestGroupPageFromServer(reason: 'init'));
 
     // 第一阶段：先让消息尽快显示出来，再做红包/转账等较重的状态初始化，避免首屏白屏时间过长
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -3301,6 +3324,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           _isStartSyncing = false;
           _isFirstLoad = true;
           _loadHistoryForSyncEnd();
+          unawaited(_syncLatestGroupPageFromServer(reason: 'syncEnded'));
         }
       } else if (value.status == IMSdkStatus.syncFailed) {
         _isReceivedMessageWhenSyncing = false;
@@ -3328,8 +3352,26 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   /// 将服务端 PullMessageBySeqs 返回的单条 MsgData（Map）转为 SDK Message 并写入本地
-  Future<void> _insertServerMsgToLocal(
+  Future<Message?> _insertServerMsgToLocal(
       Map<String, dynamic> raw, String groupID) async {
+    final msg = _messageFromServerRaw(raw);
+    if (msg == null) return null;
+    final sendID = raw['sendID'] as String? ?? '';
+    try {
+      await OpenIM.iMManager.messageManager.insertGroupMessageToLocalStorage(
+        message: msg,
+        groupID: groupID,
+        senderID: sendID,
+      );
+      return msg;
+    } catch (e) {
+      ILogger.d('_insertServerMsgToLocal parse/insert error: $e');
+      return null;
+    }
+  }
+
+  // dawn 2026-06-18 修复3万人群消息不同步：复用服务端消息转换结果，补拉后可直接合并到 UI。
+  Message? _messageFromServerRaw(Map<String, dynamic> raw) {
     final sendID = raw['sendID'] as String? ?? '';
     final contentType = raw['contentType'] as int? ?? 0;
     final content = raw['content'];
@@ -3376,14 +3418,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (raw['ex'] != null) map['ex'] = raw['ex'];
     if (raw['attachedInfo'] != null) map['attachedInfo'] = raw['attachedInfo'];
     try {
-      final msg = Message.fromJson(map);
-      await OpenIM.iMManager.messageManager.insertGroupMessageToLocalStorage(
-        message: msg,
-        groupID: groupID,
-        senderID: sendID,
-      );
+      return Message.fromJson(map);
     } catch (e) {
-      ILogger.d('_insertServerMsgToLocal parse/insert error: $e');
+      ILogger.d('_messageFromServerRaw parse error: $e sendID=$sendID');
+      return null;
     }
   }
 
@@ -3394,6 +3432,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     required String groupID,
     int? endSeq,
     int count = 20,
+    List<Message>? insertedMessages,
   }) async {
     final userID = OpenIM.iMManager.userID;
     if (userID == null || userID.isEmpty) return (0, true);
@@ -3460,7 +3499,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         skipped++;
         continue;
       }
-      await _insertServerMsgToLocal(m, groupID);
+      final msg = await _insertServerMsgToLocal(m, groupID);
+      if (msg == null) {
+        skipped++;
+        continue;
+      }
+      insertedMessages?.add(msg);
       inserted++;
     }
 
@@ -3472,6 +3516,51 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       return (0, true);
     }
     return (inserted, isEnd);
+  }
+
+  Future<void> _syncLatestGroupPageFromServer({required String reason}) async {
+    if (searchMessage != null || !isGroupChat || _syncingLatestGroupPage) {
+      return;
+    }
+    final currentGroupID = conversationInfo.groupID ?? '';
+    if (currentGroupID.isEmpty) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastLatestGroupPageSyncMs < 2000) return;
+
+    _syncingLatestGroupPage = true;
+    _lastLatestGroupPageSyncMs = now;
+    try {
+      final latestMessages = <Message>[];
+      // dawn 2026-06-18 修复3万人群消息不同步：当前群进入/同步结束后主动补服务端最新一页。
+      // 只读 SDK 本地缓存时，弱网或超大群偶发停在旧 seq；直接补拉服务端最新 50 条并合并到 UI。
+      final (inserted, _) = await _pullGroupHistoryFromServer(
+        conversationID: conversationInfo.conversationID,
+        groupID: currentGroupID,
+        endSeq: null,
+        count: _initialHistoryPageSize,
+        insertedMessages: latestMessages,
+      );
+      if (latestMessages.isNotEmpty) {
+        _mergeHistoryMessages(latestMessages);
+      } else if (inserted > 0) {
+        final result =
+            await OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
+          conversationID: conversationInfo.conversationID,
+          count: _initialHistoryPageSize,
+          startMsg: null,
+        );
+        if (result.messageList != null && result.messageList!.isNotEmpty) {
+          _mergeHistoryMessages(result.messageList!);
+        }
+      }
+      ILogger.d(
+          '[群聊最新补拉] reason=$reason inserted=$inserted merged=${latestMessages.length}');
+    } catch (e) {
+      ILogger.w('[群聊最新补拉] reason=$reason error=$e');
+    } finally {
+      _syncingLatestGroupPage = false;
+    }
   }
 
   Future<AdvancedMessage> _fetchHistoryMessages(Message? startMsg) {
