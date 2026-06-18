@@ -67,7 +67,7 @@ class ApiAutoRoute {
   static Future<void> onRequestFailed() async {
     try {
       print('接口请求失败，触发重新寻路');
-      
+
       if (_onRouteFailure != null) {
         _onRouteFailure!();
       }
@@ -99,6 +99,16 @@ class ApiAutoRoute {
   /// 默认服务器配置 (空列表 - 依赖远程配置)
   static final List<ApiServerConfig> _defaultServers = [];
 
+  static bool _isInvalidRuntimeHost(String? host) {
+    final value = (host ?? '').trim().toLowerCase();
+    return value.isEmpty ||
+        value == 'localhost' ||
+        value == '0.0.0.0' ||
+        value == '::1' ||
+        value == '[::1]' ||
+        value.startsWith('127.');
+  }
+
   /// 当前备用地址列表
   static final List<String> _backupUrls = ['', '']; // 初始化为两个空字符串，便于更新操作
 
@@ -125,10 +135,13 @@ class ApiAutoRoute {
       try {
         final List<dynamic> serversList = remoteConfig['servers'];
         if (serversList.isNotEmpty) {
-          print('使用远程配置的${serversList.length}个服务器');
-          return serversList
+          // dawn 2026-06-18 修复真机误连本机：远程节点过滤 localhost/127/空 host，避免登录接口打到手机本机。
+          final servers = serversList
               .map((server) => ApiServerConfig.fromJson(server))
+              .where((server) => !_isInvalidRuntimeHost(server.host))
               .toList();
+          print('使用远程配置的${servers.length}/${serversList.length}个服务器');
+          return servers;
         }
       } catch (e) {
         print('解析远程服务器列表失败: $e');
@@ -141,7 +154,8 @@ class ApiAutoRoute {
   }
 
   /// 获取服务器列表
-  static Future<List<ApiServerConfig>> _getServerList(String environment) async {
+  static Future<List<ApiServerConfig>> _getServerList(
+      String environment) async {
     // 1. 先尝试从远程配置获取的服务器
     print('尝试远程配置的服务器...');
     List<ApiServerConfig> configuredServers = _getConfiguredServers();
@@ -202,7 +216,7 @@ class ApiAutoRoute {
   /// 从CDN获取服务器列表
   static Future<List<ApiServerConfig>> _tryGetServersFromCDN(
       List<String> cdnUrls, String cdnType) async {
-    bool firstUrlFailed = false;  // 标记第一个地址是否失败
+    bool firstUrlFailed = false; // 标记第一个地址是否失败
 
     for (int i = 0; i < cdnUrls.length; i++) {
       String cdnUrl = cdnUrls[i];
@@ -232,14 +246,15 @@ class ApiAutoRoute {
           print('${cdnType}CDN成功 (${stopwatch.elapsedMilliseconds}ms)');
 
           _cdnConfig = response.data;
-          
+
           // 只有当第一个地址失败，且是第二个地址成功时才更新地址列表
           if (firstUrlFailed && i == 1 && _cdnConfig!['backup_url'] != null) {
             _updateBackupUrls(_cdnConfig!['backup_url']);
           }
 
           final List<dynamic> nodesList = response.data['nodes'] ?? [];
-          final servers = nodesList.map((json) => ApiServerConfig.fromJson(json)).toList();
+          final servers =
+              nodesList.map((json) => ApiServerConfig.fromJson(json)).toList();
 
           if (servers.isNotEmpty) {
             servers.sort((a, b) => a.priority.compareTo(b.priority));
@@ -278,6 +293,16 @@ class ApiAutoRoute {
     final stopwatch = Stopwatch()..start();
 
     try {
+      if (_isInvalidRuntimeHost(server.host)) {
+        stopwatch.stop();
+        print('${server.name}: 跳过无效服务器地址 ${server.host}');
+        return _ServerTestResult(
+          server: server,
+          responseTime: 99999,
+          isSuccess: false,
+        );
+      }
+
       final dio = Dio();
 
       // 配置SSL证书验证
@@ -311,8 +336,7 @@ class ApiAutoRoute {
       final port = isIP ? ':10002' : '';
       // 根据Nginx配置，使用chat.domain.com格式
       final chatDomain = isIP ? server.host : 'chat.${server.host}';
-      final testUrl =
-          '$protocol://${chatDomain}$port/third/network/test/ping';
+      final testUrl = '$protocol://${chatDomain}$port/third/network/test/ping';
 
       print('测试服务器: ${server.name} -> $testUrl');
 
