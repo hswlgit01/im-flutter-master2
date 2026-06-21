@@ -27,6 +27,8 @@ class UserFullInfo {
   int? globalRecvMsgOpt;
   int? points;
   int? canSendFreeMsg; // 0=普通用户需好友验证，1=可跳过消息验证
+  // dawn 2026-06-21 新增官方人员标识：用户详情接口返回组织角色，客户端据此展示认证图标。
+  String? orgRole;
   bool isFriendship = false;
   bool isBlacklist = false;
   List<DepartmentInfo>? departmentList;
@@ -40,7 +42,9 @@ class UserFullInfo {
 
   bool get isMale => gender == 1;
 
-  String get showName => remark?.isNotEmpty == true ? remark! : (nickname?.isNotEmpty == true ? nickname! : userID!);
+  String get showName => remark?.isNotEmpty == true
+      ? remark!
+      : (nickname?.isNotEmpty == true ? nickname! : userID!);
 
   UserFullInfo({
     this.userID,
@@ -71,6 +75,7 @@ class UserFullInfo {
     this.globalRecvMsgOpt,
     this.points,
     this.canSendFreeMsg,
+    this.orgRole,
     this.isFriendship = false,
     this.isBlacklist = false,
     this.departmentList,
@@ -110,16 +115,20 @@ class UserFullInfo {
     globalRecvMsgOpt = json['globalRecvMsgOpt'];
     points = json['points'];
     canSendFreeMsg = json['can_send_free_msg'];
+    orgRole = json['orgRole'] ?? json['org_role'] ?? json['role'];
     isFriendship = json['isFriendship'] ?? false;
     isBlacklist = json['isBlacklist'] ?? false;
     departmentList = json['departmentList'] == null
         ? null
-        : (json['departmentList'] as List).map((e) => DepartmentInfo.fromJson(e)).toList();
+        : (json['departmentList'] as List)
+            .map((e) => DepartmentInfo.fromJson(e))
+            .toList();
     isRealNameVerified = json['is_real_name_verified'];
     realName = json['real_name'];
     verifiedTime = json['verified_time'];
     teamSize = json['team_size'] ?? json['teamSize'];
-    directDownlineCount = json['direct_downline_count'] ?? json['directDownlineCount'];
+    directDownlineCount =
+        json['direct_downline_count'] ?? json['directDownlineCount'];
   }
 
   Map<String, dynamic> toJson() {
@@ -151,6 +160,7 @@ class UserFullInfo {
     data['globalRecvMsgOpt'] = globalRecvMsgOpt;
     data['points'] = points;
     data['canSendFreeMsg'] = canSendFreeMsg;
+    data['orgRole'] = orgRole;
     data['isFriendship'] = isFriendship;
     data['isBlacklist'] = isBlacklist;
     data['departmentList'] = departmentList?.map((e) => e.toJson()).toList();

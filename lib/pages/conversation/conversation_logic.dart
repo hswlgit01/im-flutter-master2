@@ -50,6 +50,11 @@ class ConversationLogic extends GetxController {
   Map<String, String> _packetOverallStatusCache = {};
   final _apiService = core.ApiService();
 
+  // dawn 2026-06-21 新增官方人员标识：单聊会话按需批量查询组织角色并缓存，避免每次构建列表都请求接口。
+  final officialUserMap = <String, bool>{}.obs;
+  final _officialRoleRequestedAt = <String, DateTime>{};
+  static const _officialRoleRefreshInterval = Duration(minutes: 10);
+
   // dawn 2026-05-25 修复手机端文件消息无列表提示：SDK 弱网/文件消息场景偶发会话 unreadCount 为 0，
   // 但 latestMsg 已经更新；这里给最近收到的对方消息补一个本地未读提示，进入会话或标记已读后清除。
   static const _fallbackUnreadWindow = Duration(minutes: 10);
@@ -323,6 +328,8 @@ class ConversationLogic extends GetxController {
     print('[ConversationLogic] 过滤后会话数: ${filteredList.length}');
 
     _syncFallbackUnreadCounts(filteredList);
+    // dawn 2026-06-21 新增官方人员标识：会话变更后异步补全单聊对象认证状态。
+    unawaited(_loadOfficialRolesForConversations(filteredList));
 
     if (reInstall) {
       onChangeConversations.addAll(filteredList);
@@ -778,6 +785,8 @@ class ConversationLogic extends GetxController {
       list = await _request();
       _syncFallbackUnreadCounts(list, pruneMissing: true);
       this.list.assignAll(list);
+      // dawn 2026-06-21 新增官方人员标识：刷新会话列表后补拉单聊角色。
+      unawaited(_loadOfficialRolesForConversations(list));
 
       if (list.isEmpty || list.length < pageSize) {
         refreshController.loadNoData();
@@ -851,6 +860,76 @@ class ConversationLogic extends GetxController {
     list.assignAll(filteredResult);
     _sortConversationList();
     _loadRedPacketStatusCache();
+    // dawn 2026-06-21 新增官方人员标识：首屏会话加载后补全认证图标。
+    unawaited(_loadOfficialRolesForConversations(filteredResult));
+  }
+
+  String _normalizeOrgRole(String? role) {
+    final text = role?.trim() ?? '';
+    if (text.isEmpty) return '';
+    const aliases = {
+      '管理员': 'BackendAdmin',
+      '超级管理员': 'SuperAdmin',
+      '团队长': 'TermManager',
+    };
+    return aliases[text] ?? text;
+  }
+
+  bool _isOfficialOrgRole(String? role) {
+    final normalized = _normalizeOrgRole(role).toLowerCase();
+    return normalized == 'admin' ||
+        normalized == 'backendadmin' ||
+        normalized == 'superadmin' ||
+        normalized == 'termmanager';
+  }
+
+  bool isOfficialConversation(ConversationInfo info) {
+    if (!info.isSingleChat || info.userID == null) return false;
+    return officialUserMap[info.userID!] ?? false;
+  }
+
+  Future<void> _loadOfficialRolesForConversations(
+      Iterable<ConversationInfo> conversations) async {
+    final now = DateTime.now();
+    final userIDs = conversations
+        .where(
+            (info) => info.isSingleChat && (info.userID?.isNotEmpty ?? false))
+        .map((info) => info.userID!)
+        .where((userID) {
+          final requestedAt = _officialRoleRequestedAt[userID];
+          return requestedAt == null ||
+              now.difference(requestedAt) > _officialRoleRefreshInterval;
+        })
+        .toSet()
+        .toList();
+    if (userIDs.isEmpty) return;
+
+    for (final userID in userIDs) {
+      _officialRoleRequestedAt[userID] = now;
+    }
+
+    try {
+      final users = await Apis.getUserFullInfo(
+        userIDList: userIDs,
+        showNumber: userIDs.length,
+      );
+      if (users == null) return;
+      var changed = false;
+      for (final user in users) {
+        final userID = user.userID;
+        if (userID == null || userID.isEmpty) continue;
+        final official = _isOfficialOrgRole(user.orgRole);
+        if (officialUserMap[userID] != official) {
+          officialUserMap[userID] = official;
+          changed = true;
+        }
+      }
+      if (changed) {
+        officialUserMap.refresh();
+      }
+    } catch (e) {
+      Logger.print('[ConversationLogic] 加载官方人员标识失败: $e');
+    }
   }
 
   void clearConversations() {

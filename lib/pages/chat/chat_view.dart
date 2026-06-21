@@ -75,6 +75,9 @@ class ChatPage extends StatelessWidget {
       rightFaceUrl: OpenIM.iMManager.userInfo.faceURL,
       showLeftNickname: !logic.isSingleChat,
       showRightNickname: !logic.isSingleChat,
+      // dawn 2026-06-21 新增官方人员标识：聊天气泡昵称按发送人角色展示认证图标。
+      leftCertified: logic.isOfficialMessageSender(message),
+      rightCertified: logic.isOfficialMessageSender(message),
       isShowReadStatus: logic.isShowReadStatus(message) && logic.isSingleChat,
       highlightColor: message.clientMsgID == logic.searchMessage?.clientMsgID
           ? Styles.c_0089FF_opacity10

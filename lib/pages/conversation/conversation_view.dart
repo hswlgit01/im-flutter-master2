@@ -205,6 +205,10 @@ class ConversationPage extends StatelessWidget {
                                     ..maxLines = 1
                                     ..overflow = TextOverflow.ellipsis,
                                 ),
+                                // dawn 2026-06-21 新增官方人员标识：管理员/团队长单聊在会话列表昵称后展示认证图标。
+                                Obx(() => logic.isOfficialConversation(info)
+                                    ? const OfficialRoleBadge()
+                                    : const SizedBox.shrink()),
                                 const Spacer(),
                                 logic.getTime(info).toText
                                   ..style = Styles.ts_8E9AB0_12sp,
@@ -267,6 +271,22 @@ class ConversationPage extends StatelessWidget {
         margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 2.h),
       ),
       onTap: () => logic.toSearch(),
+    );
+  }
+}
+
+class OfficialRoleBadge extends StatelessWidget {
+  const OfficialRoleBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 4.w),
+      child: Icon(
+        Icons.verified,
+        size: 14.w,
+        color: Styles.c_0089FF,
+      ),
     );
   }
 }

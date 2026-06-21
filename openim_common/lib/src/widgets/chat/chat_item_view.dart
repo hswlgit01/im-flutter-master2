@@ -76,8 +76,10 @@ class ChatItemView extends StatefulWidget {
       this.timelineStr,
       this.leftNickname,
       this.leftFaceUrl,
+      this.leftCertified = false,
       this.rightNickname,
       this.rightFaceUrl,
+      this.rightCertified = false,
       required this.message,
       this.textScaleFactor = 1.0,
       this.isMultiSelectMode = false,
@@ -112,8 +114,10 @@ class ChatItemView extends StatefulWidget {
   final String? timelineStr;
   final String? leftNickname;
   final String? leftFaceUrl;
+  final bool leftCertified;
   final String? rightNickname;
   final String? rightFaceUrl;
+  final bool rightCertified;
   final Message message;
   final Function(String id)? onMentionTap;
   final double textScaleFactor;
@@ -274,10 +278,12 @@ class _ChatItemViewState extends State<ChatItemView> {
       id: _message.clientMsgID!,
       isISend: _isISend,
       leftNickname: senderNickname,
+      leftCertified: widget.leftCertified,
       selectedMessages: widget.selectedMessages,
       onMessageSelected: () => widget.onMessageSelected?.call(_message),
       leftFaceUrl: senderFaceURL,
       rightNickname: widget.rightNickname ?? OpenIM.iMManager.userInfo.nickname,
+      rightCertified: widget.rightCertified,
       rightFaceUrl: widget.rightFaceUrl ?? OpenIM.iMManager.userInfo.faceURL,
       showLeftNickname: widget.showLeftNickname,
       showRightNickname: widget.showRightNickname,

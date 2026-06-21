@@ -19,42 +19,45 @@ enum MessageOperationType {
 }
 
 class ChatItemContainer extends StatelessWidget {
-  const ChatItemContainer({
-    super.key,
-    required this.id,
-    this.leftFaceUrl,
-    this.rightFaceUrl,
-    this.leftNickname,
-    this.rightNickname,
-    this.timelineStr,
-    this.timeStr,
-    required this.isBubbleBg,
-    required this.isISend,
-    required this.hasRead,
-    required this.isSending,
-    this.isShowReadStatus = false,
-    required this.isSendFailed,
-    this.isMultiSelectMode = false,
-    this.showLeftNickname = true,
-    this.showRightNickname = false,
-    required this.child,
-    this.sendStatusStream,
-    this.onTapLeftAvatar,
-    this.onTapRightAvatar,
-    this.onLongPressRightAvatar,
-    this.onLongPressLeftAvatar,
-    this.onFailedToResend,
-    this.onTapChatBubble,
-    required this.operationTypes,
-    this.onMessageOperation,
-    this.selectedMessages = const [],
-    this.onMessageSelected
-  });
+  const ChatItemContainer(
+      {super.key,
+      required this.id,
+      this.leftFaceUrl,
+      this.rightFaceUrl,
+      this.leftNickname,
+      this.rightNickname,
+      this.leftCertified = false,
+      this.rightCertified = false,
+      this.timelineStr,
+      this.timeStr,
+      required this.isBubbleBg,
+      required this.isISend,
+      required this.hasRead,
+      required this.isSending,
+      this.isShowReadStatus = false,
+      required this.isSendFailed,
+      this.isMultiSelectMode = false,
+      this.showLeftNickname = true,
+      this.showRightNickname = false,
+      required this.child,
+      this.sendStatusStream,
+      this.onTapLeftAvatar,
+      this.onTapRightAvatar,
+      this.onLongPressRightAvatar,
+      this.onLongPressLeftAvatar,
+      this.onFailedToResend,
+      this.onTapChatBubble,
+      required this.operationTypes,
+      this.onMessageOperation,
+      this.selectedMessages = const [],
+      this.onMessageSelected});
   final String id;
   final String? leftFaceUrl;
   final String? rightFaceUrl;
   final String? leftNickname;
   final String? rightNickname;
+  final bool leftCertified;
+  final bool rightCertified;
   final String? timelineStr;
   final String? timeStr;
   final bool isBubbleBg;
@@ -79,7 +82,8 @@ class ChatItemContainer extends StatelessWidget {
   final Function()? onTapChatBubble;
   final Function(MessageOperationType operationType)? onMessageOperation;
 
-  bool get isSelected => selectedMessages.any((message) => message.clientMsgID == id);
+  bool get isSelected =>
+      selectedMessages.any((message) => message.clientMsgID == id);
 
   @override
   Widget build(BuildContext context) {
@@ -137,17 +141,15 @@ class ChatItemContainer extends StatelessWidget {
             itemBox.localToGlobal(Offset.zero);
             openMenu(
                 context,
-                operationTypes
-                    .map((e) {
-                      return MenuItem(
-                          title: menuMaping[e]!,
-                          image: e.image.toImage,
-                          onTap: () {
-                            onMessageOperation?.call(e);
-                          },
-                        );
-                    })
-                    .toList());
+                operationTypes.map((e) {
+                  return MenuItem(
+                    title: menuMaping[e]!,
+                    image: e.image.toImage,
+                    onTap: () {
+                      onMessageOperation?.call(e);
+                    },
+                  );
+                }).toList());
           },
           child:
               isBubbleBg ? ChatBubble(bubbleType: type, child: child) : child,
@@ -176,6 +178,8 @@ class ChatItemContainer extends StatelessWidget {
             children: [
               ChatNicknameView(
                 nickname: showLeftNickname ? leftNickname : null,
+                // dawn 2026-06-21 新增官方人员标识：接收侧昵称支持展示认证图标。
+                isCertified: leftCertified,
                 timeStr: timeStr,
               ),
               4.verticalSpace,
@@ -200,16 +204,19 @@ class ChatItemContainer extends StatelessWidget {
             children: [
               ChatNicknameView(
                 nickname: showRightNickname ? rightNickname : null,
+                // dawn 2026-06-21 新增官方人员标识：发送侧昵称支持展示认证图标。
+                isCertified: rightCertified,
                 timeStr: timeStr,
               ),
               4.verticalSpace,
               Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
-                children: [                 
-                   if (isShowReadStatus && !isSending && !isSendFailed)
+                children: [
+                  if (isShowReadStatus && !isSending && !isSendFailed)
                     Container(
-                      child: (hasRead ? ImageRes.read : ImageRes.unread).toImage..width = 28.w,
+                      child: (hasRead ? ImageRes.read : ImageRes.unread).toImage
+                        ..width = 28.w,
                     ),
                   if (isSendFailed)
                     ChatSendFailedView(
@@ -265,7 +272,8 @@ openMenu(BuildContext context, List<MenuItem> items) {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.max,
         children: [
-          Expanded(child: Column(
+          Expanded(
+              child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               icon..width = 24.w,

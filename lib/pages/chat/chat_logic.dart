@@ -371,6 +371,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   // 避免弱网或压测直写消息没有实时推送时，两台手机长期停在不同 seq。
   static const int _largeGroupLatestSyncThreshold = 1000;
   static const int _largeGroupLatestSyncSeconds = 5;
+  // dawn 2026-06-21 新增官方人员标识：聊天页按消息发送人懒加载组织角色，避免大群一次性查全员。
+  final officialMessageUserMap = <String, bool>{}.obs;
+  final _officialMessageRoleRequestedAt = <String, DateTime>{};
+  static const _officialRoleRefreshInterval = Duration(minutes: 10);
 
   RTCBridge? get rtcBridge => PackageBridge.rtcBridge;
 
@@ -395,6 +399,74 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   bool get isOwner => groupMemberRoleLevel.value == GroupRoleLevel.owner;
 
   bool get isAdminOrOwner => isAdmin || isOwner;
+
+  String _normalizeOfficialRole(String? role) {
+    final text = role?.trim() ?? '';
+    if (text.isEmpty) return '';
+    const aliases = {
+      '管理员': 'BackendAdmin',
+      '超级管理员': 'SuperAdmin',
+      '团队长': 'TermManager',
+    };
+    return aliases[text] ?? text;
+  }
+
+  bool _isOfficialOrgRole(String? role) {
+    final normalized = _normalizeOfficialRole(role).toLowerCase();
+    return normalized == 'admin' ||
+        normalized == 'backendadmin' ||
+        normalized == 'superadmin' ||
+        normalized == 'termmanager';
+  }
+
+  bool isOfficialMessageSender(Message message) {
+    final userID = message.sendID;
+    if (userID == null || userID.isEmpty) return false;
+    return officialMessageUserMap[userID] ?? false;
+  }
+
+  Future<void> _loadOfficialRolesForMessages(Iterable<Message> messages) async {
+    final now = DateTime.now();
+    final userIDs = messages
+        .map((message) => message.sendID)
+        .whereType<String>()
+        .where((userID) => userID.isNotEmpty)
+        .where((userID) {
+          final requestedAt = _officialMessageRoleRequestedAt[userID];
+          return requestedAt == null ||
+              now.difference(requestedAt) > _officialRoleRefreshInterval;
+        })
+        .toSet()
+        .toList();
+    if (userIDs.isEmpty) return;
+
+    for (final userID in userIDs) {
+      _officialMessageRoleRequestedAt[userID] = now;
+    }
+
+    try {
+      final users = await Apis.getUserFullInfo(
+        userIDList: userIDs,
+        showNumber: userIDs.length,
+      );
+      if (users == null) return;
+      var changed = false;
+      for (final user in users) {
+        final userID = user.userID;
+        if (userID == null || userID.isEmpty) continue;
+        final official = _isOfficialOrgRole(user.orgRole);
+        if (officialMessageUserMap[userID] != official) {
+          officialMessageUserMap[userID] = official;
+          changed = true;
+        }
+      }
+      if (changed) {
+        officialMessageUserMap.refresh();
+      }
+    } catch (e) {
+      ILogger.d('[ChatLogic] 加载官方人员标识失败: $e');
+    }
+  }
 
   final isMute = false.obs;
   Timer? _muteTimer;
@@ -1446,6 +1518,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
     if (isCurrentChat(message)) {
       print('[ChatLogic] ✅ 消息属于当前聊天，准备处理');
+      // dawn 2026-06-21 新增官方人员标识：实时新消息到达时补拉发送人的组织角色。
+      unawaited(_loadOfficialRolesForMessages([message]));
       if (message.contentType == MessageType.typing) {
         return;
       }
@@ -1594,6 +1668,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     }
     // 非搜索：仅拉一页（本地或群聊服务端最近一页），上滑时 onScrollToTopLoad 再按需拉更早历史
     await onScrollToTopLoad();
+    // dawn 2026-06-21 新增官方人员标识：首屏消息渲染后异步补全认证图标，不阻塞进会话。
+    unawaited(_loadOfficialRolesForMessages(messageList));
     unawaited(_syncLatestGroupPageFromServer(reason: 'init'));
 
     // 第一阶段：先让消息尽快显示出来，再做红包/转账等较重的状态初始化，避免首屏白屏时间过长
@@ -3736,6 +3812,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       // 增量处理这一页消息中的红包状态(本地+最近少量服务端校准),不改变消息顺序
       unawaited(_initLuckMoneyStatusForMessages(filteredList));
     }
+    // dawn 2026-06-21 新增官方人员标识：上滑历史消息时只补拉本页出现的发送人角色。
+    unawaited(_loadOfficialRolesForMessages(filteredList));
 
     if (_isFirstLoad) {
       _getGroupInfoAfterLoadMessage();
@@ -3921,6 +3999,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     customChatListViewController.insertAllToBottom(fullList);
     _syncRxListWithMessageList();
     customChatListViewController.refresh();
+    // dawn 2026-06-21 新增官方人员标识：历史合并后补全新增发送人的认证状态。
+    unawaited(_loadOfficialRolesForMessages(fullList));
     update();
   }
 
