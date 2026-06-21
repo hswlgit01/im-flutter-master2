@@ -99,8 +99,36 @@ class ApiAutoRoute {
   /// 默认服务器配置 (空列表 - 依赖远程配置)
   static final List<ApiServerConfig> _defaultServers = [];
 
+  // dawn 2026-06-18 修复真机误连本机：远程 host 可能是完整 URL 或 host:port，统一提取 host 后再判断。
+  static String _extractHost(String? raw) {
+    final value = (raw ?? '').trim();
+    if (value.isEmpty) return '';
+
+    try {
+      final uri = Uri.parse(value);
+      if (uri.hasScheme && uri.host.isNotEmpty) {
+        return uri.host.trim();
+      }
+    } catch (_) {
+      // 非标准 URL 按普通 host 继续处理。
+    }
+
+    final withoutPath = value.split('/').first.trim();
+    final ipv6End = withoutPath.indexOf(']');
+    if (withoutPath.startsWith('[') && ipv6End >= 0) {
+      return withoutPath.substring(0, ipv6End + 1);
+    }
+
+    final colonIndex = withoutPath.indexOf(':');
+    if (colonIndex > 0) {
+      return withoutPath.substring(0, colonIndex).trim();
+    }
+
+    return withoutPath;
+  }
+
   static bool _isInvalidRuntimeHost(String? host) {
-    final value = (host ?? '').trim().toLowerCase();
+    final value = _extractHost(host).toLowerCase();
     return value.isEmpty ||
         value == 'localhost' ||
         value == '0.0.0.0' ||
@@ -411,9 +439,10 @@ class ApiServerConfig {
   });
 
   factory ApiServerConfig.fromJson(Map<String, dynamic> json) {
+    final rawHost = json['domain'] ?? json['host'] ?? '';
     return ApiServerConfig(
       name: json['name'] ?? 'unknown',
-      host: json['domain'] ?? json['host'] ?? '',
+      host: ApiAutoRoute._extractHost(rawHost.toString()),
       priority: json['priority'] ?? 0,
       region: json['region'] ?? 'global',
     );

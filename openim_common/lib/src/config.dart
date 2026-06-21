@@ -69,8 +69,36 @@ class Config {
     return _prodHost;
   }
 
+  // dawn 2026-06-18 修复真机误连本机：远程配置可能返回完整 URL 或 host:port，先提取真实 host 再校验。
+  static String _extractHost(String? raw) {
+    final value = (raw ?? '').trim();
+    if (value.isEmpty) return '';
+
+    try {
+      final uri = Uri.parse(value);
+      if (uri.hasScheme && uri.host.isNotEmpty) {
+        return uri.host.trim();
+      }
+    } catch (_) {
+      // 非标准 URL 按普通 host 继续处理。
+    }
+
+    final withoutPath = value.split('/').first.trim();
+    final ipv6End = withoutPath.indexOf(']');
+    if (withoutPath.startsWith('[') && ipv6End >= 0) {
+      return withoutPath.substring(0, ipv6End + 1);
+    }
+
+    final colonIndex = withoutPath.indexOf(':');
+    if (colonIndex > 0) {
+      return withoutPath.substring(0, colonIndex).trim();
+    }
+
+    return withoutPath;
+  }
+
   static bool _isLocalhostHost(String? host) {
-    final value = (host ?? '').trim().toLowerCase();
+    final value = _extractHost(host).toLowerCase();
     return value.isEmpty ||
         value == 'localhost' ||
         value == '0.0.0.0' ||
@@ -91,11 +119,13 @@ class Config {
       // ignore malformed url and use plain string checks below.
     }
     final lower = value.toLowerCase();
-    return lower.contains('127.0.0.1') || lower.contains('localhost');
+    return _isLocalhostHost(value) ||
+        lower.contains('127.0.0.1') ||
+        lower.contains('localhost');
   }
 
   static String _safeHost(String? host) {
-    final value = (host ?? '').trim();
+    final value = _extractHost(host);
     if (_isLocalhostHost(value)) {
       print('⚠️ 【服务器配置】忽略无效主机 "$value"，回退生产服务器 $_prodHost');
       return _prodHost;
@@ -152,6 +182,14 @@ class Config {
         await _updateServerConfig(_devHost);
       }
 
+      if (_isLocalhostUrl(imApiUrl) ||
+          _isLocalhostUrl(appAuthUrl) ||
+          _isLocalhostUrl(imWsUrl)) {
+        // dawn 2026-06-18 修复真机误连本机：SDK 初始化前最终兜底，禁止 localhost 配置进入登录流程。
+        print('⚠️ 【服务器配置】检测到 localhost 地址，强制回退生产服务器 $_prodHost');
+        await _updateServerConfig(_prodHost);
+      }
+
       if (serverIp.isEmpty) {
         throw Exception('自动寻路失败：无法获取有效的服务器配置');
       }
@@ -169,12 +207,13 @@ class Config {
       throw e; // 向上抛出异常，让应用知道初始化失败
     }
 
-    runApp();
-
-    SystemChrome.setPreferredOrientations([
+    // dawn 2026-06-21 修复横屏灰色占位：先锁定竖屏再启动 UI，避免部分安卓机横屏首帧导致输入面板尺寸错乱。
+    await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
+
+    runApp();
 
     var brightness = Platform.isAndroid ? Brightness.dark : Brightness.light;
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
@@ -371,7 +410,7 @@ class Config {
 
       final selectedHost = await ApiAutoRoute.manualRoute();
 
-      if (selectedHost != null) {
+      if (selectedHost != null && !_isLocalhostHost(selectedHost)) {
         await _updateServerConfig(selectedHost);
 
         // 更新缓存

@@ -165,15 +165,16 @@ class ConversationPage extends StatelessWidget {
             onTap: () => logic.toChat(conversationInfo: info),
             child: Stack(
               children: [
-                Visibility(
-                    visible: info.isPinned ?? false,
-                    child: Positioned(
-                        top: 0,
-                        right: 4,
-                        child: CustomPaint(
-                          size: const Size(10, 10),
-                          painter: TrianglePainter(color: Styles.c_0089FF),
-                        ))),
+                if (info.isPinned ?? false)
+                  // dawn 2026-06-21 修复会话置顶角标布局：Positioned 必须直接作为 Stack 子节点，避免部分机型出现灰色占位块。
+                  Positioned(
+                    top: 0,
+                    right: 4,
+                    child: CustomPaint(
+                      size: const Size(10, 10),
+                      painter: TrianglePainter(color: Styles.c_0089FF),
+                    ),
+                  ),
                 Container(
                   height: 68,
                   padding: EdgeInsets.symmetric(horizontal: 16.w),
