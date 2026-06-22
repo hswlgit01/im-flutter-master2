@@ -7,13 +7,18 @@ triggers:
     branches:
       include:
         - main
+variables:
+  global:
+    - DEPLOY_SSH_KEY
+    - DEPLOY_PORT
+    - DEPLOY_USER
+    - DEPLOY_HOST
 stages:
   - name: build_android
     displayName: 构建 Android APK
     strategy: naturally
     trigger: auto
     steps:
-      # dawn 2026-06-22 规避主机调度：改用 Gitee 云端容器打包源码，再通过 SSH 到服务器构建发布。
       - step: build@nodejs
         name: build_apk
         displayName: 云端 SSH 构建并发布 APK
