@@ -13,26 +13,79 @@ stages:
     strategy: naturally
     trigger: auto
     steps:
-      - step: shell@agent
+      # dawn 2026-06-22 规避主机调度：改用 Gitee 云端容器打包源码，再通过 SSH 到服务器构建发布。
+      - step: build@nodejs
         name: build_apk
-        displayName: Flutter 构建并发布 APK
-        hostGroupID: freechat-prod
-        scriptType: SH
-        script:
-          - set -euo pipefail
-          - ''
-          - export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
-          - export PATH="${JAVA_HOME}/bin:${PATH}"
-          - ''
-          - ENV_VALUE=prod
-          - ''
-          - cd "${GITEE_WORKSPACE:-$PWD}"
-          - flutter --version
-          - flutter pub get
-          - flutter build apk --release --split-per-abi --dart-define=ENV="${ENV_VALUE}"
-          - ''
-          - mkdir -p /data/app/apk/public
-          - cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk /data/app/apk/public/app-release.apk
-          - ls -lh /data/app/apk/public/app-release.apk
-          - ''
-        strategy: {}
+        displayName: 云端 SSH 构建并发布 APK
+        nodeVersion: 14.16.0
+        commands:
+          - |
+            set -euo pipefail
+
+            : "${DEPLOY_HOST:?请在 Gitee Go 通用变量中配置 DEPLOY_HOST}"
+            : "${DEPLOY_USER:?请在 Gitee Go 通用变量中配置 DEPLOY_USER}"
+            : "${DEPLOY_SSH_KEY:?请在 Gitee Go 通用变量中配置 DEPLOY_SSH_KEY}"
+
+            DEPLOY_PORT="${DEPLOY_PORT:-22}"
+            DEPLOY_WORKDIR="${DEPLOY_WORKDIR:-/data/app/im-flutter}"
+            DEPLOY_APK_DIR="${DEPLOY_APK_DIR:-/data/app/apk/public}"
+            ENV_VALUE="${ENV_VALUE:-prod}"
+            ARCHIVE="/tmp/im-flutter-${GITEE_PIPELINE_BUILD_NUMBER:-manual}-$(date +%s).tgz"
+            REMOTE_ARCHIVE="/tmp/$(basename "${ARCHIVE}")"
+
+            if ! command -v ssh >/dev/null 2>&1 || ! command -v scp >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                apt-get update && apt-get install -y openssh-client
+              elif command -v yum >/dev/null 2>&1; then
+                yum install -y openssh-clients
+              else
+                echo "缺少 ssh/scp，且当前镜像无法自动安装 openssh client" >&2
+                exit 1
+              fi
+            fi
+
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+            printf '%s\n' "${DEPLOY_SSH_KEY}" | sed 's/\r$//' > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            ssh-keyscan -p "${DEPLOY_PORT}" "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
+
+            # dawn 2026-06-22 无服务器 Git 凭据部署：流水线把当前提交源码传到服务器后构建。
+            tar \
+              --exclude='.git' \
+              --exclude='.dart_tool' \
+              --exclude='build' \
+              --exclude='android/.gradle' \
+              --exclude='ios/Pods' \
+              --exclude='macos/Pods' \
+              -czf "${ARCHIVE}" .
+
+            scp -i ~/.ssh/deploy_key -P "${DEPLOY_PORT}" "${ARCHIVE}" "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_ARCHIVE}"
+
+            ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" "bash -se" <<REMOTE
+            set -euo pipefail
+
+            export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+            export PATH="${JAVA_HOME}/bin:${PATH}"
+
+            ENV_VALUE="${ENV_VALUE}"
+            DEPLOY_WORKDIR="${DEPLOY_WORKDIR}"
+            DEPLOY_APK_DIR="${DEPLOY_APK_DIR}"
+            REMOTE_ARCHIVE="${REMOTE_ARCHIVE}"
+
+            rm -rf "\${DEPLOY_WORKDIR}"
+            mkdir -p "\${DEPLOY_WORKDIR}" "\${DEPLOY_APK_DIR}"
+            tar -xzf "\${REMOTE_ARCHIVE}" -C "\${DEPLOY_WORKDIR}"
+            rm -f "\${REMOTE_ARCHIVE}"
+
+            cd "\${DEPLOY_WORKDIR}"
+            flutter --version
+            flutter pub get
+            flutter build apk --release --split-per-abi --dart-define=ENV="\${ENV_VALUE}"
+
+            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "\${DEPLOY_APK_DIR}/app-release.apk"
+            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "\${DEPLOY_APK_DIR}/app-arm64-v8a-release.apk"
+            cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "\${DEPLOY_APK_DIR}/app-armeabi-v7a-release.apk" 2>/dev/null || true
+            cp build/app/outputs/flutter-apk/app-x86_64-release.apk "\${DEPLOY_APK_DIR}/app-x86_64-release.apk" 2>/dev/null || true
+            ls -lh "\${DEPLOY_APK_DIR}"/app-*.apk
+            REMOTE
