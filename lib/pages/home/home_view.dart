@@ -1,66 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:openim/pages/personal_space/view.dart';
 import 'package:openim_common/openim_common.dart';
 
 import '../contacts/contacts_view.dart';
 import '../conversation/conversation_view.dart';
 import '../mine/mine_view.dart';
-import '../discover/discover_view.dart';
 import 'home_logic.dart';
-import 'package:persistent_bottom_nav_bar_v2/persistent_bottom_nav_bar_v2.dart';
 
 class HomePage extends StatelessWidget {
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final logic = Get.find<HomeLogic>();
-  PersistentTabController persistentTabController =
-      PersistentTabController(historyLength: 0);
-  HomePage({super.key});
+  late final List<Widget> _pages = [
+    ConversationPage(openParentDrawer: () {}),
+    ContactsPage(),
+    const MinePage(),
+  ];
 
-  List<PersistentTabConfig> _tabs() => [
-        PersistentTabConfig(
-          screen: ConversationPage(
-            openParentDrawer: () => _scaffoldKey.currentState?.openDrawer(),
-          ),
-          item: ItemConfig(
-            icon: _setupIcon(
-                ImageRes.homeTab1Sel.toImage, logic.unreadMsgCount.value),
-            inactiveIcon: _setupIcon(
-                ImageRes.homeTab1Nor.toImage, logic.unreadMsgCount.value),
-            title: StrRes.home,
-            textStyle: Styles.ts_0089FF_10sp_semibold,
-          ),
-        ),
-        PersistentTabConfig(
-          screen: ContactsPage(),
-          item: ItemConfig(
-            icon: _setupIcon(
-                ImageRes.homeTab2Sel.toImage, logic.unhandledCount.value),
-            inactiveIcon: _setupIcon(
-                ImageRes.homeTab2Nor.toImage, logic.unhandledCount.value),
-            title: StrRes.contacts,
-            textStyle: Styles.ts_0089FF_10sp_semibold,
-          ),
-        ),
-        //PersistentTabConfig(
-        //  screen: DiscoverPage(),
-        //  item: ItemConfig(
-        //    icon: ImageRes.homeTab3Sel.toImage,
-        //    inactiveIcon: ImageRes.homeTab3Nor.toImage,
-        //    title: StrRes.workbench,
-        //    textStyle: Styles.ts_0089FF_10sp_semibold,
-        //  ),
-        //),
-        PersistentTabConfig(
-           screen: MinePage(),
-           item: ItemConfig(
-             icon: ImageRes.homeTab4Sel.toImage,
-             inactiveIcon: ImageRes.homeTab4Nor.toImage,
-             title: StrRes.mine,
-             textStyle: Styles.ts_0089FF_10sp_semibold,
-           ),
-         ),
-      ];
+  HomePage({super.key});
 
   Widget _setupIcon(Widget icon, int unReadCount) {
     return Stack(
@@ -79,33 +34,86 @@ class HomePage extends StatelessWidget {
     );
   }
 
+  BottomNavigationBarItem _buildItem({
+    required Widget icon,
+    required Widget inactiveIcon,
+    required String label,
+  }) {
+    return BottomNavigationBarItem(
+      icon: inactiveIcon,
+      activeIcon: icon,
+      label: label,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: Styles.c_FFFFFF,
-      drawerEnableOpenDragGesture: false,
-      body: Obx(
-        () => PersistentTabView(
-          tabs: _tabs(),
-          controller: persistentTabController,
-          navBarBuilder: (navBarConfig) => Style1BottomNavBar(
-            navBarConfig: navBarConfig,
-            navBarDecoration: const NavBarDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black12, blurRadius: 0.5, spreadRadius: 0.5),
+    return Obx(
+      () => Scaffold(
+        // dawn 2026-06-22 修复安卓会话页灰色遮罩：移除第三方持久 Tab/Drawer 外壳，避免页面保活或侧滑层残留半屏遮罩。
+        backgroundColor: Styles.c_FFFFFF,
+        body: ColoredBox(
+          color: Styles.c_FFFFFF,
+          child: IndexedStack(
+            index: logic.index.value,
+            children: _pages,
+          ),
+        ),
+        bottomNavigationBar: DecoratedBox(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 0.5,
+                spreadRadius: 0.5,
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: BottomNavigationBar(
+              currentIndex: logic.index.value,
+              onTap: logic.switchTab,
+              type: BottomNavigationBarType.fixed,
+              backgroundColor: Styles.c_FFFFFF,
+              selectedItemColor: Styles.c_0089FF,
+              unselectedItemColor: Styles.c_8E9AB0,
+              selectedLabelStyle: Styles.ts_0089FF_10sp_semibold,
+              unselectedLabelStyle: Styles.ts_8E9AB0_10sp,
+              elevation: 0,
+              items: [
+                _buildItem(
+                  icon: _setupIcon(
+                    ImageRes.homeTab1Sel.toImage,
+                    logic.unreadMsgCount.value,
+                  ),
+                  inactiveIcon: _setupIcon(
+                    ImageRes.homeTab1Nor.toImage,
+                    logic.unreadMsgCount.value,
+                  ),
+                  label: StrRes.home,
+                ),
+                _buildItem(
+                  icon: _setupIcon(
+                    ImageRes.homeTab2Sel.toImage,
+                    logic.unhandledCount.value,
+                  ),
+                  inactiveIcon: _setupIcon(
+                    ImageRes.homeTab2Nor.toImage,
+                    logic.unhandledCount.value,
+                  ),
+                  label: StrRes.contacts,
+                ),
+                _buildItem(
+                  icon: ImageRes.homeTab4Sel.toImage,
+                  inactiveIcon: ImageRes.homeTab4Nor.toImage,
+                  label: StrRes.mine,
+                ),
               ],
             ),
           ),
-          navBarOverlap: const NavBarOverlap.none(),
-          screenTransitionAnimation: const ScreenTransitionAnimation.none(),
         ),
-      ),      
-      drawer: Drawer(
-        backgroundColor: Styles.c_FFFFFF,
-        child: PersonalSpaceView(),
       ),
     );
   }
