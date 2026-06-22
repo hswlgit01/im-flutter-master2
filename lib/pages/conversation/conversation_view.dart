@@ -49,7 +49,8 @@ class ConversationPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() => Scaffold(
-          backgroundColor: Styles.c_F8F9FA,
+          // dawn 2026-06-22 修复会话页灰色半屏：页面恢复或横屏瞬态时使用白底兜住列表区域。
+          backgroundColor: Styles.c_FFFFFF,
           drawerEnableOpenDragGesture: false,
           appBar: TitleBar.conversation(
               statusStr: logic.imSdkStatus,
@@ -99,19 +100,24 @@ class ConversationPage extends StatelessWidget {
                   ],
                 ),
               )),
-          body: Column(
-            children: [
-              _buildSearchBar(),
-              Expanded(
-                child: SlidableAutoCloseBehavior(
+          body: ColoredBox(
+            color: Styles.c_FFFFFF,
+            child: Column(
+              children: [
+                _buildSearchBar(),
+                Expanded(
+                  child: SlidableAutoCloseBehavior(
                     child: ListView.builder(
-                  itemBuilder: (_, index) => _buildItemView(
-                    logic.list.elementAt(index),
+                      itemBuilder: (_, index) => _buildItemView(
+                        logic.list.elementAt(index),
+                      ),
+                      itemCount: logic.list.length,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                    ),
                   ),
-                  itemCount: logic.list.length,
-                )),
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ));
   }

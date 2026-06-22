@@ -152,40 +152,46 @@ class _StableChatListViewState<T> extends State<StableChatListView<T>> {
     final topList = widget.controller.topList;
     final bottomList = widget.controller.bottomList;
     final topLength = topList.length;
+    final children = <Widget>[
+      if (_topHasMore && widget.enabledTopLoad) _buildLoadMoreView(),
+      ...List.generate(topLength, (index) {
+        final position = topLength - index - 1;
+        final item = topList[position];
+        return widget.itemBuilder(context, position, position, item);
+      }),
+      ...List.generate(bottomList.length, (index) {
+        final position = topLength + index;
+        return widget.itemBuilder(
+          context,
+          index,
+          position,
+          bottomList[index],
+        );
+      }),
+      if (_bottomHasMore && widget.enabledBottomLoad) _buildLoadMoreView(),
+    ];
 
-    return CustomScrollView(
-      controller: widget.scrollController,
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        if (_topHasMore && widget.enabledTopLoad)
-          SliverToBoxAdapter(child: _buildLoadMoreView()),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final position = topLength - index - 1;
-              final item = topList[position];
-              return widget.itemBuilder(context, position, position, item);
-            },
-            childCount: topLength,
+    // dawn 2026-06-22 修复部分安卓机型聊天页灰色半屏：列表内容少时仍铺满白底并贴底展示，避免露出 Scaffold 灰底。
+    return ColoredBox(
+      color: Colors.white,
+      child: CustomScrollView(
+        controller: widget.scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            fillOverscroll: true,
+            child: ColoredBox(
+              color: Colors.white,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
+              ),
+            ),
           ),
-        ),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final position = topLength + index;
-              return widget.itemBuilder(
-                context,
-                index,
-                position,
-                bottomList[index],
-              );
-            },
-            childCount: bottomList.length,
-          ),
-        ),
-        if (_bottomHasMore && widget.enabledBottomLoad)
-          SliverToBoxAdapter(child: _buildLoadMoreView()),
-      ],
+        ],
+      ),
     );
   }
 }

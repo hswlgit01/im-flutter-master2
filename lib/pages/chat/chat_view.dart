@@ -490,7 +490,8 @@ class ChatPage extends StatelessWidget {
             ? IMUtils.createSummary(logic.quote.value!)
             : null;
         return Scaffold(
-            backgroundColor: Styles.c_F0F2F6,
+            // dawn 2026-06-22 修复聊天页灰色半屏：聊天主体外层使用白底，避免列表异步刷新时露出底层灰色。
+            backgroundColor: Styles.c_FFFFFF,
             resizeToAvoidBottomInset: false,
             appBar: TitleBar.chat(
               title: logic.nickname.value,
@@ -629,6 +630,7 @@ class ChatPage extends StatelessWidget {
                         listEmpty &&
                         logic.searchMessage == null;
                     return Stack(
+                      fit: StackFit.expand,
                       children: [
                         StableChatListView<Message>(
                           controller: logic.customChatListViewController,

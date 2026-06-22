@@ -67,7 +67,8 @@ class _AppViewState extends State<AppView> with WidgetsBindingObserver {
         child: ScreenUtilInit(
           designSize: const Size(Config.uiW, Config.uiH),
           minTextAdapt: true,
-          splitScreenMode: true,
+          // dawn 2026-06-22 修复安卓分屏/横屏恢复灰色半屏：App 固定竖屏，关闭分屏尺寸重算。
+          splitScreenMode: false,
           fontSizeResolver: (fontSize, _) => fontSize.toDouble(),
           builder: (_, child) => widget.builder(ctrl.getLocale(), _builder()),
         ),
