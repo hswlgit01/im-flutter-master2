@@ -1,11 +1,6 @@
 version: '1.0'
 name: flutter-android-deploy
 displayName: Flutter_Android
-# dawn 2026-06-22 修复 Gitee 变量未注入：非敏感部署参数直接声明为流水线级变量，密钥仍使用 Gitee 密文变量。
-variables:
-  DEPLOY_HOST: 8.148.66.77
-  DEPLOY_USER: root
-  DEPLOY_PORT: '22'
 triggers:
   trigger: auto
   push:
@@ -32,8 +27,10 @@ stages:
           - |
             set -euo pipefail
 
-            : "${DEPLOY_HOST:?请在 Gitee Go 通用变量中配置 DEPLOY_HOST}"
-            : "${DEPLOY_USER:?请在 Gitee Go 通用变量中配置 DEPLOY_USER}"
+            # dawn 2026-06-22 修复 Gitee 变量作用域：主机、用户、端口给默认值，密钥仍必须走密文变量。
+            DEPLOY_HOST="${DEPLOY_HOST:-8.148.66.77}"
+            DEPLOY_USER="${DEPLOY_USER:-root}"
+            DEPLOY_PORT="${DEPLOY_PORT:-22}"
             # dawn 2026-06-22 避免密钥泄露：Gitee Go 默认会打印 shell 命令，读取 DEPLOY_SSH_KEY 前先关闭 xtrace。
             set +x 2>/dev/null || true
             if [ -z "${DEPLOY_SSH_KEY:-}" ]; then
@@ -41,7 +38,6 @@ stages:
               exit 1
             fi
 
-            DEPLOY_PORT="${DEPLOY_PORT:-22}"
             DEPLOY_WORKDIR="${DEPLOY_WORKDIR:-/data/app/im-flutter}"
             DEPLOY_APK_DIR="${DEPLOY_APK_DIR:-/data/app/apk/public}"
             ENV_VALUE="${ENV_VALUE:-prod}"
@@ -78,32 +74,37 @@ stages:
 
             scp -i ~/.ssh/deploy_key -P "${DEPLOY_PORT}" "${ARCHIVE}" "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_ARCHIVE}"
 
-            ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" "bash -se" <<REMOTE
+            ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+              "ENV_VALUE='${ENV_VALUE}' DEPLOY_WORKDIR='${DEPLOY_WORKDIR}' DEPLOY_APK_DIR='${DEPLOY_APK_DIR}' REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' bash -se" <<'REMOTE'
             set -euo pipefail
 
-            # dawn 2026-06-22 修复远程脚本变量展开：JAVA_HOME/PATH 必须在服务器侧解析，避免 Gitee 容器 set -u 提前报错。
-            export JAVA_HOME="\${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+            # dawn 2026-06-22 修复远程 Java 路径：从服务器 java 命令反推 JAVA_HOME，避免 heredoc 转义生成非法路径。
+            if [ -z "${JAVA_HOME:-}" ] || [ ! -x "${JAVA_HOME}/bin/java" ]; then
+              JAVA_BIN="$(command -v java || true)"
+              if [ -n "${JAVA_BIN}" ]; then
+                JAVA_HOME="$(dirname "$(dirname "$(readlink -f "${JAVA_BIN}")")")"
+              else
+                JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+              fi
+            fi
+            export JAVA_HOME
             # dawn 2026-06-22 修复服务器非登录 shell：Flutter 安装在 /opt/flutter，流水线 SSH 不会读取交互式 PATH。
-            export PATH="\${JAVA_HOME}/bin:/opt/flutter/bin:\${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+            export PATH="${JAVA_HOME}/bin:/opt/flutter/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
 
-            ENV_VALUE="${ENV_VALUE}"
-            DEPLOY_WORKDIR="${DEPLOY_WORKDIR}"
-            DEPLOY_APK_DIR="${DEPLOY_APK_DIR}"
-            REMOTE_ARCHIVE="${REMOTE_ARCHIVE}"
+            rm -rf "${DEPLOY_WORKDIR}"
+            mkdir -p "${DEPLOY_WORKDIR}" "${DEPLOY_APK_DIR}"
+            tar -xzf "${REMOTE_ARCHIVE}" -C "${DEPLOY_WORKDIR}"
+            rm -f "${REMOTE_ARCHIVE}"
 
-            rm -rf "\${DEPLOY_WORKDIR}"
-            mkdir -p "\${DEPLOY_WORKDIR}" "\${DEPLOY_APK_DIR}"
-            tar -xzf "\${REMOTE_ARCHIVE}" -C "\${DEPLOY_WORKDIR}"
-            rm -f "\${REMOTE_ARCHIVE}"
-
-            cd "\${DEPLOY_WORKDIR}"
+            cd "${DEPLOY_WORKDIR}"
+            java -version
             flutter --version
             flutter pub get
-            flutter build apk --release --split-per-abi --dart-define=ENV="\${ENV_VALUE}"
+            flutter build apk --release --split-per-abi --dart-define=ENV="${ENV_VALUE}"
 
-            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "\${DEPLOY_APK_DIR}/app-release.apk"
-            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "\${DEPLOY_APK_DIR}/app-arm64-v8a-release.apk"
-            cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "\${DEPLOY_APK_DIR}/app-armeabi-v7a-release.apk" 2>/dev/null || true
-            cp build/app/outputs/flutter-apk/app-x86_64-release.apk "\${DEPLOY_APK_DIR}/app-x86_64-release.apk" 2>/dev/null || true
-            ls -lh "\${DEPLOY_APK_DIR}"/app-*.apk
+            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "${DEPLOY_APK_DIR}/app-release.apk"
+            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "${DEPLOY_APK_DIR}/app-arm64-v8a-release.apk"
+            cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "${DEPLOY_APK_DIR}/app-armeabi-v7a-release.apk" 2>/dev/null || true
+            cp build/app/outputs/flutter-apk/app-x86_64-release.apk "${DEPLOY_APK_DIR}/app-x86_64-release.apk" 2>/dev/null || true
+            ls -lh "${DEPLOY_APK_DIR}"/app-*.apk
             REMOTE
