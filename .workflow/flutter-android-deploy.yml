@@ -1,37 +1,36 @@
 version: '1.0'
 name: flutter-android-deploy
-displayName: Flutter Android 发布
-
-# dawn 2026-06-22 规避 Gitee 默认模板：使用独立流水线名，避免 MasterPipeline/BranchPipeline 继续跑 Go/Maven 模板。
+displayName: Flutter_Android
 triggers:
+  trigger: auto
   push:
     branches:
       include:
         - main
-
 stages:
-  - stage:
-    name: build_android
+  - name: build_android
     displayName: 构建 Android APK
+    strategy: naturally
+    trigger: auto
     steps:
       - step: shell@agent
         name: build_apk
         displayName: Flutter 构建并发布 APK
         hostGroupID: freechat-prod
-        script: |
-          set -euo pipefail
-
-          export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
-          export PATH="${JAVA_HOME}/bin:${PATH}"
-
-          # dawn 2026-06-22 固定 main 分支部署：APK 构建使用生产配置。
-          ENV_VALUE=prod
-
-          cd "${GITEE_WORKSPACE:-$PWD}"
-          flutter --version
-          flutter pub get
-          flutter build apk --release --split-per-abi --dart-define=ENV="${ENV_VALUE}"
-
-          mkdir -p /data/app/apk/public
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk /data/app/apk/public/app-release.apk
-          ls -lh /data/app/apk/public/app-release.apk
+        script:
+          - set -euo pipefail
+          - ''
+          - export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+          - export PATH="${JAVA_HOME}/bin:${PATH}"
+          - ''
+          - ENV_VALUE=prod
+          - ''
+          - cd "${GITEE_WORKSPACE:-$PWD}"
+          - flutter --version
+          - flutter pub get
+          - flutter build apk --release --split-per-abi --dart-define=ENV="${ENV_VALUE}"
+          - ''
+          - mkdir -p /data/app/apk/public
+          - cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk /data/app/apk/public/app-release.apk
+          - ls -lh /data/app/apk/public/app-release.apk
+          - ''
