@@ -1,8 +1,8 @@
 version: '1.0'
-name: build-im-flutter-android
-displayName: 构建并发布 im-flutter Android
+name: flutter-android-deploy
+displayName: Flutter Android 发布
 
-# dawn 2026-06-22 迁移 Gitee Go：Flutter Android APK 改由 Gitee 主机组构建后发布到服务器下载目录。
+# dawn 2026-06-22 规避 Gitee 默认模板：使用独立流水线名，避免 MasterPipeline/BranchPipeline 继续跑 Go/Maven 模板。
 triggers:
   push:
     branches:
@@ -24,9 +24,10 @@ stages:
           export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
           export PATH="${JAVA_HOME}/bin:${PATH}"
 
-          # dawn 2026-06-22 固定 main 分支部署：Gitee Go 当前只启用 main，APK 构建使用生产配置。
+          # dawn 2026-06-22 固定 main 分支部署：APK 构建使用生产配置。
           ENV_VALUE=prod
 
+          cd "${GITEE_WORKSPACE:-$PWD}"
           flutter --version
           flutter pub get
           flutter build apk --release --split-per-abi --dart-define=ENV="${ENV_VALUE}"
