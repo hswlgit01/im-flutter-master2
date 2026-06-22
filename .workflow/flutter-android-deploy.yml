@@ -62,6 +62,40 @@ stages:
             set -x 2>/dev/null || true
             ssh-keyscan -p "${DEPLOY_PORT}" "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
+            # dawn 2026-06-22 修复 Gitee Go 默认工作目录不稳定：先定位当前仓库的 Flutter 根目录，再打包源码。
+            SOURCE_ROOT=""
+            for candidate in \
+              "${GITEE_WORKSPACE:-}" \
+              "${WORKSPACE:-}" \
+              "${CI_WORKSPACE:-}" \
+              "${PWD:-}" \
+              "/root/workspace/wan-niu/Im-Flutte" \
+              "/root/workspace/${GITEE_REPO_OWNER:-wan-niu}/${GITEE_REPO_NAME:-Im-Flutte}"
+            do
+              if [ -n "${candidate}" ] && [ -f "${candidate}/pubspec.yaml" ]; then
+                SOURCE_ROOT="${candidate}"
+                break
+              fi
+            done
+            if [ -z "${SOURCE_ROOT}" ]; then
+              SOURCE_PUBSPEC="$(find /root/workspace /workspace /gitee_workspace -maxdepth 6 -type f -name pubspec.yaml \
+                ! -path '*/openim_common/*' \
+                ! -path '*/openim_live/*' \
+                ! -path '*/local_plugin/*' \
+                2>/dev/null | head -n 1 || true)"
+              if [ -n "${SOURCE_PUBSPEC}" ]; then
+                SOURCE_ROOT="$(dirname "${SOURCE_PUBSPEC}")"
+              fi
+            fi
+            if [ -z "${SOURCE_ROOT}" ] || [ ! -f "${SOURCE_ROOT}/pubspec.yaml" ]; then
+              echo "Gitee 容器内没有找到 Flutter 项目根 pubspec.yaml，无法打包源码" >&2
+              find /root/workspace /workspace /gitee_workspace -maxdepth 6 -type f -name pubspec.yaml -print 2>/dev/null || true
+              exit 1
+            fi
+            cd "${SOURCE_ROOT}"
+            pwd
+            ls -la | sed -n '1,80p'
+
             # dawn 2026-06-22 无服务器 Git 凭据部署：流水线把当前提交源码传到服务器后构建。
             tar \
               --exclude='.git' \
