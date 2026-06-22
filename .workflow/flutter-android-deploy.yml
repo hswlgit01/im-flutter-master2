@@ -96,7 +96,29 @@ stages:
             tar -xzf "${REMOTE_ARCHIVE}" -C "${DEPLOY_WORKDIR}"
             rm -f "${REMOTE_ARCHIVE}"
 
-            cd "${DEPLOY_WORKDIR}"
+            # dawn 2026-06-22 修复远端构建目录：Gitee 打包内容可能多一层目录，自动定位 Flutter 根 pubspec.yaml。
+            echo "DEPLOY_WORKDIR=${DEPLOY_WORKDIR}"
+            find "${DEPLOY_WORKDIR}" -maxdepth 3 -type f -name pubspec.yaml -print
+            PROJECT_DIR="${DEPLOY_WORKDIR}"
+            if [ ! -f "${PROJECT_DIR}/pubspec.yaml" ]; then
+              PROJECT_PUBSPEC="$(find "${DEPLOY_WORKDIR}" -maxdepth 3 -type f -name pubspec.yaml \
+                ! -path '*/openim_common/*' \
+                ! -path '*/openim_live/*' \
+                ! -path '*/local_plugin/*' \
+                -print -quit)"
+              if [ -n "${PROJECT_PUBSPEC}" ]; then
+                PROJECT_DIR="$(dirname "${PROJECT_PUBSPEC}")"
+              fi
+            fi
+            if [ -z "${PROJECT_DIR:-}" ] || [ ! -f "${PROJECT_DIR}/pubspec.yaml" ]; then
+              echo "没有找到 Flutter 项目根目录 pubspec.yaml" >&2
+              find "${DEPLOY_WORKDIR}" -maxdepth 4 -type f -name pubspec.yaml -print >&2 || true
+              exit 1
+            fi
+
+            cd "${PROJECT_DIR}"
+            pwd
+            ls -la | sed -n '1,80p'
             java -version
             flutter --version
             flutter pub get
