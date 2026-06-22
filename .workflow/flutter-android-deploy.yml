@@ -1,6 +1,11 @@
 version: '1.0'
 name: flutter-android-deploy
 displayName: Flutter_Android
+# dawn 2026-06-22 修复 Gitee 变量未注入：非敏感部署参数直接声明为流水线级变量，密钥仍使用 Gitee 密文变量。
+variables:
+  DEPLOY_HOST: 8.148.66.77
+  DEPLOY_USER: root
+  DEPLOY_PORT: '22'
 triggers:
   trigger: auto
   push:
