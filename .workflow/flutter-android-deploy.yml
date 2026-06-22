@@ -17,6 +17,7 @@ stages:
         name: build_apk
         displayName: Flutter 构建并发布 APK
         hostGroupID: freechat-prod
+        scriptType: SH
         script:
           - set -euo pipefail
           - ''
@@ -34,3 +35,4 @@ stages:
           - cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk /data/app/apk/public/app-release.apk
           - ls -lh /data/app/apk/public/app-release.apk
           - ''
+        strategy: {}
