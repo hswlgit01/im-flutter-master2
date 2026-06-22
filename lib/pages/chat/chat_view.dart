@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:chat_listview/chat_listview.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:get/get.dart';
@@ -19,6 +18,7 @@ import 'voice_record_bar.dart';
 import 'widget/chat_luck_money_item_view.dart';
 import 'widget/chat_transfer_item_view.dart';
 import 'widget/card_message_view.dart';
+import 'widget/stable_chat_list_view.dart';
 
 class ChatPage extends StatelessWidget {
   /// 聊天逻辑控制器
@@ -630,7 +630,7 @@ class ChatPage extends StatelessWidget {
                         logic.searchMessage == null;
                     return Stack(
                       children: [
-                        CustomChatListView(
+                        StableChatListView<Message>(
                           controller: logic.customChatListViewController,
                           key: const ValueKey('chat_list_stable'),
                           scrollController: logic.scrollController,
