@@ -34,7 +34,12 @@ stages:
 
             : "${DEPLOY_HOST:?请在 Gitee Go 通用变量中配置 DEPLOY_HOST}"
             : "${DEPLOY_USER:?请在 Gitee Go 通用变量中配置 DEPLOY_USER}"
-            : "${DEPLOY_SSH_KEY:?请在 Gitee Go 通用变量中配置 DEPLOY_SSH_KEY}"
+            # dawn 2026-06-22 避免密钥泄露：Gitee Go 默认会打印 shell 命令，读取 DEPLOY_SSH_KEY 前先关闭 xtrace。
+            set +x 2>/dev/null || true
+            if [ -z "${DEPLOY_SSH_KEY:-}" ]; then
+              echo "请在 Gitee Go 通用变量中配置 DEPLOY_SSH_KEY" >&2
+              exit 1
+            fi
 
             DEPLOY_PORT="${DEPLOY_PORT:-22}"
             DEPLOY_WORKDIR="${DEPLOY_WORKDIR:-/data/app/im-flutter}"
@@ -58,6 +63,7 @@ stages:
             chmod 700 ~/.ssh
             printf '%s\n' "${DEPLOY_SSH_KEY}" | sed 's/\r$//' > ~/.ssh/deploy_key
             chmod 600 ~/.ssh/deploy_key
+            set -x 2>/dev/null || true
             ssh-keyscan -p "${DEPLOY_PORT}" "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
             # dawn 2026-06-22 无服务器 Git 凭据部署：流水线把当前提交源码传到服务器后构建。
@@ -77,7 +83,8 @@ stages:
 
             # dawn 2026-06-22 修复远程脚本变量展开：JAVA_HOME/PATH 必须在服务器侧解析，避免 Gitee 容器 set -u 提前报错。
             export JAVA_HOME="\${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
-            export PATH="\${JAVA_HOME}/bin:\${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+            # dawn 2026-06-22 修复服务器非登录 shell：Flutter 安装在 /opt/flutter，流水线 SSH 不会读取交互式 PATH。
+            export PATH="\${JAVA_HOME}/bin:/opt/flutter/bin:\${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
 
             ENV_VALUE="${ENV_VALUE}"
             DEPLOY_WORKDIR="${DEPLOY_WORKDIR}"
