@@ -11,26 +11,26 @@ triggers:
 
 stages:
   - stage:
-      name: build_android
-      displayName: 构建 Android APK
-      steps:
-        - step: shell@agent
-          name: build_apk
-          displayName: Flutter 构建并发布 APK
-          hostGroupID: freechat-prod
-          script: |
-            set -euo pipefail
+    name: build_android
+    displayName: 构建 Android APK
+    steps:
+      - step: shell@agent
+        name: build_apk
+        displayName: Flutter 构建并发布 APK
+        hostGroupID: freechat-prod
+        script: |
+          set -euo pipefail
 
-            export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
-            export PATH="${JAVA_HOME}/bin:${PATH}"
+          export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+          export PATH="${JAVA_HOME}/bin:${PATH}"
 
-            # dawn 2026-06-22 固定 main 分支部署：Gitee Go 当前只启用 main，APK 构建使用生产配置。
-            ENV_VALUE=prod
+          # dawn 2026-06-22 固定 main 分支部署：Gitee Go 当前只启用 main，APK 构建使用生产配置。
+          ENV_VALUE=prod
 
-            flutter --version
-            flutter pub get
-            flutter build apk --release --split-per-abi --dart-define=ENV="${ENV_VALUE}"
+          flutter --version
+          flutter pub get
+          flutter build apk --release --split-per-abi --dart-define=ENV="${ENV_VALUE}"
 
-            mkdir -p /data/app/apk/public
-            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk /data/app/apk/public/app-release.apk
-            ls -lh /data/app/apk/public/app-release.apk
+          mkdir -p /data/app/apk/public
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk /data/app/apk/public/app-release.apk
+          ls -lh /data/app/apk/public/app-release.apk
