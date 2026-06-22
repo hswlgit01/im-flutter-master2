@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:openim_common/openim_common.dart';
 
@@ -17,34 +18,21 @@ class HomePage extends StatelessWidget {
 
   HomePage({super.key});
 
-  Widget _setupIcon(Widget icon, int unReadCount) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        icon,
-        Positioned(
-          top: 0,
-          right: 0,
-          child: Transform.translate(
-            offset: const Offset(2, -2),
-            child: UnreadCountView(count: unReadCount),
-          ),
-        ),
-      ],
-    );
-  }
-
-  BottomNavigationBarItem _buildItem({
-    required Widget icon,
-    required Widget inactiveIcon,
+  BottomBarItem _buildBottomItem({
+    required String selectedImgRes,
+    required String unselectedImgRes,
     required String label,
-  }) {
-    return BottomNavigationBarItem(
-      icon: inactiveIcon,
-      activeIcon: icon,
-      label: label,
-    );
-  }
+    int count = 0,
+  }) =>
+      BottomBarItem(
+        selectedImgRes: selectedImgRes,
+        unselectedImgRes: unselectedImgRes,
+        label: label,
+        imgWidth: 24.w,
+        imgHeight: 24.w,
+        count: count,
+        onClick: logic.switchTab,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -59,59 +47,30 @@ class HomePage extends StatelessWidget {
             children: _pages,
           ),
         ),
-        bottomNavigationBar: DecoratedBox(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black12,
-                blurRadius: 0.5,
-                spreadRadius: 0.5,
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: BottomBar(
+            // dawn 2026-06-22 修复底部导航图标异常放大：恢复项目自定义 BottomBar，显式固定图标尺寸。
+            index: logic.index.value,
+            items: [
+              _buildBottomItem(
+                selectedImgRes: ImageRes.homeTab1Sel,
+                unselectedImgRes: ImageRes.homeTab1Nor,
+                label: StrRes.home,
+                count: logic.unreadMsgCount.value,
+              ),
+              _buildBottomItem(
+                selectedImgRes: ImageRes.homeTab2Sel,
+                unselectedImgRes: ImageRes.homeTab2Nor,
+                label: StrRes.contacts,
+                count: logic.unhandledCount.value,
+              ),
+              _buildBottomItem(
+                selectedImgRes: ImageRes.homeTab4Sel,
+                unselectedImgRes: ImageRes.homeTab4Nor,
+                label: StrRes.mine,
               ),
             ],
-          ),
-          child: SafeArea(
-            top: false,
-            child: BottomNavigationBar(
-              currentIndex: logic.index.value,
-              onTap: logic.switchTab,
-              type: BottomNavigationBarType.fixed,
-              backgroundColor: Styles.c_FFFFFF,
-              selectedItemColor: Styles.c_0089FF,
-              unselectedItemColor: Styles.c_8E9AB0,
-              selectedLabelStyle: Styles.ts_0089FF_10sp_semibold,
-              unselectedLabelStyle: Styles.ts_8E9AB0_10sp,
-              elevation: 0,
-              items: [
-                _buildItem(
-                  icon: _setupIcon(
-                    ImageRes.homeTab1Sel.toImage,
-                    logic.unreadMsgCount.value,
-                  ),
-                  inactiveIcon: _setupIcon(
-                    ImageRes.homeTab1Nor.toImage,
-                    logic.unreadMsgCount.value,
-                  ),
-                  label: StrRes.home,
-                ),
-                _buildItem(
-                  icon: _setupIcon(
-                    ImageRes.homeTab2Sel.toImage,
-                    logic.unhandledCount.value,
-                  ),
-                  inactiveIcon: _setupIcon(
-                    ImageRes.homeTab2Nor.toImage,
-                    logic.unhandledCount.value,
-                  ),
-                  label: StrRes.contacts,
-                ),
-                _buildItem(
-                  icon: ImageRes.homeTab4Sel.toImage,
-                  inactiveIcon: ImageRes.homeTab4Nor.toImage,
-                  label: StrRes.mine,
-                ),
-              ],
-            ),
           ),
         ),
       ),

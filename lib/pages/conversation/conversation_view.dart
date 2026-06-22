@@ -1,9 +1,6 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:get/get.dart';
 import 'package:openim/core/controller/im_controller.dart';
 import 'package:openim_common/openim_common.dart';
@@ -106,14 +103,13 @@ class ConversationPage extends StatelessWidget {
               children: [
                 _buildSearchBar(),
                 Expanded(
-                  child: SlidableAutoCloseBehavior(
-                    child: ListView.builder(
-                      itemBuilder: (_, index) => _buildItemView(
-                        logic.list.elementAt(index),
-                      ),
-                      itemCount: logic.list.length,
-                      physics: const AlwaysScrollableScrollPhysics(),
+                  child: ListView.builder(
+                    // dawn 2026-06-22 修复安卓会话列表灰色遮罩：禁用侧滑菜单层，避免 Slidable 状态残留覆盖列表。
+                    itemBuilder: (_, index) => _buildItemView(
+                      logic.list.elementAt(index),
                     ),
+                    itemCount: logic.list.length,
+                    physics: const AlwaysScrollableScrollPhysics(),
                   ),
                 ),
               ],
@@ -124,151 +120,107 @@ class ConversationPage extends StatelessWidget {
 
   Widget _buildItemView(ConversationInfo info) {
     final unReadCount = logic.getUnreadCount(info);
-    final isPinned = info.isPinned ?? false;
-    double extentRatio = 0.5;
-    List<int> flexs = [3, 3, 3];
-    if (unReadCount > 0) {
-      extentRatio += 0.3;
-      flexs[1]++;
-    }
-    if (isPinned) {
-      extentRatio = min(0.8, 0.15 + extentRatio);
-      flexs[0]++;
-    }
-
-    return Slidable(
-        key: ValueKey(info.conversationID),
-        endActionPane: ActionPane(
-            motion: const ScrollMotion(),
-            extentRatio: extentRatio,
-            children: [
-              CustomSlidableAction(
-                  backgroundColor: Colors.blue,
-                  flex: flexs[0],
-                  label: isPinned ? StrRes.cancelTop : StrRes.top,
-                  onPressed: () {
-                    logic.setPinnedConversation(
-                        info, !(info.isPinned ??= false));
-                  }),
-              if (unReadCount > 0)
-                CustomSlidableAction(
-                    backgroundColor: Styles.c_707070,
-                    flex: flexs[1],
-                    label: StrRes.markHasRead,
-                    onPressed: () {
-                      logic.setReadConversation(info);
-                    }),
-              CustomSlidableAction(
-                  backgroundColor: Colors.red,
-                  flex: flexs[2],
-                  label: StrRes.delete,
-                  onPressed: () {
-                    logic.removeConversation(info);
-                  }),
-            ]),
-        child: Ink(
-          child: InkWell(
-            onTap: () => logic.toChat(conversationInfo: info),
-            child: Stack(
-              children: [
-                if (info.isPinned ?? false)
-                  // dawn 2026-06-21 修复会话置顶角标布局：Positioned 必须直接作为 Stack 子节点，避免部分机型出现灰色占位块。
-                  Positioned(
-                    top: 0,
-                    right: 4,
-                    child: CustomPaint(
-                      size: const Size(10, 10),
-                      painter: TrianglePainter(color: Styles.c_0089FF),
-                    ),
-                  ),
-                Container(
-                  height: 68,
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: Row(
+    return Ink(
+      child: InkWell(
+        onTap: () => logic.toChat(conversationInfo: info),
+        child: Stack(
+          children: [
+            if (info.isPinned ?? false)
+              // dawn 2026-06-21 修复会话置顶角标布局：Positioned 必须直接作为 Stack 子节点，避免部分机型出现灰色占位块。
+              Positioned(
+                top: 0,
+                right: 4,
+                child: CustomPaint(
+                  size: const Size(10, 10),
+                  painter: TrianglePainter(color: Styles.c_0089FF),
+                ),
+              ),
+            Container(
+              height: 68,
+              padding: EdgeInsets.symmetric(horizontal: 16.w),
+              child: Row(
+                children: [
+                  Stack(
                     children: [
-                      Stack(
-                        children: [
-                          AvatarView(
-                            width: 48.w,
-                            height: 48.h,
-                            text: logic.getShowName(info),
-                            url: _logConversationAvatar(info),
-                            isGroup: logic.isGroupChat(info),
-                            textStyle: Styles.ts_FFFFFF_14sp_medium,
-                          ),
-                        ],
-                      ),
-                      12.horizontalSpace,
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Row(
-                              children: [
-                                ConstrainedBox(
-                                  constraints: BoxConstraints(maxWidth: 180.w),
-                                  child: logic.getShowName(info).toText
-                                    ..style = Styles.ts_0C1C33_17sp
-                                    ..maxLines = 1
-                                    ..overflow = TextOverflow.ellipsis,
-                                ),
-                                // dawn 2026-06-21 新增官方人员标识：管理员/团队长单聊在会话列表昵称后展示认证图标。
-                                Obx(() => logic.isOfficialConversation(info)
-                                    ? const OfficialRoleBadge()
-                                    : const SizedBox.shrink()),
-                                const Spacer(),
-                                logic.getTime(info).toText
-                                  ..style = Styles.ts_8E9AB0_12sp,
-                              ],
-                            ),
-                            3.verticalSpace,
-                            Row(
-                              children: [
-                                MatchTextView(
-                                  text: logic.getContent(info),
-                                  textStyle: Styles.ts_8E9AB0_14sp,
-                                  prefixSpan: TextSpan(
-                                    text: '',
-                                    children: [
-                                      info.groupAtType != GroupAtType.atNormal
-                                          ? TextSpan(
-                                              text:
-                                                  '${logic.getPrefixTag(info)} ',
-                                              style:
-                                                  Styles.ts_0089FF_14sp_medium,
-                                            )
-                                          : unReadCount > 0
-                                              ? TextSpan(
-                                                  text:
-                                                      '[${sprintf(StrRes.nPieces, [
-                                                        unReadCount
-                                                      ])}] ',
-                                                  style: Styles
-                                                      .ts_0089FF_14sp_medium,
-                                                )
-                                              : const TextSpan(),
-                                    ],
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const Spacer(),
-                                if (info.recvMsgOpt == 0)
-                                  UnreadCountView(count: unReadCount),
-                                if (info.recvMsgOpt == 2)
-                                  ImageRes.notDisturb.toImage..width = 12.w,
-                              ],
-                            ),
-                          ],
-                        ),
+                      AvatarView(
+                        width: 48.w,
+                        height: 48.h,
+                        text: logic.getShowName(info),
+                        url: _logConversationAvatar(info),
+                        isGroup: logic.isGroupChat(info),
+                        textStyle: Styles.ts_FFFFFF_14sp_medium,
                       ),
                     ],
                   ),
-                ),
-              ],
+                  12.horizontalSpace,
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          children: [
+                            ConstrainedBox(
+                              constraints: BoxConstraints(maxWidth: 180.w),
+                              child: logic.getShowName(info).toText
+                                ..style = Styles.ts_0C1C33_17sp
+                                ..maxLines = 1
+                                ..overflow = TextOverflow.ellipsis,
+                            ),
+                            // dawn 2026-06-21 新增官方人员标识：管理员/团队长单聊在会话列表昵称后展示认证图标。
+                            Obx(() => logic.isOfficialConversation(info)
+                                ? const OfficialRoleBadge()
+                                : const SizedBox.shrink()),
+                            const Spacer(),
+                            logic.getTime(info).toText
+                              ..style = Styles.ts_8E9AB0_12sp,
+                          ],
+                        ),
+                        3.verticalSpace,
+                        Row(
+                          children: [
+                            MatchTextView(
+                              text: logic.getContent(info),
+                              textStyle: Styles.ts_8E9AB0_14sp,
+                              prefixSpan: TextSpan(
+                                text: '',
+                                children: [
+                                  info.groupAtType != GroupAtType.atNormal
+                                      ? TextSpan(
+                                          text: '${logic.getPrefixTag(info)} ',
+                                          style: Styles.ts_0089FF_14sp_medium,
+                                        )
+                                      : unReadCount > 0
+                                          ? TextSpan(
+                                              text:
+                                                  '[${sprintf(StrRes.nPieces, [
+                                                    unReadCount
+                                                  ])}] ',
+                                              style:
+                                                  Styles.ts_0089FF_14sp_medium,
+                                            )
+                                          : const TextSpan(),
+                                ],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const Spacer(),
+                            if (info.recvMsgOpt == 0)
+                              UnreadCountView(count: unReadCount),
+                            if (info.recvMsgOpt == 2)
+                              ImageRes.notDisturb.toImage..width = 12.w,
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ));
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildSearchBar() {
@@ -320,40 +272,4 @@ class TrianglePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
-}
-
-class CustomSlidableAction extends StatelessWidget {
-  final Color backgroundColor;
-  final String label;
-  final int flex;
-  final Function? onPressed;
-
-  const CustomSlidableAction(
-      {super.key,
-      required this.backgroundColor,
-      required this.label,
-      this.flex = 1,
-      this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Flexible(
-        flex: flex,
-        child: SizedBox.expand(
-          child: GestureDetector(
-            onTap: () {
-              onPressed?.call();
-              Slidable.of(context)?.close();
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                color: backgroundColor,
-              ),
-              child: Center(
-                child: Text(label, style: Styles.ts_FFFFFF_14sp),
-              ),
-            ),
-          ),
-        ));
-  }
 }
