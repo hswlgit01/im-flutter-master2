@@ -2113,18 +2113,69 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
     final recvUserID = useOuterValue ? userId : userID;
     message.recvID = recvUserID;
+    final targetGroupID = useOuterValue ? groupId : groupID;
 
-    return OpenIM.iMManager.messageManager
-        .sendMessage(
-          message: message,
-          userID: recvUserID,
-          groupID: useOuterValue ? groupId : groupID,
-          offlinePushInfo: Config.offlinePushInfo,
-        )
-        .then((value) => _sendSucceeded(message, value))
-        .catchError(
-            (error, _) => _senFailed(message, groupId, userId, error, _))
-        .whenComplete(() => _completed());
+    // dawn 2026-06-23 修复超大群(如3万人)发送后小圈圈不消失：
+    // 在超大群扇出下，SDK sendMessage 的“发送完成”回调会迟迟不回（既不 then 也不 catch），
+    // 但消息其实已发出并由 SDK 存入本地。为避免永久“发送中”，给发送加超时；超时后按本地真实状态对账：
+    // 本地已成功(有 serverMsgID)就钉成功清掉转圈，本地失败就标失败，其余保持现状（不误判）。
+    try {
+      final value = await OpenIM.iMManager.messageManager
+          .sendMessage(
+            message: message,
+            userID: recvUserID,
+            groupID: targetGroupID,
+            offlinePushInfo: Config.offlinePushInfo,
+          )
+          .timeout(const Duration(seconds: 20));
+      _sendSucceeded(message, value);
+    } on TimeoutException {
+      await _reconcileSendStatus(message, useOuterValue);
+    } catch (error, stack) {
+      _senFailed(message, groupId, userId, error, stack);
+    } finally {
+      _completed();
+    }
+  }
+
+  /// dawn 2026-06-23 发送超时对账：用 SDK 本地存储里的真实状态决定 UI 是“成功”还是“失败”，避免大群下永久转圈或误判。
+  Future<void> _reconcileSendStatus(Message message, bool useOuterValue) async {
+    final clientMsgID = message.clientMsgID;
+    if (clientMsgID == null || clientMsgID.isEmpty) return;
+    // 仅对“当前会话”的发送做对账（转圈出现在当前聊天页）；转发到其它会话不在本页展示，跳过。
+    if (useOuterValue) return;
+    try {
+      final result = await OpenIM.iMManager.messageManager.findMessageList(
+        searchParams: [
+          SearchParams(
+            conversationID: conversationInfo.conversationID,
+            clientMsgIDList: [clientMsgID],
+          ),
+        ],
+      );
+      final items = [
+        ...?result.findResultItems,
+        ...?result.searchResultItems,
+      ];
+      Message? stored;
+      for (final item in items) {
+        stored = item.messageList
+            ?.firstWhereOrNull((e) => e.clientMsgID == clientMsgID);
+        if (stored != null) break;
+      }
+      if (stored != null &&
+          (stored.status == MessageStatus.succeeded ||
+              (stored.serverMsgID?.isNotEmpty ?? false))) {
+        // 本地已是成功（有 serverMsgID）→ 钉成功、清掉转圈
+        _sendSucceeded(message, stored);
+      } else if (stored != null && stored.status == MessageStatus.failed) {
+        message.status = MessageStatus.failed;
+        sendStatusSub.addSafely(MsgStreamEv<bool>(id: clientMsgID, value: false));
+      }
+      // 查不到 / 仍在发送：保持现状，不误判
+    } catch (e) {
+      app_log.LogUtil.e('ChatLogic', '发送超时对账失败: clientMsgID=$clientMsgID', e);
+    }
   }
 
   void _sendSucceeded(Message oldMsg, Message newMsg) {
