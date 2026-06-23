@@ -3,6 +3,7 @@ import 'package:openim_common/openim_common.dart';
 import 'package:uuid/uuid.dart';
 import '../utils/log_util.dart';
 import 'package:dio/dio.dart';
+import 'data_sp.dart' as app_sp;
 
 /// API服务类
 /// 提供与后端API交互的方法
@@ -16,9 +17,11 @@ class ApiService {
 
   // Dio实例
 
-  // dawn 2026-05-15 修复手机端发送方敏感词未脱敏：短缓存启用词表，避免每条消息都请求后台。
+  // dawn 2026-06-23 敏感词架构改(方案B)：登录拉取+持久化缓存+版本变更刷新，
+  // 发消息直接读内存/本地缓存(0延迟)，不再每条消息轮询后台；服务端仍权威兜底打码。
   List<String> _sensitiveWordsCache = [];
-  DateTime? _sensitiveWordsExpireAt;
+  String _sensitiveWordsVersion = '';
+  bool _sensitiveWordsLoadedFromSp = false;
 
   /// 检查 chatToken 是否有效
   bool _checkChatToken() {
@@ -33,22 +36,34 @@ class ApiService {
 
   String _maskWord(String word) => List.filled(_runeLength(word), '*').join();
 
-  Future<List<String>> _getEnabledSensitiveWords() async {
-    final now = DateTime.now();
-    if (_sensitiveWordsExpireAt != null &&
-        now.isBefore(_sensitiveWordsExpireAt!)) {
-      return _sensitiveWordsCache;
-    }
-
+  // 从本地持久化缓存恢复词表(冷启动时调用，避免首条消息漏打码)。
+  void _ensureLoadedFromSp() {
+    if (_sensitiveWordsLoadedFromSp) return;
+    _sensitiveWordsLoadedFromSp = true;
     try {
-      if (!_checkChatToken()) return _sensitiveWordsCache;
+      final cached = app_sp.DataSp.getSensitiveWords();
+      if (cached.isNotEmpty) {
+        _sensitiveWordsCache = cached
+          ..sort((a, b) => _runeLength(b).compareTo(_runeLength(a)));
+      }
+      _sensitiveWordsVersion = app_sp.DataSp.getSensitiveWordsVersion();
+    } catch (e) {
+      LogUtil.e(TAG, '加载本地敏感词缓存失败: $e');
+    }
+  }
 
+  /// 登录后调用：全量拉取启用词表与版本号，写入内存与本地持久化缓存。
+  Future<void> prefetchSensitiveWords() async {
+    _ensureLoadedFromSp();
+    if (!_checkChatToken()) return;
+    try {
       final data = await HttpUtil.get(
         Urls.sensitiveWordEnabled,
         options: Apis.chatTokenOptions,
         showErrorToast: false,
       );
       final words = data is Map ? data['words'] : null;
+      final version = data is Map ? data['version'] : null;
       final nextWords = <String>{};
       if (words is List) {
         for (final word in words) {
@@ -59,24 +74,55 @@ class ApiService {
       }
       _sensitiveWordsCache = nextWords.toList()
         ..sort((a, b) => _runeLength(b).compareTo(_runeLength(a)));
+      _sensitiveWordsVersion = version?.toString() ?? '';
+      await app_sp.DataSp.putSensitiveWords(_sensitiveWordsCache);
+      await app_sp.DataSp.putSensitiveWordsVersion(_sensitiveWordsVersion);
+      LogUtil.i(TAG,
+          '敏感词词表已更新: ${_sensitiveWordsCache.length}词, version=$_sensitiveWordsVersion');
     } catch (e) {
-      LogUtil.e(TAG, '获取敏感词失败: $e');
-    } finally {
-      _sensitiveWordsExpireAt = DateTime.now().add(const Duration(seconds: 10));
+      LogUtil.e(TAG, '拉取敏感词词表失败: $e');
     }
-    return _sensitiveWordsCache;
+  }
+
+  /// 切前台/进会话时调用：仅拉轻量版本号，变更时才全量刷新(替代每条消息轮询)。
+  Future<void> refreshSensitiveWordsIfChanged() async {
+    _ensureLoadedFromSp();
+    if (!_checkChatToken()) return;
+    try {
+      final data = await HttpUtil.get(
+        Urls.sensitiveWordVersion,
+        options: Apis.chatTokenOptions,
+        showErrorToast: false,
+      );
+      final remoteVersion =
+          (data is Map ? data['version'] : null)?.toString() ?? '';
+      if (remoteVersion.isEmpty || remoteVersion == _sensitiveWordsVersion) {
+        return;
+      }
+      LogUtil.i(TAG,
+          '敏感词版本变更: 本地=$_sensitiveWordsVersion 远端=$remoteVersion，重新拉取词表');
+      await prefetchSensitiveWords();
+    } catch (e) {
+      LogUtil.e(TAG, '检查敏感词版本失败: $e');
+    }
   }
 
   /// dawn 2026-05-15 修复手机端发送方敏感词未脱敏：创建本地消息前按敏感词字数替换为星号。
+  /// 方案B：直接用本地缓存(0延迟)；若缓存为空则按需全量拉取一次兜底。
   Future<String> maskSensitiveWords(String text) async {
     if (text.isEmpty) return text;
-    final words = await _getEnabledSensitiveWords();
-    return _maskSensitiveWordsWithList(text, words);
+    _ensureLoadedFromSp();
+    if (_sensitiveWordsCache.isEmpty) {
+      await prefetchSensitiveWords();
+    }
+    return _maskSensitiveWordsWithList(text, _sensitiveWordsCache);
   }
 
   // dawn 2026-05-15 修复手机端会话列表摘要露出敏感词：摘要渲染只能同步执行，使用已缓存词表兜底脱敏。
   String maskSensitiveWordsFromCache(String text) {
-    if (text.isEmpty || _sensitiveWordsCache.isEmpty) return text;
+    if (text.isEmpty) return text;
+    _ensureLoadedFromSp();
+    if (_sensitiveWordsCache.isEmpty) return text;
     return _maskSensitiveWordsWithList(text, _sensitiveWordsCache);
   }
 

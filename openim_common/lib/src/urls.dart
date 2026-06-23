@@ -91,6 +91,9 @@ class Urls {
   // dawn 2026-05-15 修复手机端发送方敏感词未脱敏：客户端发送前读取启用词表。
   static final sensitiveWordEnabled =
       "${Config.appAuthUrl}/third/sensitive_word/enabled";
+  // dawn 2026-06-23 敏感词架构改：轻量版本号接口，仅返回 version，用于判断词表是否需要重新拉取。
+  static final sensitiveWordVersion =
+      "${Config.appAuthUrl}/third/sensitive_word/version";
 
   // 注册账户-new
   static final userRegister = "${Config.appAuthUrl}/third/user/register";

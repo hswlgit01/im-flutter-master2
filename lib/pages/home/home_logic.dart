@@ -131,6 +131,8 @@ class HomeLogic extends SuperController {
     cacheLogic.initCallRecords();
     checkWalletStatus();
     requestNotificationPermission();
+    // dawn 2026-06-23 敏感词架构改：登录进入主页后全量预热词表(持久化缓存)。
+    app_api.ApiService().prefetchSensitiveWords();
     super.onReady();
   }
 
@@ -203,6 +205,8 @@ class HomeLogic extends SuperController {
     /// 应用切到前台更新下用户权限
     final orgController = Get.find<OrgController>();
     orgController.refreshOrg();
+    // dawn 2026-06-23 敏感词架构改：切前台时只校验轻量版本号，变更才全量刷新词表。
+    app_api.ApiService().refreshSensitiveWordsIfChanged();
   }
 
   void _getRTCInvitationStart() async {}
