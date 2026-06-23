@@ -980,6 +980,15 @@ class ConversationLogic extends GetxController {
     return info.isValid;
   }
 
+  // dawn 2026-06-23 建群后/首次进入会话时，确保该会话已存在于列表中（避免依赖 SDK 回调时序）。
+  void _ensureConversationInList(ConversationInfo info) {
+    if (!isValidConversation(info)) return;
+    final exists = list.any((e) => e.conversationID == info.conversationID);
+    if (exists) return;
+    list.insert(0, info);
+    _sortConversationList();
+  }
+
   static Future<ConversationInfo> _createConversation({
     required String sourceID,
     required int sessionType,
@@ -1012,6 +1021,10 @@ class ConversationLogic extends GetxController {
       sourceID: userID ?? groupID!,
       sessionType: userID == null ? sessionType! : ConversationType.single,
     );
+
+    // dawn 2026-06-23 修复建群后会话列表不生成：进入会话时主动把会话补进列表，
+    // 不再完全依赖 SDK 的 onNewConversation 回调（新建群/首次单聊回调可能不触发）。
+    _ensureConversationInList(conversationInfo);
 
     if (await _jumpOANtf(conversationInfo)) {
       _markFallbackUnreadRead(conversationInfo);

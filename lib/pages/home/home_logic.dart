@@ -39,6 +39,12 @@ class HomeLogic extends SuperController {
 
   switchTab(index) {
     this.index.value = index;
+    // dawn 2026-06-23 修复好友/群申请红点偶发不显示：切到通讯录页时主动重算未处理申请数，
+    // 兜底 SDK 在线回调可能漏触发的情况。
+    if (index == 1) {
+      getUnhandledFriendApplicationCount();
+      getUnhandledGroupApplicationCount();
+    }
   }
 
   void getUnhandledFriendApplicationCount() async {
