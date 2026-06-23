@@ -562,13 +562,11 @@ packages:
     source: hosted
     version: "2.2.0"
   ffmpeg_kit_flutter:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      path: "flutter/flutter"
-      ref: onlyios
-      resolved-ref: "7ec3eda277e0caf8a7f5e21f38fac50c03cfa8d7"
-      url: "https://github.com/lin-weaik/ffmpeg-kit.git"
-    source: git
+      path: "local_plugin/ffmpeg_kit_flutter"
+      relative: true
+    source: path
     version: "6.0.3"
   ffmpeg_kit_flutter_platform_interface:
     dependency: transitive
