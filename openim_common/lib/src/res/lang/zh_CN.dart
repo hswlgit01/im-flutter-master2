@@ -1,5 +1,5 @@
 const Map<String, String> zh_CN = {
-  "welcome": "欢迎使用会聊",
+  "welcome": "欢迎使用心享",
   "joinInvitationSuccess": "加入邀请码成功",
   "userID": "用户ID",
   "phoneNumber": "手机号",
@@ -214,7 +214,7 @@ const Map<String, String> zh_CN = {
   "addFriend": "添加好友",
   "addFriendHint": "通过ID号搜索添加",
   "createGroup": "创建群聊",
-  "createGroupHint": "创建群聊，全面使用会聊",
+  "createGroupHint": "创建群聊，全面使用心享",
   "addGroup": "添加群聊",
   "addGroupHint": "向管理员或群聊成员询问ID",
   "searchIDAddFriend": "搜索ID添加好友",
