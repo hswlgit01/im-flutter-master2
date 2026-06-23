@@ -2116,26 +2116,28 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final targetGroupID = useOuterValue ? groupId : groupID;
 
     // dawn 2026-06-23 修复超大群(如3万人)发送后小圈圈不消失：
-    // 在超大群扇出下，SDK sendMessage 的“发送完成”回调会迟迟不回（既不 then 也不 catch），
-    // 但消息其实已发出并由 SDK 存入本地。为避免永久“发送中”，给发送加超时；超时后按本地真实状态对账：
-    // 本地已成功(有 serverMsgID)就钉成功清掉转圈，本地失败就标失败，其余保持现状（不误判）。
-    try {
-      final value = await OpenIM.iMManager.messageManager
-          .sendMessage(
-            message: message,
-            userID: recvUserID,
-            groupID: targetGroupID,
-            offlinePushInfo: Config.offlinePushInfo,
-          )
-          .timeout(const Duration(seconds: 20));
-      _sendSucceeded(message, value);
-    } on TimeoutException {
-      await _reconcileSendStatus(message, useOuterValue);
-    } catch (error, stack) {
-      _senFailed(message, groupId, userId, error, stack);
-    } finally {
-      _completed();
+    // 正常/慢速发送仍走 then/catchError 正常更新（不打断，弱网慢发也能正确收尾）；
+    // 另起一个兜底定时器，专治超大群扇出下 SDK 发送完成回调悬挂（既不 then 也不 catch）的情况——
+    // 8 秒后若该消息仍停在“发送中”，就用本地真实状态对账：本地已存为成功(有 serverMsgID)→ 清圈，
+    // 本地失败→ 标失败，其余保持现状（不误伤正常发送、不误判）。
+    if (!useOuterValue) {
+      Future.delayed(const Duration(seconds: 8), () {
+        if (message.status == MessageStatus.sending) {
+          _reconcileSendStatus(message, useOuterValue);
+        }
+      });
     }
+    return OpenIM.iMManager.messageManager
+        .sendMessage(
+          message: message,
+          userID: recvUserID,
+          groupID: targetGroupID,
+          offlinePushInfo: Config.offlinePushInfo,
+        )
+        .then((value) => _sendSucceeded(message, value))
+        .catchError(
+            (error, _) => _senFailed(message, groupId, userId, error, _))
+        .whenComplete(() => _completed());
   }
 
   /// dawn 2026-06-23 发送超时对账：用 SDK 本地存储里的真实状态决定 UI 是“成功”还是“失败”，避免大群下永久转圈或误判。
