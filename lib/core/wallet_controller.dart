@@ -284,11 +284,13 @@ class WalletController extends GetxService {
 
       // 检查密码设置结果
       if (setPasswordResult == true) {
-        // 从API返回结果中获取真实的钱包开通说明文本
+        // dawn 2026-06-23 修复钱包开通成功弹框为英文：后台返回的 noticeText 是英文，
+        // 改用本地中文多语言串(zh_CN 已有 wallet.activateSuccessDesc)，仅当其为空时回退服务端文本。
         String? rawNoticeText = apiResult?['noticeText'];
-        final String noticeText = (rawNoticeText != null && rawNoticeText.toString().trim().isNotEmpty)
-            ? rawNoticeText.toString().trim()
-            : '';
+        final String localNotice = StrRes.walletActivateSuccessDesc;
+        final String noticeText = localNotice.trim().isNotEmpty
+            ? localNotice
+            : (rawNoticeText?.toString().trim() ?? '');
 
         LogUtil.i(_TAG, '从API获取到的钱包开通说明文本: "$noticeText"');
 
