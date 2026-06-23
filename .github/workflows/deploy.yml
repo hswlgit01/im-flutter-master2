@@ -47,6 +47,11 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      # dawn 2026-06-23 兼容补丁:移除老插件里已被 Flutter 3.29+ 删除的 v1 registerWith(Registrar)，
+      # 否则 image_cropper/ffmpeg 等老插件在新 Flutter 上 compileReleaseJavaWithJavac 失败。
+      - name: Patch legacy v1 plugins
+        run: python3 tool/patch_v1_plugins.py
+
       - name: Build APK
         run: |
           ENV_VALUE="${{ github.event.inputs.environment }}"
