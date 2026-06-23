@@ -1,17 +1,28 @@
-//pluginManagement {
-//    plugins {
-//        id 'org.jetbrains.kotlin.android' version '1.9.23'
-//    }
-//}
+pluginManagement {
+    // dawn 2026-06-22 修复 Android 调试构建：迁移到 Flutter 新版 Gradle 插件声明方式
+    def flutterSdkPath = {
+        def properties = new Properties()
+        file("local.properties").withInputStream { properties.load(it) }
+        def flutterSdkPath = properties.getProperty("flutter.sdk")
+        assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+        return flutterSdkPath
+    }()
+
+    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+    // dawn 2026-06-22 修复 Android 调试构建：AndroidX Camera 1.6 要求 AGP 8.9.1+。
+    id "com.android.application" version "8.9.1" apply false
+    // dawn 2026-06-22 修复 Android 调试构建：camera_android_camerax 依赖 Kotlin 2.1 元数据，需要同步升级 Kotlin 插件。
+    id "org.jetbrains.kotlin.android" version "2.1.20" apply false
+}
 
 include ':app'
-
-def localPropertiesFile = new File(rootProject.projectDir, "local.properties")
-def properties = new Properties()
-
-assert localPropertiesFile.exists()
-localPropertiesFile.withReader("UTF-8") { reader -> properties.load(reader) }
-
-def flutterSdkPath = properties.getProperty("flutter.sdk")
-assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
-apply from: "$flutterSdkPath/packages/flutter_tools/gradle/app_plugin_loader.gradle"

@@ -32,6 +32,9 @@ class StableChatListView<T> extends StatefulWidget {
 class _StableChatListViewState<T> extends State<StableChatListView<T>> {
   static const double _edgeThreshold = 24;
 
+  // dawn 2026-06-23 修复聊天页消息少时留白：条目不超过该值且无分页时贴底渲染，超过则改懒加载。
+  static const int _bottomAnchorMaxItem = 20;
+
   var _bottomHasMore = true;
   var _topHasMore = true;
   var _loadingBottom = false;
@@ -147,49 +150,100 @@ class _StableChatListViewState<T> extends State<StableChatListView<T>> {
         ),
       );
 
+  Widget _buildListItem(
+    BuildContext context,
+    int visualIndex,
+    List<T> topList,
+    List<T> bottomList,
+  ) {
+    final showTopLoader = _topHasMore && widget.enabledTopLoad;
+    final topLength = topList.length;
+    var index = visualIndex;
+
+    if (showTopLoader) {
+      if (index == 0) return _buildLoadMoreView();
+      index -= 1;
+    }
+
+    if (index < topLength) {
+      final position = topLength - index - 1;
+      final item = topList[position];
+      return widget.itemBuilder(context, position, position, item);
+    }
+
+    index -= topLength;
+    if (index < bottomList.length) {
+      final position = topLength + index;
+      return widget.itemBuilder(
+        context,
+        index,
+        position,
+        bottomList[index],
+      );
+    }
+
+    return _buildLoadMoreView();
+  }
+
   @override
   Widget build(BuildContext context) {
     final topList = widget.controller.topList;
     final bottomList = widget.controller.bottomList;
     final topLength = topList.length;
-    final children = <Widget>[
-      if (_topHasMore && widget.enabledTopLoad) _buildLoadMoreView(),
-      ...List.generate(topLength, (index) {
-        final position = topLength - index - 1;
-        final item = topList[position];
-        return widget.itemBuilder(context, position, position, item);
-      }),
-      ...List.generate(bottomList.length, (index) {
-        final position = topLength + index;
-        return widget.itemBuilder(
-          context,
-          index,
-          position,
-          bottomList[index],
-        );
-      }),
-      if (_bottomHasMore && widget.enabledBottomLoad) _buildLoadMoreView(),
-    ];
+    final showTopLoader = _topHasMore && widget.enabledTopLoad;
+    final showBottomLoader = _bottomHasMore && widget.enabledBottomLoad;
+    final itemCount = topLength +
+        bottomList.length +
+        (showTopLoader ? 1 : 0) +
+        (showBottomLoader ? 1 : 0);
 
-    // dawn 2026-06-22 修复部分安卓机型聊天页灰色半屏：列表内容少时仍铺满白底并贴底展示，避免露出 Scaffold 灰底。
+    // dawn 2026-06-23 修复聊天页消息少时顶部对齐留白：无分页且条目少时用贴底 Column（条目少不会溢出），
+    // 其余情况仍用 SliverList 懒加载，避免 3 万人群/大量历史消息被 Column 一次性撑爆出 99955 像素红色溢出。
+    final shortAndNoPaging =
+        !showTopLoader && !showBottomLoader && itemCount <= _bottomAnchorMaxItem;
+
+    // dawn 2026-06-23 修复聊天页红色溢出：使用 SliverList 懒加载消息，避免 3 万人群/大量历史消息被 Column 一次性撑爆。
     return ColoredBox(
       color: Colors.white,
       child: CustomScrollView(
         controller: widget.scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            fillOverscroll: true,
-            child: ColoredBox(
-              color: Colors.white,
+          if (itemCount == 0)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              fillOverscroll: true,
+              child: ColoredBox(color: Colors.white),
+            )
+          else if (shortAndNoPaging)
+            SliverFillRemaining(
+              hasScrollBody: false,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: children,
+                children: List.generate(
+                  itemCount,
+                  (index) => _buildListItem(
+                    context,
+                    index,
+                    topList,
+                    bottomList,
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _buildListItem(
+                  context,
+                  index,
+                  topList,
+                  bottomList,
+                ),
+                childCount: itemCount,
               ),
             ),
-          ),
         ],
       ),
     );

@@ -38,16 +38,19 @@ class WaterMarkBgView extends StatelessWidget {
         alignment: Alignment.center,
         fit: StackFit.expand,
         children: [
-          if (path?.isNotEmpty == true) Image.file(File(path!), fit: BoxFit.cover),
+          if (path?.isNotEmpty == true)
+            Image.file(File(path!), fit: BoxFit.cover),
           if (text.isNotEmpty) _buildWaterMarkTextView(context: context),
           Column(
             children: [
               if (null != topView) topView!,
               Expanded(
                 child: Stack(
+                  fit: StackFit.expand,
                   alignment: Alignment.center,
                   children: [
-                    child,
+                    // dawn 2026-06-23 修复聊天页异常遮罩：消息主体必须填满 Expanded 区域，避免 Stack 给列表松约束。
+                    Positioned.fill(child: child),
                     if (newMessageCount > 0)
                       Positioned(
                         top: 10.h,
@@ -112,9 +115,11 @@ class WaterMarkBgView extends StatelessWidget {
   }
 
   Size _textSize(String text, TextStyle style) {
-    final TextPainter textPainter =
-        TextPainter(text: TextSpan(text: text, style: style), maxLines: 1, textDirection: TextDirection.ltr)
-          ..layout(minWidth: 0, maxWidth: double.infinity);
+    final TextPainter textPainter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        maxLines: 1,
+        textDirection: TextDirection.ltr)
+      ..layout(minWidth: 0, maxWidth: double.infinity);
     return textPainter.size;
   }
 }

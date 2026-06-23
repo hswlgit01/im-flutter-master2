@@ -1603,10 +1603,10 @@ packages:
     dependency: "direct main"
     description:
       name: map_launcher
-      sha256: cc94eff23dc35b56142bedc4f8553024454dfa8351508116888a418858d18ac0
+      sha256: "29b78c94829836b3f4ac96fa95248e699d75294f08390a21ca06a0902a27a34b"
       url: "https://pub.dev"
     source: hosted
-    version: "3.1.0"
+    version: "4.5.0"
   matcher:
     dependency: transitive
     description:
@@ -2200,10 +2200,9 @@ packages:
   scan:
     dependency: "direct main"
     description:
-      name: scan
-      sha256: b343ec36f863a88d41eb4c174b810c055c6bd1f1822b2188ab31aab684fb7cdb
-      url: "https://pub.dev"
-    source: hosted
+      path: "local_plugin/scan"
+      relative: true
+    source: path
     version: "1.6.0"
   screen_brightness:
     dependency: transitive
@@ -2405,10 +2404,9 @@ packages:
   sound_mode:
     dependency: "direct main"
     description:
-      name: sound_mode
-      sha256: ec25dc16feea1876e9c767b615ee1e430331da6c0d0f7122c04cbc2233b175cb
-      url: "https://pub.dev"
-    source: hosted
+      path: "local_plugin/sound_mode"
+      relative: true
+    source: path
     version: "2.0.2"
   source_gen:
     dependency: transitive
@@ -2773,10 +2771,9 @@ packages:
   vibration:
     dependency: "direct main"
     description:
-      name: vibration
-      sha256: "06588a845a4ebc73ab7ff7da555c2b3dbcd9676164b5856a38bf0b2287f1045d"
-      url: "https://pub.dev"
-    source: hosted
+      path: "local_plugin/vibration"
+      relative: true
+    source: path
     version: "1.9.0"
   vibration_platform_interface:
     dependency: transitive

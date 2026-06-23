@@ -289,7 +289,8 @@ class _ChatItemViewState extends State<ChatItemView> {
       showRightNickname: widget.showRightNickname,
       timelineStr: widget.timelineStr,
       timeStr: IMUtils.getChatTimeline(_message.sendTime!, 'HH:mm:ss'),
-      hasRead: _message.isRead!,
+      // dawn 2026-06-23 修复大群聊天页整块红色 ErrorWidget：部分消息 isRead 为 null，原 `!` 解空抛异常导致整条消息被 ErrorWidget 兜底(暗红块)。
+      hasRead: _message.isRead ?? false,
       isSending: _message.status == MessageStatus.sending,
       isSendFailed: _message.status == MessageStatus.failed,
       isBubbleBg: child == null ? true : isBubbleBg,
@@ -334,8 +335,9 @@ class _ChatItemViewState extends State<ChatItemView> {
             Text("${message.quoteElem?.quoteMessage?.senderNickname}: ",
                 style: Styles.ts_8E9AB0_12sp),
             SizedBox(
-              width: 50.w,
-              height: 50.h,
+              // dawn 2026-06-23 修复气泡引用缩略图异常放大：宽高一起改用固定逻辑像素，避免 ScreenUtil 异常时撑出溢出。
+              width: 50,
+              height: 50,
               child: Container(
                 child: widget.mediaItemBuilder
                         ?.call(context, message.quoteElem!.quoteMessage!) ??
@@ -392,8 +394,9 @@ class _ChatItemViewState extends State<ChatItemView> {
             Text("${message.quoteElem?.quoteMessage?.senderNickname}: ",
                 style: Styles.ts_8E9AB0_12sp),
             SizedBox(
-              width: 40.w,
-              height: 40.h,
+              // dawn 2026-06-23 修复气泡引用缩略图异常放大：宽高一起改用固定逻辑像素，避免 ScreenUtil 异常时撑出溢出。
+              width: 40,
+              height: 40,
               child: GestureDetector(
                 onTap: () => IMUtils.previewMediaFile(
                     context: Get.context!,

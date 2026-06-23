@@ -106,7 +106,8 @@ class ChatItemContainer extends StatelessWidget {
                 Visibility(
                     visible: isMultiSelectMode,
                     child: Container(
-                      height: 44.h,
+                      // dawn 2026-06-23 修复气泡尺寸异常放大：消息单元结构高度/头像尺寸改用固定逻辑像素，避免 ScreenUtil 在异常屏幕度量下放大撑出 99955 溢出。
+                      height: 44,
                       padding: EdgeInsets.only(right: 10.w),
                       child: Center(
                         child: ChatRadio(checked: isSelected),
@@ -163,8 +164,8 @@ class ChatItemContainer extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
           AvatarView(
-            width: 44.w,
-            height: 44.h,
+            width: 44,
+            height: 44,
             textStyle: Styles.ts_FFFFFF_14sp_medium,
             url: leftFaceUrl,
             text: leftNickname,
@@ -235,8 +236,8 @@ class ChatItemContainer extends StatelessWidget {
           ),
           10.horizontalSpace,
           AvatarView(
-            width: 44.w,
-            height: 44.h,
+            width: 44,
+            height: 44,
             textStyle: Styles.ts_FFFFFF_14sp_medium,
             url: rightFaceUrl,
             text: rightNickname,

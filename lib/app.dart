@@ -51,7 +51,8 @@ class ChatApp extends StatelessWidget {
   }
 
   ThemeData get _themeData => ThemeData.light().copyWith(
-        scaffoldBackgroundColor: Colors.grey.shade50,
+        // dawn 2026-06-22 修复安卓灰色半屏：全局 Scaffold 默认白底，避免页面切换或旋转恢复时露出灰色底层。
+        scaffoldBackgroundColor: Colors.white,
         canvasColor: Colors.white,
         appBarTheme: const AppBarTheme(backgroundColor: Colors.white),
         textSelectionTheme:

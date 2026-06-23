@@ -1,5 +1,6 @@
 buildscript {
-    ext.kotlin_version = '1.9.23'
+    // dawn 2026-06-22 修复 Android 调试构建：camera_android_camerax 依赖 Kotlin 2.1 元数据，需要同步升级 Kotlin 插件。
+    ext.kotlin_version = '2.1.20'
     repositories {
         google()
         mavenCentral()
@@ -8,7 +9,8 @@ buildscript {
 
     dependencies {
         classpath("com.android.tools:r8:8.3.37")
-        classpath 'com.android.tools.build:gradle:7.3.1'
+        // dawn 2026-06-22 修复 Android 调试构建：AndroidX Camera 1.6 要求 AGP 8.9.1+。
+        classpath 'com.android.tools.build:gradle:8.9.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
 //        classpath 'com.google.gms:google-services:4.4.2'  // fcm
     }
@@ -37,8 +39,27 @@ allprojects {
     }
 }
 
+subprojects { subproject ->
+    subproject.plugins.withId('com.android.library') {
+        subproject.android {
+            // dawn 2026-06-22 修复 Android 调试构建：旧 Flutter 插件未声明 namespace，AGP 8+ 需要自动补齐。
+            if (namespace == null || namespace.isEmpty()) {
+                def manifestFile = subproject.file('src/main/AndroidManifest.xml')
+                def fallbackNamespace = "com.freechat.${subproject.name.replace('-', '_')}"
+                if (manifestFile.exists()) {
+                    def manifestPackage = new XmlParser(false, false).parse(manifestFile).attribute('package')
+                    namespace = manifestPackage ?: fallbackNamespace
+                } else {
+                    namespace = fallbackNamespace
+                }
+            }
+            compileSdkVersion 36
+        }
+    }
+}
+
 rootProject.buildDir = '../build'
-subprojects { afterEvaluate { android { compileSdkVersion 34 } } }
+subprojects { afterEvaluate { android { compileSdkVersion 36 } } }
 
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"

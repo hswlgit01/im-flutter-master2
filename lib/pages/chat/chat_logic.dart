@@ -2329,13 +2329,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   _clearUnreadCount() {
-    // OpenIM.CustomElem({})
-    if (conversationInfo.unreadCount > 0) {
-      print(
-          '[ChatLogic] 📤 上报已读(会话) conversationID=${conversationInfo.conversationID} unreadCount=${conversationInfo.unreadCount}');
-      OpenIM.iMManager.conversationManager.markConversationMessageAsRead(
-          conversationID: conversationInfo.conversationID);
-    }
+    // dawn 2026-06-23 修复进群聊已读后会话列表仍显示未读数：无条件上报会话已读，
+    // 不再用快照 conversationInfo.unreadCount>0 做门槛(快照可能过期导致漏报)。markConversationMessageAsRead 幂等，已读再调无害。
+    OpenIM.iMManager.conversationManager.markConversationMessageAsRead(
+        conversationID: conversationInfo.conversationID);
   }
 
   void closeToolbox() {

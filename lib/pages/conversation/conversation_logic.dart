@@ -884,8 +884,13 @@ class ConversationLogic extends GetxController {
   }
 
   bool isOfficialConversation(ConversationInfo info) {
+    // dawn 2026-06-23 修复群聊会话整行 99955 红色溢出：调用处用 Obx 包裹，Obx 的 builder 必须访问到可观察对象。
+    // 群聊原本在首行直接 return，不会读取 officialUserMap(RxMap)，导致 Obx 抛 “improper use of GetX”，
+    // Flutter 用 ErrorWidget 兜底，而 RenderErrorBox 在无约束空间下默认尺寸为 100000×100000，撑爆整行。
+    // 这里无条件先读一次 RxMap，使群聊也建立响应式依赖，再按原逻辑判断。
+    final isOfficial = officialUserMap[info.userID] ?? false;
     if (!info.isSingleChat || info.userID == null) return false;
-    return officialUserMap[info.userID!] ?? false;
+    return isOfficial;
   }
 
   Future<void> _loadOfficialRolesForConversations(

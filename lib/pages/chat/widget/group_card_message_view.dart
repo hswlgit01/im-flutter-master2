@@ -109,8 +109,9 @@ class GroupCardMessageView extends StatelessWidget {
                 child: AvatarView(
                   url: groupCardData.data.groupAvatar,
                   text: groupCardData.data.groupName,
-                  width: 40.w,
-                  height: 40.h,
+                  // dawn 2026-06-23 修复群名片气泡头像异常放大：头像宽高改用固定逻辑像素，避免 ScreenUtil 异常时撑出溢出。
+                  width: 40,
+                  height: 40,
                   textStyle: Styles.ts_FFFFFF_14sp,
                 ),
               ),

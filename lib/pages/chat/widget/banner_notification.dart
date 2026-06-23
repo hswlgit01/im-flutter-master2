@@ -109,7 +109,8 @@ class BannerNotification extends StatelessWidget {
                   if (hasExternalUrl) ...[
                     Divider(
                       color: Styles.c_E8EAEF,
-                      height: 20.h,
+                      // dawn 2026-06-23 修复横幅气泡分隔线高度异常放大：改用固定逻辑像素，避免 ScreenUtil 异常时撑出溢出。
+                      height: 20,
                     ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,

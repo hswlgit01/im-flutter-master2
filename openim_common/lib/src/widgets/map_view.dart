@@ -7,13 +7,14 @@ import 'package:map_launcher/map_launcher.dart' as ml;
 import 'package:openim_common/openim_common.dart';
 
 class MapView extends StatelessWidget {
+  // dawn 2026-06-22 修复 Android 构建：使用 super.key 适配当前 Dart lint 规则。
   const MapView({
-    Key? key,
+    super.key,
     required this.latitude,
     required this.longitude,
     required this.address1,
     required this.address2,
-  }) : super(key: key);
+  });
   final double latitude;
   final double longitude;
   final String address1;
@@ -34,7 +35,8 @@ class MapView extends StatelessWidget {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+                  urlTemplate:
+                      'https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
                   userAgentPackageName: '',
                 ),
                 MarkerLayer(

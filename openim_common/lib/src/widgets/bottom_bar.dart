@@ -1,22 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:openim_common/openim_common.dart';
 
 class BottomBar extends StatelessWidget {
   const BottomBar({
-    Key? key,
+    super.key,
     this.index = 0,
     required this.items,
-  }) : super(key: key);
+  });
   final int index;
   final List<BottomBarItem> items;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 56.h,
+      // dawn 2026-06-22 修复底部导航栏异常放大：栏高使用固定逻辑像素，避免部分机型 ScreenUtil 缩放异常。
+      height: 56,
       decoration: BoxDecoration(
         color: Styles.c_FFFFFF,
         border: BorderDirectional(
@@ -37,7 +37,8 @@ class BottomBar extends StatelessWidget {
     );
   }
 
-  Widget _buildItemView({required int i, required BottomBarItem item}) => Expanded(
+  Widget _buildItemView({required int i, required BottomBarItem item}) =>
+      Expanded(
         child: GestureDetector(
           onDoubleTap: () => item.onDoubleClick?.call(i),
           onTapDown: (_) => item.onClick?.call(i),
@@ -49,7 +50,9 @@ class BottomBar extends StatelessWidget {
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    (i == index ? item.selectedImgRes.toImage : item.unselectedImgRes.toImage)
+                    (i == index
+                        ? item.selectedImgRes.toImage
+                        : item.unselectedImgRes.toImage)
                       ..width = item.imgWidth
                       ..height = item.imgHeight,
                     Positioned(
@@ -62,11 +65,12 @@ class BottomBar extends StatelessWidget {
                     ),
                   ],
                 ),
-                4.verticalSpace,
+                const SizedBox(height: 4),
                 item.label.toText
                   ..style = i == index
                       ? (item.selectedStyle ?? Styles.ts_0089FF_10sp_semibold)
-                      : (item.unselectedStyle ?? Styles.ts_8E9AB0_10sp_semibold),
+                      : (item.unselectedStyle ??
+                          Styles.ts_8E9AB0_10sp_semibold),
               ],
             ),
           ),

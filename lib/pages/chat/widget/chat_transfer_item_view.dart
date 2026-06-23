@@ -534,7 +534,8 @@ class _TransferDetailPageState extends State<TransferDetailPage> {
             ),
           ),
           Container(
-            height: 10.h,
+            // dawn 2026-06-23 修复转账气泡结构高度异常放大：分隔条高度改用固定逻辑像素，避免 ScreenUtil 异常时撑出溢出。
+            height: 10,
             width: double.infinity,
             color: const Color(0xFFF5F5F5),
           ),
@@ -604,8 +605,9 @@ class _TransferDetailPageState extends State<TransferDetailPage> {
             Padding(
               padding: EdgeInsets.symmetric(vertical: 32.h, horizontal: 24.w),
               child: SizedBox(
+                // dawn 2026-06-23 修复转账气泡按钮高度异常放大：按钮高度改用固定逻辑像素，避免 ScreenUtil 异常时撑出溢出。
                 width: double.infinity,
-                height: 45.h,
+                height: 45,
                 child: ElevatedButton(
                   onPressed: isLoading ? null : _receiveTransfer,
                   style: ElevatedButton.styleFrom(

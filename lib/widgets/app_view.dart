@@ -67,8 +67,8 @@ class _AppViewState extends State<AppView> with WidgetsBindingObserver {
         child: ScreenUtilInit(
           designSize: const Size(Config.uiW, Config.uiH),
           minTextAdapt: true,
-          // dawn 2026-06-22 修复安卓分屏/横屏恢复灰色半屏：App 固定竖屏，关闭分屏尺寸重算。
-          splitScreenMode: false,
+          // dawn 2026-06-22 修复安卓灰色半屏：窗口尺寸恢复时重算 ScreenUtil，避免旧宽高缓存撑出灰块和大图标。
+          splitScreenMode: true,
           fontSizeResolver: (fontSize, _) => fontSize.toDouble(),
           builder: (_, child) => widget.builder(ctrl.getLocale(), _builder()),
         ),
@@ -83,7 +83,11 @@ class _AppViewState extends State<AppView> with WidgetsBindingObserver {
           data: MediaQuery.of(context).copyWith(
             textScaler: const TextScaler.linear(Config.textScaleFactor),
           ),
-          child: widget!,
+          child: ColoredBox(
+            // dawn 2026-06-22 修复安卓灰色半屏：根路由始终铺白底，防止重建瞬间露出灰色底层。
+            color: Styles.c_FFFFFF,
+            child: widget!,
+          ),
         );
       },
     );

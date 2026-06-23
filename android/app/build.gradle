@@ -1,14 +1,16 @@
+plugins {
+    // dawn 2026-06-22 修复 Android 调试构建：使用 Flutter 新版 declarative plugins 写法
+    id 'com.android.application'
+    id 'kotlin-android'
+    id 'dev.flutter.flutter-gradle-plugin'
+}
+
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {
     localPropertiesFile.withReader('UTF-8') { reader ->
         localProperties.load(reader)
     }
-}
-
-def flutterRoot = localProperties.getProperty('flutter.sdk')
-if (flutterRoot == null) {
-    throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
 }
 
 def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
@@ -30,18 +32,18 @@ if (brandFile.exists()) {
 def brandApplicationId = brandProps.getProperty('applicationId', 'com.freechat.app')
 def brandGetuiAppId = brandProps.getProperty('getuiAppId', 'u7XipjV3Dt6qDLMhwRE8U2')
 
-subprojects { afterEvaluate { android { compileSdkVersion 34 } } }
-
-//apply plugin: 'com.google.gms.google-services'
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
+subprojects { afterEvaluate { android { compileSdkVersion 36 } } }
 
 android {
-    compileSdkVersion 34
+    // dawn 2026-06-22 修复 Android 调试构建：AGP 8+ 要求显式声明 namespace，沿用原 Manifest package。
+    namespace 'cn.rentsoft.flutter.openim.business'
+    // dawn 2026-06-22 修复 Android 调试构建：AndroidX Camera/Core 新依赖要求 compileSdk 36，targetSdk 暂不变。
+    compileSdkVersion 36
     ndkVersion flutter.ndkVersion
 
     compileOptions {
+        // dawn 2026-06-22 修复 Android 调试构建：flutter_local_notifications 需要 Java 8+ desugaring。
+        coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
@@ -204,6 +206,7 @@ dependencies {
     // GeTui 个推 SDK
     implementation 'com.getui:gtsdk:3.2.13.0'  // 个推核心SDK
     implementation 'com.getui:gtc:3.1.10.0'    // 个推核心组件
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
 
 static def buildTime() {

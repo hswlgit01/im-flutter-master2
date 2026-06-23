@@ -1,15 +1,22 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:openim_common/openim_common.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:openim_common/openim_common.dart';
 import 'utils/app_log_uploader.dart';
 import 'utils/log_util.dart';
 
 import 'app.dart';
 
-void main() {
-  runZonedGuarded(() {
+Future<void> main() async {
+  final appStart = runZonedGuarded<Future<void>>(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    // dawn 2026-06-22 修复安卓灰色半屏：首帧前锁定竖屏，避免系统横竖屏度量污染布局缓存。
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+
     // 初始化日志工具
     _initLogger();
 
@@ -29,6 +36,9 @@ void main() {
     LogUtil.e('ZoneError', error.toString(), error, stackTrace);
     Logger.print('FlutterError: ${error.toString()}, ${stackTrace.toString()}');
   });
+  if (appStart != null) {
+    await appStart;
+  }
 }
 
 // 初始化日志工具
