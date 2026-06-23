@@ -68,9 +68,9 @@ jobs:
         run: |
           ENV_VALUE="${{ github.event.inputs.environment }}"
           ENV_VALUE="${ENV_VALUE:-prod}"
-          # dawn 2026-06-23 CI 提速:线上只分发 arm64,直接只编 arm64(免去 v7a/x86_64 两份原生库编译,约省 2/3 时间)。
-          # 产物即 app-release.apk(单一 arm64 包),无需再 cp。
-          flutter build apk --release --target-platform android-arm64 --dart-define=ENV="$ENV_VALUE"
+          # dawn 2026-06-23 CI 提速:ABI 由 app/build.gradle 的 abiFilters 限定为 arm64-v8a，
+          # 这里普通构建即产出仅含 arm64 的 app-release.apk(无需 split / target-platform / cp)。
+          flutter build apk --release --dart-define=ENV="$ENV_VALUE"
           ls -lh build/app/outputs/flutter-apk/*.apk
 
       - name: Upload APK artifact
