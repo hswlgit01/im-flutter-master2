@@ -68,9 +68,9 @@ jobs:
         run: |
           ENV_VALUE="${{ github.event.inputs.environment }}"
           ENV_VALUE="${ENV_VALUE:-prod}"
-          # dawn 2026-06-23 CI 提速:ABI 由 app/build.gradle 的 abiFilters 限定为 arm64-v8a，
-          # 这里普通构建即产出仅含 arm64 的 app-release.apk(无需 split / target-platform / cp)。
-          flutter build apk --release --dart-define=ENV="$ENV_VALUE"
+          # dawn 2026-05-21 修复安装包体积：CI 构建 ABI 拆分包，下载包使用 arm64 版本(~102M)，避免 universal 包过大。
+          flutter build apk --release --split-per-abi --dart-define=ENV="$ENV_VALUE"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/app-release.apk
           ls -lh build/app/outputs/flutter-apk/*.apk
 
       - name: Upload APK artifact

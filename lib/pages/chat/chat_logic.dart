@@ -576,7 +576,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     customChatListViewController.jumpToElement(customChatListViewController.list
         .firstWhere((e) =>
             e.sendID != OpenIM.iMManager.userID &&
-            !e.isRead! &&
+            e.isRead != true &&
             isShowReadStatus(e) &&
             e.sendTime! < inTime));
   }
@@ -658,7 +658,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         conversationInfo = obj;
         unreadCount.value = customChatListViewController.list.where((e) {
           return e.sendID != OpenIM.iMManager.userID &&
-              !e.isRead! &&
+              e.isRead != true &&
               isShowReadStatus(e) &&
               e.sendTime! < inTime;
         }).length;
@@ -2165,18 +2165,22 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             ?.firstWhereOrNull((e) => e.clientMsgID == clientMsgID);
         if (stored != null) break;
       }
-      if (stored != null &&
-          (stored.status == MessageStatus.succeeded ||
-              (stored.serverMsgID?.isNotEmpty ?? false))) {
-        // 本地已是成功（有 serverMsgID）→ 钉成功、清掉转圈
-        _sendSucceeded(message, stored);
-      } else if (stored != null && stored.status == MessageStatus.failed) {
+      if (stored != null && stored.status == MessageStatus.failed) {
+        // 仅当 SDK 明确判定失败时才标失败
         message.status = MessageStatus.failed;
         sendStatusSub.addSafely(MsgStreamEv<bool>(id: clientMsgID, value: false));
+      } else {
+        // 成功(有 serverMsgID) 或 仍“发送中”/查不到 → 一律乐观钉成功、清掉转圈。
+        // 超大群(如3万人)下 SDK 自身也常拿不到发送 ACK、本地状态停在 sending，但消息其实已发出;
+        // 真正的硬失败 SDK 会很快走 catchError 标失败(8 秒前),不会落到这里。
+        _sendSucceeded(message, stored ?? message);
       }
-      // 查不到 / 仍在发送：保持现状，不误判
     } catch (e) {
-      app_log.LogUtil.e('ChatLogic', '发送超时对账失败: clientMsgID=$clientMsgID', e);
+      app_log.LogUtil.e('ChatLogic', '发送超时对账查询失败,乐观清圈: clientMsgID=$clientMsgID', e);
+      // 查询本身失败也乐观清圈,避免永久转圈
+      if (message.status == MessageStatus.sending) {
+        _sendSucceeded(message, message);
+      }
     }
   }
 
@@ -2312,7 +2316,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // 单聊为实时已读尽量上报；群聊仍仅在前台时上报
     if (!isSingleChat && !_isAppInForeground) return;
 
-    if (!message.isRead! && message.sendID != OpenIM.iMManager.userID) {
+    if (message.isRead != true && message.sendID != OpenIM.iMManager.userID) {
       try {
         message.isRead = true;
         print(
@@ -3127,7 +3131,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         // 标记未读消息为已读
         try {
           final unreadMsgs = messageList
-              .where((m) => !m.isRead! && m.sendID != OpenIM.iMManager.userID)
+              .where((m) => m.isRead != true && m.sendID != OpenIM.iMManager.userID)
               .toList();
 
           if (unreadMsgs.isNotEmpty) {
