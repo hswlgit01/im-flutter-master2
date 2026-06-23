@@ -260,9 +260,6 @@ class WalletController extends GetxService {
   /// 开通钱包流程
   Future<void> activateWallet() async {
     try {
-      // 用于存储API调用的完整结果
-      Map<String, dynamic>? apiResult;
-
       final setPasswordResult = await Get.dialog(
         SetTransactionPasswordDialog(
           onConfirm: (password) async {
@@ -271,9 +268,7 @@ class WalletController extends GetxService {
               asyncFunction: () => _handleSetPassword(password),
             );
 
-            // 存储完整结果以便后续使用
             if (result is Map<String, dynamic>) {
-              apiResult = result;
               // 只返回success布尔值给对话框
               return result['success'] == true;
             }
@@ -285,14 +280,8 @@ class WalletController extends GetxService {
       // 检查密码设置结果
       if (setPasswordResult == true) {
         // dawn 2026-06-23 修复钱包开通成功弹框为英文：后台返回的 noticeText 是英文，
-        // 改用本地中文多语言串(zh_CN 已有 wallet.activateSuccessDesc)，仅当其为空时回退服务端文本。
-        String? rawNoticeText = apiResult?['noticeText'];
-        final String localNotice = StrRes.walletActivateSuccessDesc;
-        final String noticeText = localNotice.trim().isNotEmpty
-            ? localNotice
-            : (rawNoticeText?.toString().trim() ?? '');
-
-        LogUtil.i(_TAG, '从API获取到的钱包开通说明文本: "$noticeText"');
+        // 直接固定使用本地中文多语言串(标题+正文)，彻底忽略服务端文本，避免再露出英文。
+        LogUtil.i(_TAG, '钱包开通成功，使用本地中文说明文本');
 
         // 先设置钱包激活状态，获取初始钱包信息
         isWalletActivated.value = true;
@@ -309,30 +298,15 @@ class WalletController extends GetxService {
           await _getWalletInfo();
         });
 
-        // 检查是否有补偿金说明文本需要显示
-        if (noticeText.isNotEmpty) {
-          // 显示补偿金说明文本对话框，不显示标题
-          LogUtil.i(_TAG, '显示钱包开通说明文本对话框: "$noticeText"');
-          await Get.dialog(
-            CustomDialog(
-              title: '', // 不显示标题
-              content: noticeText,
-              showLeft: false, // 只显示"确定"按钮
-            ),
-            barrierDismissible: false, // 防止用户点击外部关闭对话框
-          );
-        } else {
-          // 没有说明文本，显示标准成功对话框
-          LogUtil.i(_TAG, '显示标准钱包激活成功对话框');
-          await Get.dialog(
-            CustomDialog(
-              title: StrRes.walletActivateSuccess,
-              content: StrRes.walletActivateSuccessDesc,
-              showLeft: false, // 只显示"确定"按钮
-            ),
-            barrierDismissible: false, // 防止用户点击外部关闭对话框
-          );
-        }
+        // 始终显示中文标题+中文正文的成功对话框
+        await Get.dialog(
+          CustomDialog(
+            title: StrRes.walletActivateSuccess,
+            content: StrRes.walletActivateSuccessDesc,
+            showLeft: false, // 只显示"确定"按钮
+          ),
+          barrierDismissible: false, // 防止用户点击外部关闭对话框
+        );
       } else {
         LogUtil.w(_TAG, '交易密码设置失败或用户取消');
       }
