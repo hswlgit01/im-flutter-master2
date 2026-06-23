@@ -43,6 +43,18 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
+          # dawn 2026-06-23 CI 提速:缓存 Flutter SDK + pub-cache,避免每次重新下载。
+          cache: true
+
+      # dawn 2026-06-23 CI 提速:缓存 Gradle 依赖与 wrapper,避免每次重新下载/解析。
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
 
       - name: Get dependencies
         run: flutter pub get
@@ -56,9 +68,9 @@ jobs:
         run: |
           ENV_VALUE="${{ github.event.inputs.environment }}"
           ENV_VALUE="${ENV_VALUE:-prod}"
-          # dawn 2026-05-21 修复安装包体积：CI 构建 ABI 拆分包，下载包使用 arm64 版本，避免把多架构库打进线上 APK。
-          flutter build apk --release --split-per-abi --dart-define=ENV="$ENV_VALUE"
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/app-release.apk
+          # dawn 2026-06-23 CI 提速:线上只分发 arm64,直接只编 arm64(免去 v7a/x86_64 两份原生库编译,约省 2/3 时间)。
+          # 产物即 app-release.apk(单一 arm64 包),无需再 cp。
+          flutter build apk --release --target-platform android-arm64 --dart-define=ENV="$ENV_VALUE"
           ls -lh build/app/outputs/flutter-apk/*.apk
 
       - name: Upload APK artifact
