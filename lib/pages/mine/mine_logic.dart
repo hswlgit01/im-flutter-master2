@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:openim/core/im_callback.dart';
 import 'package:openim_common/openim_common.dart';
 
 import '../../core/controller/im_controller.dart';
+import '../../core/wallet_controller.dart';
 import '../../core/security_service.dart';
 import '../../utils/log_util.dart';
 import '../../routes/app_navigator.dart';
@@ -19,9 +21,27 @@ class MineLogic extends GetxController with GetxServiceMixin {
 
   final imLogic = Get.find<IMController>();
   final _securityService = SecurityService();
+  // dawn 2026-06-23 我的页改版：钱包余额(展示)与完整用户资料(邀请码)。
+  final walletController = Get.find<WalletController>();
 
   // 身份认证数据
   final Rx<IdentityVerifyInfo?> _identityInfo = Rx<IdentityVerifyInfo?>(null);
+
+  // 完整用户资料(用于读取邀请码)
+  final userFullInfo = Rx<UserFullInfo?>(null);
+
+  // 性别文案：男/女
+  String get genderText =>
+      imLogic.userInfo.value.isMale ? StrRes.man : StrRes.woman;
+
+  // 心享邀请码
+  String get invitationCode => userFullInfo.value?.invitationCode ?? '';
+
+  // 余额展示文案(基础余额，精确币种换算在钱包页处理)
+  String get balanceText {
+    final raw = walletController.balanceDetail.value?.totalBalanceUsd ?? '0';
+    return IMUtils.formatNumberWithCommas(num.tryParse(raw) ?? 0);
+  }
 
   // 最后一次刷新身份认证信息的时间
   int _lastRefreshTime = 0;
@@ -59,6 +79,21 @@ class MineLogic extends GetxController with GetxServiceMixin {
 
   void viewPaymentMethod() => AppNavigator.startPaymentMethod();
   void accountSetup() => AppNavigator.startAccountSetup();
+
+  // dawn 2026-06-23 我的页改版：密码设置入口复用账号设置页(内含修改密码/支付密码)。
+  void viewPasswordSetup() => AppNavigator.startAccountSetup();
+
+  // 通用：语言设置页
+  void viewGeneral() => AppNavigator.startLanguageSetup();
+
+  void viewWalletWithdraw() => Get.toNamed(AppRoutes.wallet);
+
+  void copyInvitationCode() {
+    final code = invitationCode;
+    if (code.isNotEmpty) {
+      IMUtils.copy(text: code);
+    }
+  }
 
   void aboutUs() => AppNavigator.startAboutUs();
 
@@ -107,7 +142,28 @@ class MineLogic extends GetxController with GetxServiceMixin {
     });
     // 获取身份认证信息
     getIdentityInfo();
+    // 获取完整用户资料(邀请码)
+    getUserFullInfo();
+    // 确保钱包余额已拉取(展示用)
+    walletController.checkWalletStatus();
     super.onInit();
+  }
+
+  // 获取完整用户资料(用于读取心享邀请码)
+  Future<void> getUserFullInfo() async {
+    try {
+      final userID = imLogic.userInfo.value.userID ?? OpenIM.iMManager.userID;
+      final user = await Apis.getUserFullInfo(
+        pageNumber: 1,
+        showNumber: 1,
+        userIDList: [userID],
+      );
+      if (user != null && user.isNotEmpty) {
+        userFullInfo.value = user.first;
+      }
+    } catch (e) {
+      LogUtil.e(_tag, '获取完整用户资料失败: $e');
+    }
   }
 
   @override
