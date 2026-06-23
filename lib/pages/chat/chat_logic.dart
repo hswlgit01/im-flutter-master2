@@ -2167,21 +2167,43 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
       if (stored != null && stored.status == MessageStatus.failed) {
         // 仅当 SDK 明确判定失败时才标失败
+        _markSendStatusOnList(clientMsgID, MessageStatus.failed);
         message.status = MessageStatus.failed;
         sendStatusSub.addSafely(MsgStreamEv<bool>(id: clientMsgID, value: false));
       } else {
         // 成功(有 serverMsgID) 或 仍“发送中”/查不到 → 一律乐观钉成功、清掉转圈。
         // 超大群(如3万人)下 SDK 自身也常拿不到发送 ACK、本地状态停在 sending，但消息其实已发出;
         // 真正的硬失败 SDK 会很快走 catchError 标失败(8 秒前),不会落到这里。
-        _sendSucceeded(message, stored ?? message);
+        _markSendStatusOnList(clientMsgID, MessageStatus.succeeded, stored: stored);
       }
     } catch (e) {
       app_log.LogUtil.e('ChatLogic', '发送超时对账查询失败,乐观清圈: clientMsgID=$clientMsgID', e);
-      // 查询本身失败也乐观清圈,避免永久转圈
-      if (message.status == MessageStatus.sending) {
-        _sendSucceeded(message, message);
+      _markSendStatusOnList(clientMsgID, MessageStatus.succeeded);
+    }
+  }
+
+  /// dawn 2026-06-23 关键:超大群同步会把 bottomList 里那条消息换成“仍 sending”的新实例，
+  /// 只改最初的 message 对象 / rxList 无法清掉页面里的转圈。这里直接定位当前渲染列表(top+bottom)
+  /// 里所有同 clientMsgID 的实例改其 status，再走 _rebuildItemsByClientMsgID + refresh 强制重建，
+  /// 确保留在页面时转圈也立即消失。
+  void _markSendStatusOnList(String clientMsgID, int status, {Message? stored}) {
+    var hit = false;
+    for (final m in customChatListViewController.list) {
+      if (m.clientMsgID == clientMsgID) {
+        m.status = status;
+        if (status == MessageStatus.succeeded &&
+            (m.serverMsgID == null || m.serverMsgID!.isEmpty) &&
+            (stored?.serverMsgID?.isNotEmpty ?? false)) {
+          m.serverMsgID = stored!.serverMsgID;
+        }
+        hit = true;
       }
     }
+    if (!hit) return;
+    _rebuildItemsByClientMsgID({clientMsgID});
+    customChatListViewController.refresh();
+    sendStatusSub.addSafely(MsgStreamEv<bool>(
+        id: clientMsgID, value: status != MessageStatus.failed));
   }
 
   void _sendSucceeded(Message oldMsg, Message newMsg) {
