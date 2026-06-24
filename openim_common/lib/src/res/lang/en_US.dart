@@ -298,7 +298,7 @@ const Map<String, String> en_US = {
   'forbidAddMeToFriend': 'Disallow Add Me as a Friend',
   "blacklist": 'Contacts Blacklist',
   "unlockSettings": 'Unlock Settings',
-  "changePassword": 'Change Login Password',
+  "changePassword": 'Password Settings',
   "changePasswordSuccess":
       'Password changed successfully, please log in again!',
   "clearChatHistory": 'Clear Chat History',

@@ -288,7 +288,7 @@ const Map<String, String> zh_CN = {
   'forbidAddMeToFriend': '禁止加我为好友',
   "blacklist": '通讯录黑名单',
   "unlockSettings": '解锁设置',
-  "changePassword": '修改登录密码',
+  "changePassword": '密码设置',
   "changePasswordSuccess": '修改密码成功，请重新登录！',
   "clearChatHistory": '清空聊天记录',
   "confirmClearChatHistory": "确认清空所有聊天记录吗？",
