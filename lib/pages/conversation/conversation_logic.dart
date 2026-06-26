@@ -884,6 +884,7 @@ class ConversationLogic extends GetxController {
     if (text.isEmpty) return '';
     const aliases = {
       '管理员': 'BackendAdmin',
+      '群管理员': 'GroupManager',
       '超级管理员': 'SuperAdmin',
       '团队长': 'TermManager',
     };
@@ -891,10 +892,12 @@ class ConversationLogic extends GetxController {
   }
 
   bool _isOfficialOrgRole(String? role) {
+    // dawn 2026-06-26 修复官方人员标识漏 GroupManager(群管理员)，与聊天页/服务端角色集合对齐。
     final normalized = _normalizeOrgRole(role).toLowerCase();
     return normalized == 'admin' ||
         normalized == 'backendadmin' ||
         normalized == 'superadmin' ||
+        normalized == 'groupmanager' ||
         normalized == 'termmanager';
   }
 
