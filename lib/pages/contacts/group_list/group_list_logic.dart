@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:get/get.dart';
@@ -25,6 +27,10 @@ class GroupListLogic extends GetxController {
 
   int count = 1000;
 
+  // dawn 2026-06-26 "我的群组"实时刷新：入群/退群回调到来时重新拉取，避免必须重进页面才更新。
+  StreamSubscription? _joinedAddedSub;
+  StreamSubscription? _joinedDeletedSub;
+
   @override
   void onInit() {
     imLoic.imSdkStatusPublishSubject.last.then((con) {
@@ -34,10 +40,26 @@ class GroupListLogic extends GetxController {
       }
     });
 
+    _joinedAddedSub = imLoic.joinedGroupAddedSubject.listen((_) {
+      iCreatedInitial();
+      iJoinedInitial();
+    });
+    _joinedDeletedSub = imLoic.joinedGroupDeletedSubject.listen((_) {
+      iCreatedInitial();
+      iJoinedInitial();
+    });
+
     iCreatedInitial();
     iJoinedInitial();
 
     super.onInit();
+  }
+
+  @override
+  void onClose() {
+    _joinedAddedSub?.cancel();
+    _joinedDeletedSub?.cancel();
+    super.onClose();
   }
 
   void switchTab(i) {

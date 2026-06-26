@@ -164,6 +164,21 @@ class ConversationLogic extends GetxController {
       }
       list.removeWhere((c) => c.conversationID == conversationID);
     });
+    // dawn 2026-06-26 加入群聊后立即在会话列表生成会话：不再等群里有人发消息。
+    // 服务端已把建群/入群通知改为持久化(成员能同步到入群事件)，这里收到入群回调即
+    // 主动 getOneConversation 建本地会话并插入列表，确保"加入即可见"。
+    imLogic.joinedGroupAddedSubject.listen((groupInfo) async {
+      final groupID = groupInfo.groupID;
+      if (groupID.isEmpty) return;
+      try {
+        final info = await OpenIM.iMManager.conversationManager
+            .getOneConversation(
+                sourceID: groupID, sessionType: groupInfo.sessionType);
+        _ensureConversationInList(info);
+      } catch (e) {
+        Logger.print('[ConversationLogic] joinedGroupAdded 建会话失败: $e');
+      }
+    });
     imLogic.imSdkStatusSubject.listen((value) async {
       final status = value.status;
       final appReInstall = value.reInstall;
