@@ -437,10 +437,19 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         normalized == 'groupmanager';
   }
 
+  // dawn 2026-06-26 群聊"官方"标识改为按【本群角色】判断：仅本群群主/群管理员显示红名+官方，
+  // 不再按组织角色(避免组织里的群管理员在自己不是群主/管理的群里被误标为官方)。单聊不显示。
   bool isOfficialMessageSender(Message message) {
     final userID = message.sendID;
     if (userID == null || userID.isEmpty) return false;
-    return officialMessageUserMap[userID] ?? false;
+    if (!isGroupChat) return false;
+    if (userID == OpenIM.iMManager.userID) {
+      final lv = groupMemberRoleLevel.value;
+      return lv == GroupRoleLevel.owner || lv == GroupRoleLevel.admin;
+    }
+    if (ownerAndAdmin.any((e) => e.userID == userID)) return true;
+    final lv = memberUpdateInfoMap[userID]?.roleLevel;
+    return lv == GroupRoleLevel.owner || lv == GroupRoleLevel.admin;
   }
 
   Future<void> _loadOfficialRolesForMessages(Iterable<Message> messages) async {
@@ -3296,6 +3305,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     try {
       ownerAndAdmin = await OpenIM.iMManager.groupManager
           .getGroupMemberList(groupID: groupID!, filter: 5, count: 20);
+      // dawn 2026-06-26 群主/群管理员名单加载完后刷新列表，让已渲染消息的"官方"红标补显。
+      customChatListViewController.refresh();
+      update();
     } catch (e) {
       if (_handleGroupDismissedError(e)) return;
       rethrow;
