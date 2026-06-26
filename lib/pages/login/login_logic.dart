@@ -73,6 +73,8 @@ class LoginLogic extends GetxController with GetTickerProviderStateMixin {
   final isPasswordLogin = true.obs;
   final loginType = LoginType.account.obs;
   final rememberPassword = false.obs;
+  // dawn 2026-06-26 登录/注册同页 Tab：0=登陆 1=注册。
+  final authTab = 0.obs;
   String? get email =>
       loginType.value == LoginType.email ? phoneCtrl.text.trim() : null;
   String? get phone =>
