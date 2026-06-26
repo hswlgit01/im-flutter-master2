@@ -22,12 +22,14 @@ class LoginPage extends StatelessWidget {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              88.verticalSpace,
-              // ImageRes.loginLogo.toImage
-              //   ..width = 64.w
-              //   ..height = 64.h,
+              60.verticalSpace,
+              // dawn 2026-06-26 登录页加心享 logo(设计稿)。
+              ImageRes.loginLogo.toImage
+                ..width = 96.w
+                ..height = 96.w,
+              16.verticalSpace,
               StrRes.welcome.toText..style = Styles.ts_0089FF_17sp_semibold,
-              51.verticalSpace,
+              40.verticalSpace,
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 32.w),
                 child: Column(children: [

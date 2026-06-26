@@ -8,7 +8,7 @@ class ImageRes {
   static const voiceBlackAnim = "assets/anim/voice_black.json";
 
   static const splashLogo = "$_dir/ic_splash_logo.webp";
-  static const loginLogo = "$_dir/ic_login_logo.webp";
+  static const loginLogo = "$_dir/login_logo.png";
   static const eyeOpen = "$_dir/ic_eye_open.webp";
   static const eyeClose = "$_dir/ic_eye_close.webp";
   static const clearText = "$_dir/ic_clear_text.webp";
@@ -97,6 +97,8 @@ class ImageRes {
   static const mineGeneral = "$_dir/mine_general.png";
   static const mineAbout = "$_dir/mine_about.png";
   static const mineHeaderLogo = "$_dir/mine_header_logo.png";
+  // dawn 2026-06-26 注册页设计 logo(登录 logo 复用上方 loginLogo)。
+  static const registerLogo = "$_dir/register_logo.png";
   static const rightArrow = "$_dir/ic_right_arrow.webp";
   static const myInfo = "$_dir/ic_mine_my_info.webp";
   static const workingCircle = "$_dir/ic_working_circle.webp";

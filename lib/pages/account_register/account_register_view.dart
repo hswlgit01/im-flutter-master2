@@ -22,7 +22,14 @@ class AccountRegisterView extends StatelessWidget {
         child: Obx(() => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                29.verticalSpace,
+                16.verticalSpace,
+                // dawn 2026-06-26 注册页加心享 logo(设计稿)。
+                Center(
+                  child: ImageRes.registerLogo.toImage
+                    ..width = 72.w
+                    ..height = 72.w,
+                ),
+                20.verticalSpace,
 
                 // 昵称输入框 - 邮箱注册和账户注册都需要
                 InputBox(
