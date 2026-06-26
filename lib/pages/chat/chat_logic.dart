@@ -377,7 +377,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   final officialAccountUserMap = <String, bool>{};
 
   // 当前用户是否有撤回权限(团队长 + 官方账号)。
-  bool get canRevokeMessages => orgController.canRevokeMessage;
+  // dawn 2026-06-26 撤回权限：本群群主/群管理员(官方) 或 组织团队长 可撤回；普通成员不可。
+  bool get canRevokeMessages => isAdminOrOwner || orgController.isTermManager;
   final _officialMessageRoleRequestedAt = <String, DateTime>{};
   static const _officialRoleRefreshInterval = Duration(minutes: 10);
 
@@ -437,12 +438,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         normalized == 'groupmanager';
   }
 
-  // dawn 2026-06-26 群聊"官方"标识改为按【本群角色】判断：仅本群群主/群管理员显示红名+官方，
-  // 不再按组织角色(避免组织里的群管理员在自己不是群主/管理的群里被误标为官方)。单聊不显示。
-  bool isOfficialMessageSender(Message message) {
-    final userID = message.sendID;
-    if (userID == null || userID.isEmpty) return false;
-    if (!isGroupChat) return false;
+  // dawn 2026-06-26 判断某 userID 是否为【本群】群主/群管理员(官方)。单聊恒 false。
+  bool _isGroupOwnerOrAdmin(String? userID) {
+    if (userID == null || userID.isEmpty || !isGroupChat) return false;
     if (userID == OpenIM.iMManager.userID) {
       final lv = groupMemberRoleLevel.value;
       return lv == GroupRoleLevel.owner || lv == GroupRoleLevel.admin;
@@ -451,6 +449,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final lv = memberUpdateInfoMap[userID]?.roleLevel;
     return lv == GroupRoleLevel.owner || lv == GroupRoleLevel.admin;
   }
+
+  // dawn 2026-06-26 群聊"官方"标识(红名+官方)：仅本群群主/群管理员；单聊不显示。
+  bool isOfficialMessageSender(Message message) =>
+      _isGroupOwnerOrAdmin(message.sendID);
 
   Future<void> _loadOfficialRolesForMessages(Iterable<Message> messages) async {
     final now = DateTime.now();
@@ -921,12 +923,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   bool _applyRevokedInfo(RevokedInfo value) {
     final detail = value.toJson();
-    // dawn 2026-06-26 官方账号撤回不提示：撤回人是官方账号(超管/后台管理员/群管理员)时，
+    // dawn 2026-06-26 官方账号撤回不提示：撤回人是本群群主/群管理员(官方)时，
     // 在撤回详情里打上 officialSilent 标记，提示视图据此不渲染"撤回了一条消息"。
+    // (团队长撤回仍正常显示提示)
     final revokerID =
         (detail['revokerID'] ?? detail['revokerUserID'])?.toString();
-    final officialSilent =
-        revokerID != null && (officialAccountUserMap[revokerID] ?? false);
+    final officialSilent = _isGroupOwnerOrAdmin(revokerID);
     var updated = false;
     final touched = <String>{};
     for (var msg in messageList) {
