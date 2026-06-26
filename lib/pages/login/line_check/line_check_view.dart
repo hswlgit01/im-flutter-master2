@@ -14,21 +14,25 @@ class LineCheckPage extends StatefulWidget {
 
 class _LineCheckPageState extends State<LineCheckPage> {
   List<LineTestResult> _lines = [];
-  String? _selectedHost;
+  // dawn 2026-06-26 按索引选择(可能存在同 host 的多条线路，不能用 host 当选中标识)。
+  int _selectedIndex = 0;
   bool _testing = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedHost = ApiAutoRoute.currentHost;
     _retest();
   }
 
-  String? _firstOkHost(List<LineTestResult> lines) {
-    for (final l in lines) {
-      if (l.isSuccess) return l.host;
+  int _defaultIndex(List<LineTestResult> lines) {
+    // 优先选中当前已应用线路；否则选第一条可用；都没有则第一条。
+    final cur = ApiAutoRoute.currentHost;
+    if (cur != null && cur.isNotEmpty) {
+      final i = lines.indexWhere((l) => l.host == cur && l.isSuccess);
+      if (i >= 0) return i;
     }
-    return lines.isNotEmpty ? lines.first.host : null;
+    final ok = lines.indexWhere((l) => l.isSuccess);
+    return ok >= 0 ? ok : 0;
   }
 
   Future<void> _retest({bool sync = false}) async {
@@ -44,11 +48,7 @@ class _LineCheckPageState extends State<LineCheckPage> {
       if (!mounted) return;
       setState(() {
         _lines = lines;
-        final stillExists =
-            _selectedHost != null && lines.any((l) => l.host == _selectedHost);
-        if (!stillExists) {
-          _selectedHost = _firstOkHost(lines);
-        }
+        _selectedIndex = _defaultIndex(lines);
       });
     } finally {
       if (mounted) setState(() => _testing = false);
@@ -56,8 +56,9 @@ class _LineCheckPageState extends State<LineCheckPage> {
   }
 
   Future<void> _apply() async {
-    final host = _selectedHost;
-    if (host == null || host.isEmpty) return;
+    if (_selectedIndex < 0 || _selectedIndex >= _lines.length) return;
+    final host = _lines[_selectedIndex].host;
+    if (host.isEmpty) return;
     await LoadingView.singleton
         .wrap(asyncFunction: () => ApiAutoRoute.applyHost(host));
     IMViews.showToast('已切换线路');
@@ -83,11 +84,11 @@ class _LineCheckPageState extends State<LineCheckPage> {
     );
   }
 
-  Widget _lineRow(LineTestResult l) {
-    final selected = _selectedHost == l.host;
+  Widget _lineRow(LineTestResult l, int index) {
+    final selected = _selectedIndex == index;
     final selectable = l.isSuccess;
     return InkWell(
-      onTap: selectable ? () => setState(() => _selectedHost = l.host) : null,
+      onTap: selectable ? () => setState(() => _selectedIndex = index) : null,
       child: Container(
         color: Styles.c_FFFFFF,
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
@@ -125,7 +126,9 @@ class _LineCheckPageState extends State<LineCheckPage> {
 
   @override
   Widget build(BuildContext context) {
-    final canApply = _selectedHost != null && _selectedHost!.isNotEmpty;
+    final canApply = _selectedIndex >= 0 &&
+        _selectedIndex < _lines.length &&
+        _lines[_selectedIndex].isSuccess;
     return Scaffold(
       backgroundColor: Styles.c_F8F9FA,
       appBar: AppBar(
@@ -156,7 +159,7 @@ class _LineCheckPageState extends State<LineCheckPage> {
                         itemCount: _lines.length,
                         separatorBuilder: (_, __) => Divider(
                             height: 1, color: const Color(0xFFF0F0F0)),
-                        itemBuilder: (_, i) => _lineRow(_lines[i]),
+                        itemBuilder: (_, i) => _lineRow(_lines[i], i),
                       )),
           ),
           SafeArea(
