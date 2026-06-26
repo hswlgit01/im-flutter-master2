@@ -414,7 +414,9 @@ class ApiAutoRoute {
               r'^((2[0-4]\d|25[0-5]|[01]?\d\d?)\.){3}(2[0-4]\d|25[0-5]|[01]?\d\d?)$')
           .hasMatch(server.host);
       final protocol = isIP ? 'http' : 'https';
-      final port = isIP ? ':10002' : '';
+      // dawn 2026-06-26 修复线路检测"无法连通"：/third/network/test/ping 在 chat 服务(:10008)，
+      // 原来对 IP 用 :10002(IM api)→404→误判无法连通。改用 chat 端口 :10008。
+      final port = isIP ? ':10008' : '';
       // 根据Nginx配置，使用chat.domain.com格式
       final chatDomain = isIP ? server.host : 'chat.${server.host}';
       final testUrl = '$protocol://${chatDomain}$port/third/network/test/ping';
