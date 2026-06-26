@@ -74,6 +74,23 @@ class LoginPage extends StatelessWidget {
                     enabledColor: Color(0xFF66BB6A),  // 适配色系的浅绿色
                     onTap: logic.registerNow,
                   ),
+                  // dawn 2026-06-26 登录页新增"线路检测"入口：测速并手动切换访问线路。
+                  12.verticalSpace,
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: logic.openLineCheck,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6.h),
+                      child: Text(
+                        '线路检测',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Styles.c_0089FF,
+                          fontSize: 14.sp,
+                        ),
+                      ),
+                    ),
+                  ),
                 ]),
               ),
               50.verticalSpace, // 为了保持整体布局的平衡

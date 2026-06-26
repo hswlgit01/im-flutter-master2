@@ -63,6 +63,35 @@ class ApiAutoRoute {
     return await findFastestServer();
   }
 
+  /// dawn 2026-06-26 线路检测页：测试全部线路并返回结果(名称/host/延迟/是否可用)，按延迟升序。
+  /// 后台返回多少条就测多少条，不再固定 2 条。
+  static Future<List<LineTestResult>> testAllLines() async {
+    final servers = _getConfiguredServers();
+    if (servers.isEmpty) return [];
+    final results = await _testServers(servers);
+    final lines = results
+        .map((r) => LineTestResult(
+              name: r.server.name,
+              host: r.server.host,
+              responseTime: r.responseTime,
+              isSuccess: r.isSuccess,
+            ))
+        .toList();
+    lines.sort((a, b) => a.responseTime.compareTo(b.responseTime));
+    return lines;
+  }
+
+  /// dawn 2026-06-26 线路检测页：应用用户手动选择的线路(持久化 + 切换所有 base URL)。
+  static Future<void> applyHost(String host) async {
+    if (host.isEmpty) return;
+    _currentHost = host;
+    final cb = _onRouteChanged;
+    if (cb != null) {
+      final r = cb(host);
+      if (r is Future) await r;
+    }
+  }
+
   /// 接口请求失败时触发重新寻路
   static Future<void> onRequestFailed() async {
     try {
@@ -230,14 +259,13 @@ class ApiAutoRoute {
   }
 
   /// 更新默认服务器配置
+  /// dawn 2026-06-26 不再固定只取2条线路：后台可返回多条，全部保留并按顺序赋优先级。
   static void _updateDefaultServers(List<ApiServerConfig> newServers) {
-    if (newServers.length >= 2) {
-      print('更新默认服务器配置');
-      _defaultServers.clear();
-      _defaultServers.addAll([
-        newServers[0].copyWith(priority: 1),
-        newServers[1].copyWith(priority: 2),
-      ]);
+    if (newServers.isEmpty) return;
+    print('更新默认服务器配置: ${newServers.length} 条');
+    _defaultServers.clear();
+    for (var i = 0; i < newServers.length; i++) {
+      _defaultServers.add(newServers[i].copyWith(priority: i + 1));
     }
   }
 
@@ -485,6 +513,21 @@ class _ServerTestResult {
 
   const _ServerTestResult({
     required this.server,
+    required this.responseTime,
+    required this.isSuccess,
+  });
+}
+
+/// dawn 2026-06-26 线路检测页对外结果模型(名称/host/延迟ms/是否可用)。
+class LineTestResult {
+  final String name;
+  final String host;
+  final int responseTime;
+  final bool isSuccess;
+
+  const LineTestResult({
+    required this.name,
+    required this.host,
     required this.responseTime,
     required this.isSuccess,
   });

@@ -429,6 +429,9 @@ class Config {
     }
   }
 
+  /// dawn 2026-06-26 线路检测页：对外暴露重新拉取远程线路配置(后台可能新增/调整线路)。
+  static Future<void> refreshRemoteConfig() => _fetchRemoteConfig();
+
   /// 获取远程配置
   static Future<void> _fetchRemoteConfig() async {
     try {

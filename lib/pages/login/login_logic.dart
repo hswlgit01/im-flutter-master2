@@ -11,6 +11,7 @@ import '../../utils/log_util.dart';
 import '../../routes/app_navigator.dart';
 import '../conversation/conversation_logic.dart';
 import '../../core/security_manager.dart';
+import 'line_check/line_check_view.dart';
 
 enum LoginType {
   email(0),
@@ -358,6 +359,9 @@ class LoginLogic extends GetxController with GetTickerProviderStateMixin {
   }
 
   void registerNow() => AppNavigator.startAccountRegister();
+
+  // dawn 2026-06-26 登录页线路检测入口：进入测速页手动选择/切换访问线路。
+  void openLineCheck() => Get.to(() => const LineCheckPage());
 
   void forgetPassword() => AppNavigator.startForgetPassword();
 
