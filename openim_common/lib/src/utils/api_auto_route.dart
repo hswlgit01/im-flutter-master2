@@ -66,7 +66,20 @@ class ApiAutoRoute {
   /// dawn 2026-06-26 线路检测页：测试全部线路并返回结果(名称/host/延迟/是否可用)，按延迟升序。
   /// 后台返回多少条就测多少条，不再固定 2 条。
   static Future<List<LineTestResult>> testAllLines() async {
-    final servers = _getConfiguredServers();
+    var servers = _getConfiguredServers();
+    // dawn 2026-06-26 修复线路检测"暂无可用线路"：远程配置没返回 servers 时(网络拉不到/后台未配)，
+    // 兜底用当前已应用的线路 host 生成一条，至少能测试/显示当前线路。
+    if (servers.isEmpty) {
+      final fallbackHost = _currentHost ?? _currentAppliedHost();
+      if (fallbackHost != null &&
+          fallbackHost.isNotEmpty &&
+          !_isInvalidRuntimeHost(fallbackHost)) {
+        servers = [
+          ApiServerConfig(
+              name: '线路一', host: fallbackHost, priority: 1, region: 'global'),
+        ];
+      }
+    }
     if (servers.isEmpty) return [];
     final results = await _testServers(servers);
     final lines = results
@@ -79,6 +92,18 @@ class ApiAutoRoute {
         .toList();
     lines.sort((a, b) => a.responseTime.compareTo(b.responseTime));
     return lines;
+  }
+
+  /// 取当前已应用的线路 host(用于线路检测兜底)。
+  static String? _currentAppliedHost() {
+    try {
+      final cfg = DataSp.getServerConfig();
+      if (cfg != null) {
+        final raw = cfg['serverIP'] ?? cfg['host'] ?? cfg['apiUrl'];
+        if (raw != null) return _extractHost(raw.toString());
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// dawn 2026-06-26 线路检测页：应用用户手动选择的线路(持久化 + 切换所有 base URL)。

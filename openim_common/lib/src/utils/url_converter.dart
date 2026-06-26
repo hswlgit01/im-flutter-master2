@@ -80,16 +80,13 @@ class UrlConverter {
         return originalUrl;
       }
 
-      // dawn 2026-06-26 文件传输损坏修复：预签名 URL 不能改写 host/scheme/port，
+      // dawn 2026-06-26 文件传输损坏修复：仅真正的 S3/MinIO 预签名 URL(x-amz-*) 不改写 host/scheme/port，
       // 否则签名失效 → 后端返回错误/部分内容被当作文件保存，导致大文件(APK)损坏。
+      // 注意：不能把 token/sign 也算预签名——很多普通对象 URL 都带 token，跳过改写会去连
+      // 原始(可能不可达)host 导致下载卡死/失败。只认 x-amz-* 这种与 host 绑定的签名。
       final qp = originalUri.queryParameters;
-      final isPresigned = qp.keys.any((k) {
-            final lk = k.toLowerCase();
-            return lk.startsWith('x-amz-') ||
-                lk == 'signature' ||
-                lk == 'sign' ||
-                lk == 'token';
-          });
+      final isPresigned =
+          qp.keys.any((k) => k.toLowerCase().startsWith('x-amz-'));
       if (isPresigned) {
         return originalUrl;
       }
