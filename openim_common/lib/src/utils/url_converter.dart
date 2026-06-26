@@ -80,6 +80,20 @@ class UrlConverter {
         return originalUrl;
       }
 
+      // dawn 2026-06-26 文件传输损坏修复：预签名 URL 不能改写 host/scheme/port，
+      // 否则签名失效 → 后端返回错误/部分内容被当作文件保存，导致大文件(APK)损坏。
+      final qp = originalUri.queryParameters;
+      final isPresigned = qp.keys.any((k) {
+            final lk = k.toLowerCase();
+            return lk.startsWith('x-amz-') ||
+                lk == 'signature' ||
+                lk == 'sign' ||
+                lk == 'token';
+          });
+      if (isPresigned) {
+        return originalUrl;
+      }
+
       // 获取当前自动寻路选择的域名
       final currentHost = _getCurrentHost();
       if (currentHost == null || currentHost.isEmpty) {

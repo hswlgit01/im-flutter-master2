@@ -1296,6 +1296,17 @@ class IMUtils {
   // 静态变量用于跟踪正在下载的文件
   static final Set<String> _downloadingFiles = {};
   
+  // dawn 2026-06-26 文件传输损坏修复：校验文件大小与消息声明大小一致。
+  // 截断/损坏的文件(大小不符)不复用缓存、不当成功打开，避免 APK"解析软件包时出现问题"。
+  static Future<bool> _fileSizeMatches(String path, int? expectedSize) async {
+    if (expectedSize == null || expectedSize <= 0) return true; // 无法校验则放行
+    try {
+      return await File(path).length() == expectedSize;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<void> previewFile(Message message) async {
     // 先显示初始加载提示
     EasyLoading.show(status: StrRes.processingFile, maskType: EasyLoadingMaskType.black);
@@ -1323,12 +1334,20 @@ class IMUtils {
         file = File(sourcePath);
         // 文件已存在，隐藏loading
         EasyLoading.dismiss();
-      } else if (await File(savePath).exists()) {
-        Logger.print('文件存在于下载目录');
+      } else if (await File(savePath).exists() &&
+          await _fileSizeMatches(savePath, elem.fileSize)) {
+        Logger.print('文件存在于下载目录(大小校验通过)');
         file = File(savePath);
         // 文件已存在，隐藏loading
         EasyLoading.dismiss();
       } else if (elem.sourceUrl != null) {
+        // dawn 2026-06-26 若本地存在但大小不符(此前下载被截断)，删除后重新下载。
+        if (await File(savePath).exists()) {
+          try {
+            await File(savePath).delete();
+            Logger.print('本地文件大小不符，已删除待重新下载: $savePath');
+          } catch (_) {}
+        }
         // 检查是否正在下载
         if (_downloadingFiles.contains(fileKey)) {
           Logger.print('文件正在下载中，忽略重复请求: $fileName');
@@ -1360,13 +1379,24 @@ class IMUtils {
             },
           );
 
-          if (await File(savePath).exists()) {
+          if (await File(savePath).exists() &&
+              await _fileSizeMatches(savePath, elem.fileSize)) {
             file = File(savePath);
-            Logger.print('文件下载完成: $savePath');
+            Logger.print('文件下载完成且大小校验通过: $savePath');
             // 下载完成后立即隐藏进度
             EasyLoading.dismiss();
           } else {
-            Logger.print('文件下载失败: 文件不存在');
+            // dawn 2026-06-26 下载不完整(大小与声明不符)：删除损坏文件并报错，避免被当成功打开导致"解析软件包出现问题"。
+            final existed = await File(savePath).exists();
+            int? actualLen;
+            if (existed) {
+              try {
+                actualLen = await File(savePath).length();
+                await File(savePath).delete();
+              } catch (_) {}
+            }
+            Logger.print(
+                '文件下载不完整: 存在=$existed 实际大小=$actualLen 声明大小=${elem.fileSize}');
             EasyLoading.showError(
               StrRes.downloadFailed,
               duration: const Duration(seconds: 2),
