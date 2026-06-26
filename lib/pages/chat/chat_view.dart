@@ -28,12 +28,10 @@ class ChatPage extends StatelessWidget {
 
   List<MessageOperationType> _messageOperationTypes(Message message) {
     final Map<MessageOperationType, bool> operationTypeMapping = {
-      MessageOperationType.revoke: logic.isAdminOrOwner ||
-          !message.isCustomType &&
-              (DateTime.now().millisecondsSinceEpoch - message.createTime!)
-                      .abs() <=
-                  2 * 60 * 1000 &&
-              message.sendID == OpenIM.iMManager.userID,
+      // dawn 2026-06-26 撤回权限收紧：只有团队长和官方账号(超管/后台管理员/群管理员)可撤回消息；
+      // 普通用户(含本人)不再显示撤回入口。
+      MessageOperationType.revoke:
+          logic.canRevokeMessages && !message.isCustomType,
       MessageOperationType.copy: message.isTextType ||
           message.contentType == MessageType.atText ||
           message.contentType == MessageType.quote ||

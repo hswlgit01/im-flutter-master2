@@ -40,6 +40,21 @@ class OrgController extends GetxService {
     return roles.contains(code) || roles.contains('basic');
   }
 
+  // dawn 2026-06-26 撤回权限：当前用户组织角色(归一化)。
+  String get currentOrgRole => _normalizeOrgRole(currentOrg.role ?? '');
+
+  // 官方账号：超管/后台管理员/群管理员(不含团队长)。用于"官方账号撤回不提示"。
+  bool get isOfficialAccount {
+    const official = {'SuperAdmin', 'BackendAdmin', 'GroupManager'};
+    return official.contains(currentOrgRole);
+  }
+
+  // 团队长。
+  bool get isTermManager => currentOrgRole == 'TermManager';
+
+  // 只有团队长和官方账号可以撤回消息。
+  bool get canRevokeMessage => isOfficialAccount || isTermManager;
+
   bool get canAddFriend => hasPermission('add_friend');
   bool get canCreateGroup => hasPermission('create_group');
   bool get canSendFile => hasPermission('send_file');

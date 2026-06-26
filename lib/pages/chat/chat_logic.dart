@@ -373,6 +373,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   static const int _largeGroupLatestSyncSeconds = 5;
   // dawn 2026-06-21 新增官方人员标识：聊天页按消息发送人懒加载组织角色，避免大群一次性查全员。
   final officialMessageUserMap = <String, bool>{}.obs;
+  // dawn 2026-06-26 官方账号(超管/后台管理员/群管理员，不含团队长)：用于"官方账号撤回不提示"。
+  final officialAccountUserMap = <String, bool>{};
+
+  // 当前用户是否有撤回权限(团队长 + 官方账号)。
+  bool get canRevokeMessages => orgController.canRevokeMessage;
   final _officialMessageRoleRequestedAt = <String, DateTime>{};
   static const _officialRoleRefreshInterval = Duration(minutes: 10);
 
@@ -423,6 +428,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         normalized == 'termmanager';
   }
 
+  // dawn 2026-06-26 官方账号(不含团队长)：超管/后台管理员/群管理员。用于撤回静默。
+  bool _isOfficialAccountRole(String? role) {
+    final normalized = _normalizeOfficialRole(role).toLowerCase();
+    return normalized == 'admin' ||
+        normalized == 'backendadmin' ||
+        normalized == 'superadmin' ||
+        normalized == 'groupmanager';
+  }
+
   bool isOfficialMessageSender(Message message) {
     final userID = message.sendID;
     if (userID == null || userID.isEmpty) return false;
@@ -463,6 +477,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           officialMessageUserMap[userID] = official;
           changed = true;
         }
+        // 记录"官方账号"(不含团队长)用于撤回静默
+        officialAccountUserMap[userID] = _isOfficialAccountRole(user.orgRole);
       }
       if (changed) {
         officialMessageUserMap.refresh();
@@ -896,6 +912,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   bool _applyRevokedInfo(RevokedInfo value) {
     final detail = value.toJson();
+    // dawn 2026-06-26 官方账号撤回不提示：撤回人是官方账号(超管/后台管理员/群管理员)时，
+    // 在撤回详情里打上 officialSilent 标记，提示视图据此不渲染"撤回了一条消息"。
+    final revokerID =
+        (detail['revokerID'] ?? detail['revokerUserID'])?.toString();
+    final officialSilent =
+        revokerID != null && (officialAccountUserMap[revokerID] ?? false);
     var updated = false;
     final touched = <String>{};
     for (var msg in messageList) {
@@ -903,8 +925,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           msg.contentType != MessageType.revokeMessageNotification) {
         updated = true;
         msg.contentType = MessageType.revokeMessageNotification;
+        final normalized = _normalizeRevokeDetail(detail, msg);
+        if (officialSilent) normalized['officialSilent'] = true;
         msg.notificationElem = NotificationElem(
-          detail: json.encode(_normalizeRevokeDetail(detail, msg)),
+          detail: json.encode(normalized),
         );
         if (msg.clientMsgID != null) touched.add(msg.clientMsgID!);
       }

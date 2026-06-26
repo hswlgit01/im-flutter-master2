@@ -484,6 +484,10 @@ class ChatHintTextView extends StatelessWidget {
           );
         case MessageType.revokeMessageNotification:
           {
+            // dawn 2026-06-26 官方账号撤回不提示：撤回详情带 officialSilent 标记时不渲染任何提示。
+            if (map['officialSilent'] == true) {
+              return const SizedBox.shrink();
+            }
             final revokedInfo = RevokedInfo.fromJson(map);
             bool isIrevoked =
                 revokedInfo.revokerID == revokedInfo.sourceMessageSendID;
