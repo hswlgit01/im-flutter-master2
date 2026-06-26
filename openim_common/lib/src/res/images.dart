@@ -82,6 +82,21 @@ class ImageRes {
   static const mineHeaderBg = "$_dir/ic_mine_header_bg.webp";
   static const mineCopy = "$_dir/ic_mine_copy.webp";
   static const mineQr = "$_dir/ic_mine_qr.webp";
+  // dawn 2026-06-26 "我的"页改版设计图标(来自设计稿)。
+  static const mineGender = "$_dir/mine_gender.png";
+  static const mineRealname = "$_dir/mine_realname.png";
+  static const mineArrow = "$_dir/mine_arrow.png";
+  static const mineCheckin = "$_dir/mine_checkin.png";
+  static const mineInviteCode = "$_dir/mine_invite_code.png";
+  static const mineInviteQr = "$_dir/mine_invite_qr.png";
+  static const mineTeam = "$_dir/mine_team.png";
+  static const mineServices = "$_dir/mine_services.png";
+  static const minePayment = "$_dir/mine_payment.png";
+  static const mineBalance = "$_dir/mine_balance.png";
+  static const minePassword = "$_dir/mine_password.png";
+  static const mineGeneral = "$_dir/mine_general.png";
+  static const mineAbout = "$_dir/mine_about.png";
+  static const mineHeaderLogo = "$_dir/mine_header_logo.png";
   static const rightArrow = "$_dir/ic_right_arrow.webp";
   static const myInfo = "$_dir/ic_mine_my_info.webp";
   static const workingCircle = "$_dir/ic_working_circle.webp";

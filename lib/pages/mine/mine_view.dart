@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:openim_common/openim_common.dart';
 
@@ -31,314 +30,382 @@ class _MinePageState extends State<MinePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // 当应用从后台恢复时，调用刷新方法
       logic.onPageEnter();
     }
   }
 
   @override
   void didChangeDependencies() {
-    // 当依赖关系变化时，例如从其他页面返回时可能会触发
     logic.onPageEnter();
     super.didChangeDependencies();
   }
 
+  // 实名认证状态文案
+  String get _realnameText {
+    final status = logic.identityInfo?.status ?? 0;
+    final realName = logic.identityInfo?.realName;
+    switch (status) {
+      case 1:
+        return '审核中';
+      case 2:
+        if (realName != null && realName.isNotEmpty) {
+          return '已认证(${realName.substring(0, 1)}**)';
+        }
+        return '已认证';
+      case 3:
+        return '审核未通过';
+      default:
+        return '未实名认证';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // dawn 2026-06-23 我的页改版：照设计稿(性别/实名/签到/邀请码/二维码/团队/收款/余额/密码/通用/关于/退出)。
+    // dawn 2026-06-26 "我的"页按设计稿改版：头部(头像+昵称+点击实名+性别/实名chip)、
+    // 签到卡、邀请区(邀请码/二维码/我的团队)、常用服务(收款/余额/密码/通用/关于)、退出登录。
     return Scaffold(
       backgroundColor: Styles.c_F8F9FA,
       body: SingleChildScrollView(
         child: Column(
           children: [
-            Stack(
-              children: [
-                Container(
-                  height: 138.h,
-                  width: 1.sw,
-                  color: Styles.c_0089FF,
-                  child: ImageRes.mineHeaderBg.toImage,
+            Obx(() => _buildHeader()),
+            12.verticalSpace,
+            _buildCheckinCard(),
+            12.verticalSpace,
+            // 邀请区
+            _card(children: [
+              Obx(() => _buildRow(
+                    icon: ImageRes.mineInviteCode,
+                    label: '心享邀请码',
+                    valueText: logic.invitationCode,
+                    showArrow: false,
+                    onTap: logic.copyInvitationCode,
+                  )),
+              _divider(),
+              _buildRow(
+                icon: ImageRes.mineInviteQr,
+                label: '邀请二维码',
+                onTap: logic.toQrCodePage,
+              ),
+              _divider(),
+              _buildRow(
+                icon: ImageRes.mineTeam,
+                label: '我的团队',
+                onTap: logic.viewMyTeam,
+              ),
+            ]),
+            12.verticalSpace,
+            // 常用服务
+            _card(children: [
+              _buildSectionHeader(),
+              _divider(),
+              _buildRow(
+                icon: ImageRes.minePayment,
+                label: StrRes.paymentMethod,
+                onTap: logic.viewPaymentMethod,
+              ),
+              _divider(),
+              _buildBalanceRow(),
+              _divider(),
+              _buildRow(
+                icon: ImageRes.minePassword,
+                label: StrRes.changePassword,
+                onTap: logic.viewPasswordSetup,
+              ),
+              _divider(),
+              _buildRow(
+                icon: ImageRes.mineGeneral,
+                label: StrRes.languageSetup,
+                onTap: logic.viewGeneral,
+              ),
+              _divider(),
+              _buildRow(
+                icon: ImageRes.mineAbout,
+                label: StrRes.aboutUs,
+                onTap: logic.aboutUs,
+              ),
+            ]),
+            12.verticalSpace,
+            // 退出登录
+            _card(children: [
+              InkWell(
+                onTap: logic.logout,
+                child: Container(
+                  height: 52.h,
+                  alignment: Alignment.center,
+                  child: Text(
+                    StrRes.logout,
+                    style: TextStyle(
+                      color: Styles.c_FF381F,
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
-                Obx(() => _buildMyInfoView()),
-              ],
-            ),
-            10.verticalSpace,
-            // 卡片一：性别 / 实名认证 / 签到
-            _buildRow(
-              iconData: Icons.wc_outlined,
-              label: StrRes.gender,
-              valueWidget: Obx(() => Text(
-                    logic.genderText,
-                    style: Styles.ts_8E9AB0_14sp,
-                  )),
-              showArrow: false,
-              isTopRadius: true,
-            ),
-            _buildIdentityVerifyItem(),
-            _buildRow(
-              iconData: Icons.event_available_outlined,
-              label: StrRes.checkin,
-              onTap: logic.toSignIn,
-              isBottomRadius: true,
-            ),
-            10.verticalSpace,
-            // 卡片二：心享邀请码 / 邀请二维码
-            _buildRow(
-              iconData: Icons.confirmation_number_outlined,
-              label: '心享邀请码',
-              valueWidget: Obx(() => Text(
-                    logic.invitationCode,
-                    style: Styles.ts_8E9AB0_14sp,
-                  )),
-              showArrow: false,
-              onTap: logic.copyInvitationCode,
-              isTopRadius: true,
-            ),
-            _buildRow(
-              iconData: Icons.qr_code_2_outlined,
-              label: '邀请二维码',
-              onTap: logic.toQrCodePage,
-              isBottomRadius: true,
-            ),
-            10.verticalSpace,
-            // 卡片三：我的团队 / 收款方式 / 余额
-            _buildRow(
-              iconData: Icons.people_outline,
-              label: '我的团队',
-              onTap: logic.viewMyTeam,
-              isTopRadius: true,
-            ),
-            _buildRow(
-              iconData: Icons.account_balance_wallet_outlined,
-              label: StrRes.paymentMethod,
-              onTap: logic.viewPaymentMethod,
-            ),
-            _buildRow(
-              iconData: Icons.savings_outlined,
-              label: '余额',
-              valueWidget: Obx(() => Text(
-                    '${logic.balanceText}元  点击提现',
-                    style: Styles.ts_8E9AB0_14sp.copyWith(color: Styles.c_0089FF),
-                  )),
-              onTap: logic.viewWalletWithdraw,
-              isBottomRadius: true,
-            ),
-            10.verticalSpace,
-            // 卡片四：密码设置 / 通用 / 关于我们
-            _buildRow(
-              iconData: Icons.lock_outline,
-              label: StrRes.changePassword,
-              onTap: logic.viewPasswordSetup,
-              isTopRadius: true,
-            ),
-            _buildRow(
-              iconData: Icons.settings_outlined,
-              label: StrRes.languageSetup,
-              onTap: logic.viewGeneral,
-            ),
-            _buildRow(
-              iconData: Icons.info_outline,
-              label: StrRes.aboutUs,
-              onTap: logic.aboutUs,
-              isBottomRadius: true,
-            ),
-            10.verticalSpace,
-            // 卡片五：退出登录
-            _buildRow(
-              iconData: Icons.logout_outlined,
-              label: StrRes.logout,
-              onTap: logic.logout,
-              showArrow: false,
-              isTopRadius: true,
-              isBottomRadius: true,
-            ),
-            20.verticalSpace,
+              ),
+            ]),
+            24.verticalSpace,
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMyInfoView() => Container(
-        height: 98.h,
-        margin: EdgeInsets.only(left: 16.w, right: 16.w, top: 90.h),
-        padding: EdgeInsets.symmetric(horizontal: 16.w),
+  // 头部：头像 + 昵称 + 点击实名 + 性别/实名 chip
+  Widget _buildHeader() {
+    return Container(
+      width: 1.sw,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFCFE6FF), Color(0xFFF8F9FA)],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: 0,
+            top: 10.h,
+            child: Opacity(
+              opacity: 0.25,
+              child: ImageRes.mineHeaderLogo.toImage
+                ..width = 120.w
+                ..height = 120.w,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 60.h, 16.w, 16.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    AvatarView(
+                      url: logic.imLogic.userInfo.value.faceURL,
+                      text: logic.imLogic.userInfo.value.nickname,
+                      width: 64.w,
+                      height: 64.w,
+                      textStyle: Styles.ts_FFFFFF_17sp,
+                    ),
+                    12.horizontalSpace,
+                    Expanded(
+                      child: Text(
+                        logic.imLogic.userInfo.value.nickname ?? '',
+                        style: Styles.ts_0C1C33_17sp_medium,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: logic.openIdentityVerifyPage,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('点击实名', style: Styles.ts_8E9AB0_14sp),
+                          ImageRes.mineArrow.toImage
+                            ..width = 16.w
+                            ..height = 16.w,
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                12.verticalSpace,
+                Row(
+                  children: [
+                    _chip(
+                      icon: ImageRes.mineGender,
+                      text: logic.genderText,
+                      onTap: null,
+                    ),
+                    10.horizontalSpace,
+                    _chip(
+                      icon: ImageRes.mineRealname,
+                      text: _realnameText,
+                      onTap: logic.openIdentityVerifyPage,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(
+      {required String icon, required String text, Function()? onTap}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
         decoration: BoxDecoration(
-          color: Styles.c_FFFFFF,
-          borderRadius: BorderRadius.circular(6.r),
+          color: Styles.c_FFFFFF.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(14.r),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            AvatarView(
-              url: logic.imLogic.userInfo.value.faceURL,
-              text: logic.imLogic.userInfo.value.nickname,
-              width: 48.w,
-              height: 48.h,
-              textStyle: Styles.ts_FFFFFF_14sp,
-            ),
-            10.horizontalSpace,
-            Expanded(
-              child: (logic.imLogic.userInfo.value.nickname ?? '').toText
-                ..style = Styles.ts_0C1C33_17sp_medium,
-            ),
-            GestureDetector(
-              onTap: () => logic.toQrCodePage(),
-              child: Row(
-                mainAxisSize: MainAxisSize.max,
-                children: [
-                  ImageRes.mineQr.toImage..width = 20.w,
-                  ImageRes.rightArrow.toImage..width = 26.w
-                ],
-              ),
-            ),
+            icon.toImage
+              ..width = 16.w
+              ..height = 16.w,
+            6.horizontalSpace,
+            Text(text, style: Styles.ts_0C1C33_14sp),
           ],
         ),
-      );
+      ),
+    );
+  }
 
-  // dawn 2026-06-23 我的页改版统一行控件：支持图标/右侧值/箭头/圆角。
-  Widget _buildRow({
-    IconData? iconData,
-    required String label,
-    String? value,
-    Widget? valueWidget,
-    bool showArrow = true,
-    bool isTopRadius = false,
-    bool isBottomRadius = false,
-    Function()? onTap,
-  }) =>
-      Container(
-        margin: EdgeInsets.symmetric(horizontal: 16.w),
+  // 签到卡(浅蓝渐变独立卡)
+  Widget _buildCheckinCard() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Material(
+        color: Colors.transparent,
         child: Ink(
           decoration: BoxDecoration(
-            color: Styles.c_FFFFFF,
-            borderRadius: BorderRadius.only(
-              topRight: Radius.circular(isTopRadius ? 6.r : 0),
-              topLeft: Radius.circular(isTopRadius ? 6.r : 0),
-              bottomLeft: Radius.circular(isBottomRadius ? 6.r : 0),
-              bottomRight: Radius.circular(isBottomRadius ? 6.r : 0),
+            gradient: const LinearGradient(
+              colors: [Color(0xFFDCEBFF), Color(0xFFEAF3FF)],
             ),
+            borderRadius: BorderRadius.circular(8.r),
           ),
           child: InkWell(
-            onTap: onTap,
+            borderRadius: BorderRadius.circular(8.r),
+            onTap: logic.toSignIn,
             child: Container(
               height: 56.h,
               padding: EdgeInsets.only(left: 12.w, right: 16.w),
               child: Row(
                 children: [
-                  if (iconData != null) ...[
-                    Icon(iconData, size: 24.w, color: const Color(0xFF333333)),
-                    11.horizontalSpace,
-                  ],
-                  Text(label, style: Styles.ts_0C1C33_17sp),
-                  const Spacer(),
-                  if (valueWidget != null) valueWidget,
-                  if (value != null && valueWidget == null)
-                    Text(value, style: Styles.ts_8E9AB0_14sp),
-                  if (showArrow)
-                    ImageRes.rightArrow.toImage
-                      ..width = 24.w
-                      ..height = 24.h,
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-
-  Widget _buildIdentityVerifyItem() {
-    return Obx(() {
-      final identityInfo = logic.identityInfo;
-      final status = identityInfo?.status ?? 0;
-      final realName = identityInfo?.realName;
-      final isRejected = status == 3;
-      final isReviewing = status == 1;
-
-      String statusText = '';
-      Color statusColor = Colors.grey;
-
-      switch (status) {
-        case 0:
-          statusText = StrRes.verifyStatusPending ?? '待认证';
-          statusColor = Colors.grey;
-          break;
-        case 1:
-          statusText = StrRes.verifyStatusReviewing ?? '审核中';
-          statusColor = Colors.orange;
-          break;
-        case 2:
-          if (realName != null && realName.isNotEmpty) {
-            final lastName = realName.substring(0, 1);
-            statusText = StrRes.verifyStatusApproved + '($lastName**)';
-          } else {
-            statusText = StrRes.verifyStatusApproved ?? '已认证';
-          }
-          statusColor = Colors.green;
-          break;
-        case 3:
-          statusText = StrRes.verifyStatusRejected ?? '审核未通过';
-          statusColor = Colors.red;
-          break;
-      }
-
-      return Container(
-        margin: EdgeInsets.symmetric(horizontal: 16.w),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: isRejected ? Color(0xFFFFF1F0) : Styles.c_FFFFFF,
-            borderRadius: BorderRadius.circular(0), // Middle item
-          ),
-          child: InkWell(
-            onTap: logic.openIdentityVerifyPage,
-            child: Container(
-              height: 56.h,
-              padding: EdgeInsets.only(left: 12.w, right: 16.w),
-              child: Row(
-                children: [
-                  // 使用Icon代替ImageRes
-                  Icon(
-                    Icons.verified_user_outlined,
-                    size: 24.w,
-                    color: isRejected ? Colors.red : Color(0xFF333333),
-                  ),
-                  11.horizontalSpace,
-                  Text(
-                    '实名认证',
-                    style: Styles.ts_0C1C33_17sp,
-                  ),
-                  const Spacer(),
-                  // 审核中状态添加刷新按钮
-                  if (isReviewing)
-                    IconButton(
-                      icon: Icon(
-                        Icons.refresh,
-                        size: 20.w,
-                        color: Colors.orange,
-                      ),
-                      onPressed: () async {
-                        // 显示刷新指示器
-                        EasyLoading.show(status: '刷新中...');
-                        // 强制刷新状态
-                        await logic.forceRefreshIdentityInfo();
-                        EasyLoading.dismiss();
-                      },
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints(),
-                      splashRadius: 20.r,
-                    ),
-                  SizedBox(width: 8.w),
-                  Text(
-                    statusText,
-                    style: Styles.ts_0C1C33_17sp.copyWith(color: statusColor),
-                  ),
-                  ImageRes.rightArrow.toImage
+                  ImageRes.mineCheckin.toImage
                     ..width = 24.w
-                    ..height = 24.h,
+                    ..height = 24.w,
+                  11.horizontalSpace,
+                  Text(StrRes.checkin, style: Styles.ts_0C1C33_17sp_medium),
+                  const Spacer(),
+                  Text('前往签到', style: Styles.ts_8E9AB0_14sp),
+                  ImageRes.mineArrow.toImage
+                    ..width = 18.w
+                    ..height = 18.w,
                 ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _card({required List<Widget> children}) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16.w),
+      decoration: BoxDecoration(
+        color: Styles.c_FFFFFF,
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _divider() => Padding(
+        padding: EdgeInsets.only(left: 47.w),
+        child: Divider(height: 1, color: const Color(0xFFF0F0F0)),
       );
-    });
+
+  // 常用服务分区标题
+  Widget _buildSectionHeader() {
+    return Container(
+      height: 50.h,
+      padding: EdgeInsets.only(left: 12.w, right: 16.w),
+      child: Row(
+        children: [
+          ImageRes.mineServices.toImage
+            ..width = 22.w
+            ..height = 22.w,
+          11.horizontalSpace,
+          Text('常用服务', style: Styles.ts_0C1C33_17sp_medium),
+          const Spacer(),
+          Text('心有所享 沟通无界', style: Styles.ts_8E9AB0_14sp),
+        ],
+      ),
+    );
+  }
+
+  // 余额行(带"点击提现")
+  Widget _buildBalanceRow() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: logic.viewWalletWithdraw,
+        child: Container(
+          height: 56.h,
+          padding: EdgeInsets.only(left: 12.w, right: 16.w),
+          child: Row(
+            children: [
+              ImageRes.mineBalance.toImage
+                ..width = 24.w
+                ..height = 24.w,
+              11.horizontalSpace,
+              Text('余额', style: Styles.ts_0C1C33_17sp),
+              const Spacer(),
+              Obx(() => Text('${logic.balanceText}元',
+                  style: Styles.ts_8E9AB0_14sp.copyWith(color: Styles.c_0089FF))),
+              8.horizontalSpace,
+              Text('点击提现',
+                  style: Styles.ts_0089FF_14sp
+                      .copyWith(fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 通用行控件
+  Widget _buildRow({
+    required String icon,
+    required String label,
+    String? valueText,
+    bool showArrow = true,
+    Function()? onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 56.h,
+          padding: EdgeInsets.only(left: 12.w, right: 16.w),
+          child: Row(
+            children: [
+              icon.toImage
+                ..width = 24.w
+                ..height = 24.w,
+              11.horizontalSpace,
+              Text(label, style: Styles.ts_0C1C33_17sp),
+              const Spacer(),
+              if (valueText != null && valueText.isNotEmpty)
+                Flexible(
+                  child: Text(
+                    valueText,
+                    style: Styles.ts_8E9AB0_14sp,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              if (showArrow)
+                ImageRes.mineArrow.toImage
+                  ..width = 18.w
+                  ..height = 18.w,
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
