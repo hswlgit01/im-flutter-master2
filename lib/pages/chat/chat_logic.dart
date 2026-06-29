@@ -3607,6 +3607,18 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final msg = _messageFromServerRaw(raw);
     if (msg == null) return null;
     final sendID = raw['sendID'] as String? ?? '';
+    // dawn 2026-06-29 修复大群补拉历史消息时间变今天：SDK 的 insertGroupMessageToLocalStorage
+    // 会用"当前时间"覆盖本地存储的 sendTime(该方法本用于插入新本地消息)，导致后续
+    // getAdvancedHistoryMessageList 返回今天。这里先把服务端 raw 的真实 sendTime 记入持久 map，
+    // 重建排序(_sortMessagesBySendTimeAsc)时回填，保证旧消息仍显示真实日期。
+    final cmid = msg.clientMsgID;
+    final realT = msg.sendTime ?? 0;
+    if (cmid != null && cmid.isNotEmpty && realT > 0) {
+      final rec = _earliestSendTimeById[cmid];
+      if (rec == null || realT < rec) {
+        _earliestSendTimeById[cmid] = realT;
+      }
+    }
     try {
       await OpenIM.iMManager.messageManager.insertGroupMessageToLocalStorage(
         message: msg,
