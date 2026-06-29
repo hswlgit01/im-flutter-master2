@@ -3794,16 +3794,22 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     }
   }
 
-  Future<AdvancedMessage> _fetchHistoryMessages(Message? startMsg) {
+  Future<AdvancedMessage> _fetchHistoryMessages(Message? startMsg) async {
     // dawn 2026-06-14 优化大群首屏：长时间未读也只取最近50条，避免进群一次性拉大量历史消息。
     final pageSize = _isFirstLoad && searchMessage == null
         ? _initialHistoryPageSize
         : _pageSize;
-    return OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
+    final r = await OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
       conversationID: conversationInfo.conversationID,
       count: pageSize,
       startMsg: startMsg,
     );
+    // dawn 2026-06-29 排查"旧消息显示今天"：打印 SDK 返回的真实 sendTime，定位是 SDK 还是客户端处理出错。
+    for (final m in (r.messageList ?? const <Message>[])) {
+      app_log.LogUtil.e('TIMEDBG',
+          'seq=${m.seq} ctype=${m.contentType} sendTime=${m.sendTime} createTime=${m.createTime} nick=${m.senderNickname} cmid=${m.clientMsgID}');
+    }
+    return r;
   }
 
   Future<AdvancedMessage> _fetchReverseHistoryMessages(Message? startMsg) {
