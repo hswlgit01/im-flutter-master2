@@ -1181,10 +1181,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     oldMsg.seq = newMsg.seq ?? oldMsg.seq;
     oldMsg.serverMsgID = newMsg.serverMsgID ?? oldMsg.serverMsgID;
     oldMsg.status = newMsg.status ?? oldMsg.status;
-    // Keep the optimistic sendTime if we already have one. Overwriting with the
-    // server value can cause the bubble to jump order when server-time drifts
-    // from the local clock by a few hundred ms.
-    oldMsg.sendTime ??= newMsg.sendTime;
+    // dawn 2026-06-29 保留更早(真实)的 sendTime：同步竞态下 newMsg 可能携带"当前时间"
+    // (批量同步被打成今天)，取两者中更早的非零值，避免旧消息显示成今天。
+    final oldT = oldMsg.sendTime ?? 0;
+    final newT = newMsg.sendTime ?? 0;
+    if (oldT <= 0) {
+      oldMsg.sendTime = newMsg.sendTime;
+    } else if (newT > 0 && newT < oldT) {
+      oldMsg.sendTime = newT;
+    }
     if (newMsg.contentType == MessageType.revokeMessageNotification) {
       oldMsg.contentType = MessageType.revokeMessageNotification;
       oldMsg.notificationElem = newMsg.notificationElem;
@@ -1412,7 +1417,31 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   /// 按 sendTime 升序排序，保证列表为「旧→新」避免 API 返回顺序不一致导致错乱
   List<Message> _sortMessagesBySendTimeAsc(List<Message> messages) {
-    final list = List<Message>.from(messages);
+    // dawn 2026-06-29 修复"旧消息时间显示成今天"：同步竞态下同一条消息可能同时存在
+    // 历史拉取(真实 sendTime)与新消息回调(批量同步被打成当前时间)两份。按 clientMsgID
+    // 去重并保留/回填更早(真实)的 sendTime，避免显示成加载时刻。
+    final byId = <String, Message>{};
+    final noId = <Message>[];
+    for (final m in messages) {
+      final id = m.clientMsgID;
+      if (id == null || id.isEmpty) {
+        noId.add(m);
+        continue;
+      }
+      final exist = byId[id];
+      if (exist == null) {
+        byId[id] = m;
+        continue;
+      }
+      final tm = m.sendTime ?? 0;
+      final te = exist.sendTime ?? 0;
+      final earliest = (tm > 0 && te > 0) ? (tm < te ? tm : te) : (tm > te ? tm : te);
+      // 保留信息更全的一份(优先非通知/有 seq 的),并回填最早时间。
+      final keep = (m.seq ?? 0) >= (exist.seq ?? 0) ? m : exist;
+      if (earliest > 0) keep.sendTime = earliest;
+      byId[id] = keep;
+    }
+    final list = <Message>[...byId.values, ...noId];
     // dawn 2026-06-18 修复3万人群消息不同步：群聊优先按服务端 seq 排序。
     // 压测并发发送时 sendTime 可能相近或乱序，seq 才是多端一致的消息顺序。
     list.sort((a, b) {
@@ -3799,17 +3828,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final pageSize = _isFirstLoad && searchMessage == null
         ? _initialHistoryPageSize
         : _pageSize;
-    final r = await OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
+    return OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
       conversationID: conversationInfo.conversationID,
       count: pageSize,
       startMsg: startMsg,
     );
-    // dawn 2026-06-29 排查"旧消息显示今天"：打印 SDK 返回的真实 sendTime，定位是 SDK 还是客户端处理出错。
-    for (final m in (r.messageList ?? const <Message>[])) {
-      app_log.LogUtil.e('TIMEDBG',
-          'seq=${m.seq} ctype=${m.contentType} sendTime=${m.sendTime} createTime=${m.createTime} nick=${m.senderNickname} cmid=${m.clientMsgID}');
-    }
-    return r;
   }
 
   Future<AdvancedMessage> _fetchReverseHistoryMessages(Message? startMsg) {
@@ -3853,7 +3876,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   Future<bool> onScrollToTopLoad() async {
+    // dawn 2026-06-29 群聊到 5 小时窗口上限即停止上拉:关闭顶部加载,避免一直转圈("滑到头不再拉")。
     if (searchMessage == null && _groupHistoryReachTimeLimit) {
+      enabledTopLoad.value = false;
       return false;
     }
     Message? startMsg = customChatListViewController.list.firstOrNull;
@@ -3887,6 +3912,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         _clearUnreadCount();
         _isFirstLoad = false;
       }
+      // dawn 2026-06-29 已无更早历史:关闭顶部加载,停止转圈。
+      enabledTopLoad.value = false;
       return false;
     }
     firstLoadEmpty.value = false;
@@ -3921,6 +3948,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     }
 
     if (filteredList.isEmpty && _groupHistoryReachTimeLimit) {
+      // dawn 2026-06-29 过滤后无可展示(已达 5 小时窗口):关闭顶部加载,停止转圈。
+      enabledTopLoad.value = false;
       return false;
     }
 
