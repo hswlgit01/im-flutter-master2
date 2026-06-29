@@ -312,6 +312,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   final scaleFactor = Config.textScaleFactor.obs;
   final background = "".obs;
   final memberUpdateInfoMap = <String, GroupMembersInfo>{};
+  // dawn 2026-06-29 持久记录每条消息已知的最早(真实)sendTime：同步竞态下新消息回调批量
+  // 同步可能把旧消息时间打成当前时间，历史拉取则为真实时间。记录最早值并在重建时回填，
+  // 确保只要见过真实时间一次，之后任何刷新都不会把旧消息显示成今天。
+  final _earliestSendTimeById = <String, int>{};
   final groupMessageReadMembers = <String, List<String>>{};
   final groupMemberRoleLevel = 1.obs;
   GroupInfo? groupInfo;
@@ -1428,18 +1432,21 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         noId.add(m);
         continue;
       }
-      final exist = byId[id];
-      if (exist == null) {
-        byId[id] = m;
-        continue;
+      // 持久记录该消息已知的最早 sendTime，并回填到消息对象(跨多次重建生效)。
+      final t = m.sendTime ?? 0;
+      final rec = _earliestSendTimeById[id];
+      if (t > 0 && (rec == null || t < rec)) {
+        _earliestSendTimeById[id] = t;
       }
-      final tm = m.sendTime ?? 0;
-      final te = exist.sendTime ?? 0;
-      final earliest = (tm > 0 && te > 0) ? (tm < te ? tm : te) : (tm > te ? tm : te);
-      // 保留信息更全的一份(优先非通知/有 seq 的),并回填最早时间。
-      final keep = (m.seq ?? 0) >= (exist.seq ?? 0) ? m : exist;
-      if (earliest > 0) keep.sendTime = earliest;
-      byId[id] = keep;
+      final best = _earliestSendTimeById[id];
+      if (best != null && best > 0 && best < (m.sendTime ?? 0)) {
+        m.sendTime = best;
+      }
+      // 去重:同 clientMsgID 保留 seq 更大(信息更全)的一份。
+      final exist = byId[id];
+      if (exist == null || (m.seq ?? 0) >= (exist.seq ?? 0)) {
+        byId[id] = m;
+      }
     }
     final list = <Message>[...byId.values, ...noId];
     // dawn 2026-06-18 修复3万人群消息不同步：群聊优先按服务端 seq 排序。
@@ -3981,6 +3988,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           scrollController.jumpTo((scrollViewHeight ?? 0) * -1);
         });
       }
+    }
+    // dawn 2026-06-29 修复小群/一屏装得下时顶部一直转圈:首屏由 init 调用,其返回值不被
+    // 列表组件捕获,_topHasMore 维持初始 true,无法上滑就永远转圈。这里到末页即直接关闭
+    // enabledTopLoad,无需用户上滑也能收起顶部加载。
+    final reachedEnd = didServerPull ? serverPulledIsEnd : (result.isEnd == true);
+    if (reachedEnd) {
+      enabledTopLoad.value = false;
     }
     if (didServerPull) return !serverPulledIsEnd;
     return result.isEnd != true;
