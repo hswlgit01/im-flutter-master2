@@ -1419,6 +1419,18 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     return list;
   }
 
+  /// dawn 2026-06-29 时间回填稳定 key：SDK 写本地库会重写 clientMsgID，但 serverMsgID/seq 稳定。
+  /// 优先 serverMsgID，其次群聊 seq，最后 clientMsgID。
+  String? _effectiveTimeKey(Message m) {
+    final sid = m.serverMsgID;
+    if (sid != null && sid.isNotEmpty) return 's:$sid';
+    final seq = m.seq ?? 0;
+    if (isGroupChat && seq > 0) return 'q:$seq';
+    final cid = m.clientMsgID;
+    if (cid != null && cid.isNotEmpty) return 'c:$cid';
+    return null;
+  }
+
   /// 按 sendTime 升序排序，保证列表为「旧→新」避免 API 返回顺序不一致导致错乱
   List<Message> _sortMessagesBySendTimeAsc(List<Message> messages) {
     // dawn 2026-06-29 修复"旧消息时间显示成今天"：同步竞态下同一条消息可能同时存在
@@ -1427,22 +1439,26 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final byId = <String, Message>{};
     final noId = <Message>[];
     for (final m in messages) {
+      // 用稳定 key(serverMsgID/seq)记录并回填真实最早 sendTime,跨多次重建生效。
+      // SDK 写本地库会重写 clientMsgID,故时间 map 不能用 clientMsgID 当 key。
+      final tkey = _effectiveTimeKey(m);
+      if (tkey != null) {
+        final t = m.sendTime ?? 0;
+        final rec = _earliestSendTimeById[tkey];
+        if (t > 0 && (rec == null || t < rec)) {
+          _earliestSendTimeById[tkey] = t;
+        }
+        final best = _earliestSendTimeById[tkey];
+        if (best != null && best > 0 && best < (m.sendTime ?? 0)) {
+          m.sendTime = best;
+        }
+      }
+      // 去重:按 clientMsgID 折叠重复,保留 seq 更大(信息更全)的一份。
       final id = m.clientMsgID;
       if (id == null || id.isEmpty) {
         noId.add(m);
         continue;
       }
-      // 持久记录该消息已知的最早 sendTime，并回填到消息对象(跨多次重建生效)。
-      final t = m.sendTime ?? 0;
-      final rec = _earliestSendTimeById[id];
-      if (t > 0 && (rec == null || t < rec)) {
-        _earliestSendTimeById[id] = t;
-      }
-      final best = _earliestSendTimeById[id];
-      if (best != null && best > 0 && best < (m.sendTime ?? 0)) {
-        m.sendTime = best;
-      }
-      // 去重:同 clientMsgID 保留 seq 更大(信息更全)的一份。
       final exist = byId[id];
       if (exist == null || (m.seq ?? 0) >= (exist.seq ?? 0)) {
         byId[id] = m;
@@ -3607,16 +3623,17 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final msg = _messageFromServerRaw(raw);
     if (msg == null) return null;
     final sendID = raw['sendID'] as String? ?? '';
-    // dawn 2026-06-29 修复大群补拉历史消息时间变今天：SDK 的 insertGroupMessageToLocalStorage
-    // 会用"当前时间"覆盖本地存储的 sendTime(该方法本用于插入新本地消息)，导致后续
-    // getAdvancedHistoryMessageList 返回今天。这里先把服务端 raw 的真实 sendTime 记入持久 map，
-    // 重建排序(_sortMessagesBySendTimeAsc)时回填，保证旧消息仍显示真实日期。
-    final cmid = msg.clientMsgID;
+    // dawn 2026-06-29 修复大群补拉历史消息时间变今天：SDK insertGroupMessageToLocalStorage
+    // 会用"当前时间"覆盖 sendTime 且【重写 clientMsgID】(该方法本用于插入新本地消息)，导致
+    // 后续 getAdvancedHistoryMessageList 读回今天、且 clientMsgID 已变。这里用稳定 key
+    // (serverMsgID/seq，SDK 不改、群排序也靠 seq)记录服务端 raw 的真实 sendTime，
+    // 排序重建时回填，保证旧消息显示真实日期。(codex 协同排查确认根因)
+    final key = _effectiveTimeKey(msg);
     final realT = msg.sendTime ?? 0;
-    if (cmid != null && cmid.isNotEmpty && realT > 0) {
-      final rec = _earliestSendTimeById[cmid];
+    if (key != null && realT > 0) {
+      final rec = _earliestSendTimeById[key];
       if (rec == null || realT < rec) {
-        _earliestSendTimeById[cmid] = realT;
+        _earliestSendTimeById[key] = realT;
       }
     }
     try {
