@@ -1759,7 +1759,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
     }
     // 非搜索：仅拉一页（本地或群聊服务端最近一页），上滑时 onScrollToTopLoad 再按需拉更早历史
-    await onScrollToTopLoad();
+    // dawn 2026-06-29 首屏也消费返回值同步顶部加载开关：小群/一屏装得下时返回 false → 关闭顶部加载，
+    // 否则列表组件内部 _topHasMore 永远为 true 导致顶部一直转圈。(codex 协同定位)
+    final hasMoreTop = await onScrollToTopLoad();
+    enabledTopLoad.value = hasMoreTop;
     // dawn 2026-06-21 新增官方人员标识：首屏消息渲染后异步补全认证图标，不阻塞进会话。
     unawaited(_loadOfficialRolesForMessages(messageList));
     unawaited(_syncLatestGroupPageFromServer(reason: 'init'));
@@ -2504,6 +2507,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // 不再用快照 conversationInfo.unreadCount>0 做门槛(快照可能过期导致漏报)。markConversationMessageAsRead 幂等，已读再调无害。
     OpenIM.iMManager.conversationManager.markConversationMessageAsRead(
         conversationID: conversationInfo.conversationID);
+    // dawn 2026-06-29 同步清掉会话列表本地补充未读(fallback)，记录已读水位线，
+    // 否则 SDK unreadCount=0 时本地补的红点"1"在标记已读后不会消失。
+    conversationLogic.markFallbackRead(conversationInfo.conversationID);
   }
 
   void closeToolbox() {

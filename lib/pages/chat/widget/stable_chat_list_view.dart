@@ -55,6 +55,12 @@ class _StableChatListViewState<T> extends State<StableChatListView<T>> {
       oldWidget.scrollController?.removeListener(_onScroll);
       _controller?.addListener(_onScroll);
     }
+    // dawn 2026-06-29 同步外部顶部加载开关，避免内部 _topHasMore 残留导致小群/末页一直转圈。
+    if (!widget.enabledTopLoad) {
+      _topHasMore = false;
+    } else if (!oldWidget.enabledTopLoad && widget.enabledTopLoad) {
+      _topHasMore = true;
+    }
   }
 
   @override

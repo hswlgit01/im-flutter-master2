@@ -60,6 +60,10 @@ class ConversationLogic extends GetxController {
   static const _fallbackUnreadWindow = Duration(minutes: 10);
   final _fallbackUnreadCounts = <String, int>{};
   final _fallbackReadLatestMsgKeys = <String, String>{};
+  // dawn 2026-06-29 fallback 已读改为按 seq/sendTime 记录(不依赖会变的 latestMsg key)：
+  // latestMsg 被服务端补字段/通话信令/撤回等改变 key 时,旧的精确 key 失配会导致已读后红点又冒出来。
+  final _fallbackReadUntilSeq = <String, int>{};
+  final _fallbackReadUntilTime = <String, int>{};
 
   @override
   void onInit() {
@@ -243,15 +247,36 @@ class ConversationLogic extends GetxController {
     if (msg.sendID == OpenIM.iMManager.userID) return false;
     if ((info.recvMsgOpt ?? 0) != 0) return false;
 
+    // dawn 2026-06-29 优先用 seq/sendTime 判断是否已读：进入会话标记已读后,服务端可能给 latestMsg
+    // 补字段/改 clientMsgID 使精确 key 失配,从而红点又冒出来；改成"已读到的 seq/时间 之内都算已读"。
+    final id = info.conversationID;
+    final seq = msg.seq ?? 0;
+    final readSeq = _fallbackReadUntilSeq[id] ?? 0;
+    if (seq > 0 && readSeq > 0 && seq <= readSeq) return false;
+    final readTime = _fallbackReadUntilTime[id] ?? 0;
+    final msgTime = msg.sendTime ?? info.latestMsgSendTime ?? 0;
+    if (msgTime > 0 && readTime > 0 && msgTime <= readTime) return false;
+
     final key = _latestMessageKey(info);
-    if (key == null || _fallbackReadLatestMsgKeys[info.conversationID] == key) {
+    if (key == null || _fallbackReadLatestMsgKeys[id] == key) {
       return false;
     }
 
-    final sendTime = msg.sendTime ?? info.latestMsgSendTime;
-    if (sendTime == null || sendTime <= 0) return true;
+    if (msgTime <= 0) return true;
     final now = DateTime.now().millisecondsSinceEpoch;
-    return (now - sendTime).abs() <= _fallbackUnreadWindow.inMilliseconds;
+    return (now - msgTime).abs() <= _fallbackUnreadWindow.inMilliseconds;
+  }
+
+  // dawn 2026-06-29 供聊天页标记已读时调用：以当前 latestMsg 的 seq/sendTime 为已读水位线。
+  void markFallbackRead(String conversationID) {
+    final info =
+        list.firstWhereOrNull((e) => e.conversationID == conversationID);
+    if (info != null) {
+      _markFallbackUnreadRead(info);
+    } else {
+      // 列表里暂时找不到(刚进会话/未同步)，仍清掉补充计数，避免残留红点。
+      _fallbackUnreadCounts.remove(conversationID);
+    }
   }
 
   void _syncFallbackUnreadCounts(
@@ -272,15 +297,32 @@ class ConversationLogic extends GetxController {
     if (pruneMissing) {
       _fallbackUnreadCounts.removeWhere((id, _) => !seen.contains(id));
       _fallbackReadLatestMsgKeys.removeWhere((id, _) => !seen.contains(id));
+      _fallbackReadUntilSeq.removeWhere((id, _) => !seen.contains(id));
+      _fallbackReadUntilTime.removeWhere((id, _) => !seen.contains(id));
     }
   }
 
   void _markFallbackUnreadRead(ConversationInfo info) {
+    final id = info.conversationID;
     final key = _latestMessageKey(info);
     if (key != null) {
-      _fallbackReadLatestMsgKeys[info.conversationID] = key;
+      _fallbackReadLatestMsgKeys[id] = key;
     }
-    if (_fallbackUnreadCounts.remove(info.conversationID) != null) {
+    // dawn 2026-06-29 记录已读水位线(seq + sendTime)，取较大值，避免乱序消息把水位线拉低。
+    final msg = info.latestMsg;
+    final seq = msg?.seq ?? 0;
+    if (seq > 0) {
+      _fallbackReadUntilSeq[id] = (_fallbackReadUntilSeq[id] ?? 0) < seq
+          ? seq
+          : _fallbackReadUntilSeq[id]!;
+    }
+    final time = msg?.sendTime ?? info.latestMsgSendTime ?? 0;
+    if (time > 0) {
+      _fallbackReadUntilTime[id] = (_fallbackReadUntilTime[id] ?? 0) < time
+          ? time
+          : _fallbackReadUntilTime[id]!;
+    }
+    if (_fallbackUnreadCounts.remove(id) != null) {
       list.refresh();
     }
   }
