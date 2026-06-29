@@ -1652,9 +1652,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         customChatListViewController.insertToBottom(message);
         if (isGroupChat) {
           // dawn 2026-06-18 修复3万人群消息不同步：实时消息插入后按 seq 规整顺序。
-          // dawn 2026-06-29 同时套用 5 小时窗口,避免重建时把窗口外老消息塞回。
-          final fullList = _applyGroupHistoryWindow(
-              _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList)));
+          // dawn 2026-06-29 5 小时窗口仅上滑生效,实时新消息重建不套窗口。
+          final fullList =
+              _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList));
           customChatListViewController.clear();
           customChatListViewController.insertAllToBottom(fullList);
           _syncRxListWithMessageList();
@@ -4161,10 +4161,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
     }
 
-    // dawn 2026-06-29 修复群聊 5 小时窗口失效:重建显示列表同样套用窗口过滤,
-    // 否则同步/恢复路径会把窗口外的老消息重新塞回列表。
-    final fullList = _applyGroupHistoryWindow(
-        _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList)));
+    // dawn 2026-06-29 5 小时窗口仅在上滑(onScrollToTopLoad)生效,同步/恢复重建不套窗口。
+    final fullList =
+        _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList));
     customChatListViewController.clear();
     customChatListViewController.insertAllToBottom(fullList);
     _syncRxListWithMessageList();
