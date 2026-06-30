@@ -1171,12 +1171,14 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   /// 并返回 true 让调用方跳过再次 insert，避免出现「发送方自己看到两条一模一样
   /// 的消息」这种幻影。
   bool _mergeSyncedMessage(Message newMsg) {
-    final clientMsgID = newMsg.clientMsgID;
-    if (clientMsgID == null || clientMsgID.isEmpty) {
+    // dawn 2026-06-30 改用稳定 key(serverMsgID/seq/clientMsgID)匹配：SDK 同步会重写
+    // clientMsgID，仅按 clientMsgID 匹配会把同步副本当成新消息追加，且发送圈清不掉。
+    final keys = _sendStatusKeys(newMsg);
+    if (keys.isEmpty) {
       return false;
     }
     final index =
-        messageList.indexWhere((msg) => msg.clientMsgID == clientMsgID);
+        messageList.indexWhere((msg) => _hasAnySendStatusKey(msg, keys));
     if (index < 0) {
       return false;
     }
@@ -1184,7 +1186,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // Always sync the server-assigned fields back into the optimistic copy.
     oldMsg.seq = newMsg.seq ?? oldMsg.seq;
     oldMsg.serverMsgID = newMsg.serverMsgID ?? oldMsg.serverMsgID;
-    oldMsg.status = newMsg.status ?? oldMsg.status;
+    // succeeded 不被同步副本的 sending 覆盖。
+    oldMsg.status = _mergeSendStatus(oldMsg.status, newMsg.status);
     // dawn 2026-06-29 保留更早(真实)的 sendTime：同步竞态下 newMsg 可能携带"当前时间"
     // (批量同步被打成今天)，取两者中更早的非零值，避免旧消息显示成今天。
     final oldT = oldMsg.sendTime ?? 0;
@@ -1429,6 +1432,43 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final cid = m.clientMsgID;
     if (cid != null && cid.isNotEmpty) return 'c:$cid';
     return null;
+  }
+
+  /// dawn 2026-06-30 发送状态匹配稳定 key 集合：SDK 同步会重写 clientMsgID，仅按 clientMsgID
+  /// 匹配会漏掉同步副本。这里返回一条消息的全部可用标识(serverMsgID/群 seq/clientMsgID)，
+  /// 任一命中即视为同一条，确保"清发送圈"能命中列表里被重写过的副本。
+  Set<String> _sendStatusKeys(Message m) {
+    final keys = <String>{};
+    final sid = m.serverMsgID;
+    if (sid != null && sid.isNotEmpty) keys.add('s:$sid');
+    final seq = m.seq ?? 0;
+    if (isGroupChat && seq > 0) keys.add('q:$seq');
+    final cid = m.clientMsgID;
+    if (cid != null && cid.isNotEmpty) keys.add('c:$cid');
+    return keys;
+  }
+
+  bool _hasAnySendStatusKey(Message m, Set<String> keys) {
+    final sid = m.serverMsgID;
+    if (sid != null && sid.isNotEmpty && keys.contains('s:$sid')) return true;
+    final seq = m.seq ?? 0;
+    if (isGroupChat && seq > 0 && keys.contains('q:$seq')) return true;
+    final cid = m.clientMsgID;
+    if (cid != null && cid.isNotEmpty && keys.contains('c:$cid')) return true;
+    return false;
+  }
+
+  /// 合并发送状态：succeeded 最高(不被 sending 覆盖)，其次 failed，否则取已知值。
+  int _mergeSendStatus(int? oldStatus, int? newStatus) {
+    final o = oldStatus ?? MessageStatus.sending;
+    final n = newStatus ?? o;
+    if (o == MessageStatus.succeeded || n == MessageStatus.succeeded) {
+      return MessageStatus.succeeded;
+    }
+    if (o == MessageStatus.failed || n == MessageStatus.failed) {
+      return MessageStatus.failed;
+    }
+    return n;
   }
 
   /// 按 sendTime 升序排序，保证列表为「旧→新」避免 API 返回顺序不一致导致错乱
@@ -2220,10 +2260,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // 8 秒后若该消息仍停在“发送中”，就用本地真实状态对账：本地已存为成功(有 serverMsgID)→ 清圈，
     // 本地失败→ 标失败，其余保持现状（不误伤正常发送、不误判）。
     if (!useOuterValue) {
+      // dawn 2026-06-30 不再只看"原始 message 对象"状态(它可能已被 _sendSucceeded 改成 succeeded，
+      // 而页面渲染的是另一份卡 sending 的同步副本)，改为扫描当前可见列表里所有"我发的、仍 sending、
+      // 已超时"的消息做对账，避免副本永久转圈。
       Future.delayed(const Duration(seconds: 8), () {
-        if (message.status == MessageStatus.sending) {
-          _reconcileSendStatus(message, useOuterValue);
-        }
+        _reconcileTimedOutVisibleSendingMessages();
       });
     }
     return OpenIM.iMManager.messageManager
@@ -2237,6 +2278,24 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         .catchError(
             (error, _) => _senFailed(message, groupId, userId, error, _))
         .whenComplete(() => _completed());
+  }
+
+  /// dawn 2026-06-30 扫描当前可见列表里"我发的、本会话、仍 sending、已超时(>=8s)"的消息逐条对账。
+  void _reconcileTimedOutVisibleSendingMessages() {
+    final myID = OpenIM.iMManager.userID;
+    if (myID.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final timeoutMs = const Duration(seconds: 8).inMilliseconds;
+    final candidates = customChatListViewController.list.where((m) {
+      if (m.status != MessageStatus.sending) return false;
+      if (m.sendID != myID) return false;
+      if (isGroupChat && m.groupID != groupID) return false;
+      final t = m.sendTime ?? m.createTime ?? 0;
+      return t > 0 && now - t >= timeoutMs;
+    }).toList();
+    for (final m in candidates) {
+      unawaited(_reconcileSendStatus(m, false));
+    }
   }
 
   /// dawn 2026-06-23 发送超时对账：用 SDK 本地存储里的真实状态决定 UI 是“成功”还是“失败”，避免大群下永久转圈或误判。
@@ -2266,18 +2325,16 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
       if (stored != null && stored.status == MessageStatus.failed) {
         // 仅当 SDK 明确判定失败时才标失败
-        _markSendStatusOnList(clientMsgID, MessageStatus.failed);
-        message.status = MessageStatus.failed;
-        sendStatusSub.addSafely(MsgStreamEv<bool>(id: clientMsgID, value: false));
+        _markSendStatusOnList(message, MessageStatus.failed, stored: stored);
       } else {
         // 成功(有 serverMsgID) 或 仍“发送中”/查不到 → 一律乐观钉成功、清掉转圈。
         // 超大群(如3万人)下 SDK 自身也常拿不到发送 ACK、本地状态停在 sending，但消息其实已发出;
         // 真正的硬失败 SDK 会很快走 catchError 标失败(8 秒前),不会落到这里。
-        _markSendStatusOnList(clientMsgID, MessageStatus.succeeded, stored: stored);
+        _markSendStatusOnList(message, MessageStatus.succeeded, stored: stored);
       }
     } catch (e) {
       app_log.LogUtil.e('ChatLogic', '发送超时对账查询失败,乐观清圈: clientMsgID=$clientMsgID', e);
-      _markSendStatusOnList(clientMsgID, MessageStatus.succeeded);
+      _markSendStatusOnList(message, MessageStatus.succeeded);
     }
   }
 
@@ -2285,48 +2342,54 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   /// 只改最初的 message 对象 / rxList 无法清掉页面里的转圈。这里直接定位当前渲染列表(top+bottom)
   /// 里所有同 clientMsgID 的实例改其 status，再走 _rebuildItemsByClientMsgID + refresh 强制重建，
   /// 确保留在页面时转圈也立即消失。
-  void _markSendStatusOnList(String clientMsgID, int status, {Message? stored}) {
-    var hit = false;
+  void _markSendStatusOnList(Message target, int status, {Message? stored}) {
+    // dawn 2026-06-30 用稳定 key(serverMsgID/seq/clientMsgID)并集匹配，命中列表里所有同一条
+    // 消息的实例(含 SDK 同步重写过 clientMsgID 的副本)，否则发送圈清不掉。
+    final keys = <String>{
+      ..._sendStatusKeys(target),
+      if (stored != null) ..._sendStatusKeys(stored),
+    };
+    if (keys.isEmpty) return;
+
+    final touched = <String>{};
     for (final m in customChatListViewController.list) {
-      if (m.clientMsgID == clientMsgID) {
-        m.status = status;
-        if (status == MessageStatus.succeeded &&
-            (m.serverMsgID == null || m.serverMsgID!.isEmpty) &&
-            (stored?.serverMsgID?.isNotEmpty ?? false)) {
-          m.serverMsgID = stored!.serverMsgID;
+      if (m.sendID != OpenIM.iMManager.userID) continue;
+      if (!_hasAnySendStatusKey(m, keys)) continue;
+      m.status = status;
+      if (stored != null && status == MessageStatus.succeeded) {
+        final sid = stored.serverMsgID;
+        if ((m.serverMsgID == null || m.serverMsgID!.isEmpty) &&
+            sid != null &&
+            sid.isNotEmpty) {
+          m.serverMsgID = sid;
         }
-        hit = true;
+        final seq = stored.seq ?? 0;
+        if ((m.seq ?? 0) <= 0 && seq > 0) {
+          m.seq = seq;
+        }
       }
+      final cid = m.clientMsgID;
+      if (cid != null && cid.isNotEmpty) touched.add(cid);
     }
-    if (!hit) return;
-    _rebuildItemsByClientMsgID({clientMsgID});
+
+    target.status = status;
+
+    if (touched.isEmpty) return;
+    _rebuildItemsByClientMsgID(touched);
     customChatListViewController.refresh();
-    sendStatusSub.addSafely(MsgStreamEv<bool>(
-        id: clientMsgID, value: status != MessageStatus.failed));
+    for (final id in touched) {
+      sendStatusSub.addSafely(
+          MsgStreamEv<bool>(id: id, value: status != MessageStatus.failed));
+    }
   }
 
   void _sendSucceeded(Message oldMsg, Message newMsg) {
     oldMsg.update(newMsg);
-    // dawn 2026-04-27 修发送成功小圈圈不消失：
-    // 1) Message.update 只在 newMsg.status 非 null 时才覆盖；为了兜底 SDK 偶发
-    //    回 null 的情况，手动把 status 钉死成 succeeded（2）。
-    // 2) 仅 mutate Message + RxList.refresh() 在某些场景下 SliverList 不会让
-    //    既有 item 的 State.build 重跑（CustomChatListView 是 StatefulWidget，
-    //    didUpdateWidget 不自动触发 setState），导致小圈圈视图保留。把 rxList
-    //    里对应 index 重新赋值，触发 GetX 的 element 变化事件，让 itemBuilder
-    //    被强制 rebuild。
+    // dawn 2026-06-30 发送成功统一走 _markSendStatusOnList：按 serverMsgID/seq/clientMsgID 稳定 key
+    // 命中列表里所有副本(含同步重写过 clientMsgID 的那份)钉成 succeeded + 回填 serverMsgID/seq，
+    // 再强制重建，确保小圈圈消失。newMsg 携带 SDK 回显的 serverMsgID/seq/原 clientMsgID。
     oldMsg.status = MessageStatus.succeeded;
-    final rxList = customChatListViewController.rxList;
-    final idx = rxList.indexWhere((m) => m.clientMsgID == oldMsg.clientMsgID);
-    if (idx >= 0) {
-      rxList[idx] = oldMsg;
-    } else {
-      rxList.refresh();
-    }
-    sendStatusSub.addSafely(MsgStreamEv<bool>(
-      id: oldMsg.clientMsgID!,
-      value: true,
-    ));
+    _markSendStatusOnList(oldMsg, MessageStatus.succeeded, stored: newMsg);
   }
 
   void _senFailed(
@@ -2338,11 +2401,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       error,
       stack is StackTrace ? stack : null,
     );
-    message.status = MessageStatus.failed;
-    sendStatusSub.addSafely(MsgStreamEv<bool>(
-      id: message.clientMsgID!,
-      value: false,
-    ));
+    // dawn 2026-06-30 失败也走稳定 key 命中可见副本，确保标红/可重发对页面真正渲染的实例生效。
+    _markSendStatusOnList(message, MessageStatus.failed);
     if (error is PlatformException) {
       int code = int.tryParse(error.code) ?? 0;
       // 群聊发送失败且服务端返回 1204：表示群已解散/不可用，给出明确提示并退出当前会话
