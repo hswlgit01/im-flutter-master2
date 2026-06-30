@@ -75,11 +75,6 @@ class UrlConverter {
         return originalUrl;
       }
 
-      // 检查URL路径是否包含 api/object/ 或 object/
-      if (!originalUri.path.contains('api/object/') && !originalUri.path.contains('object/')) {
-        return originalUrl;
-      }
-
       // dawn 2026-06-26 文件传输损坏修复：仅真正的 S3/MinIO 预签名 URL(x-amz-*) 不改写 host/scheme/port，
       // 否则签名失效 → 后端返回错误/部分内容被当作文件保存，导致大文件(APK)损坏。
       // 注意：不能把 token/sign 也算预签名——很多普通对象 URL 都带 token，跳过改写会去连
@@ -88,6 +83,27 @@ class UrlConverter {
       final isPresigned =
           qp.keys.any((k) => k.toLowerCase().startsWith('x-amz-'));
       if (isPresigned) {
+        return originalUrl;
+      }
+
+      // dawn 2026-06-30 修复图片看不见：SDK/core 可能把相对对象路径展开成 MinIO bucket 直链
+      // (http://内网host:10005/openim/<key> 或外网 minio 直链)，这种 path 不含 object/ 会被下面
+      // 原样放行 → 连内网/直链失败一直转圈。这里把非预签名的 /openim/<key> 直链改写到已实测正常的
+      // API 网关 /object/<key>(Config.imApiUrl 对应端口，如 IP 模式的 :10002)。不动 x-amz 预签名，
+      // 不影响文件下载大小校验。
+      final minioObjectPath = _minioBucketObjectPath(originalUri.path);
+      if (minioObjectPath != null) {
+        final baseUrl = _getApiBaseUrl();
+        if (baseUrl == null || baseUrl.isEmpty) {
+          return originalUrl;
+        }
+        return Uri.parse('$baseUrl$minioObjectPath')
+            .replace(query: originalUri.query.isEmpty ? null : originalUri.query)
+            .toString();
+      }
+
+      // 检查URL路径是否包含 api/object/ 或 object/
+      if (!originalUri.path.contains('api/object/') && !originalUri.path.contains('object/')) {
         return originalUrl;
       }
 
@@ -251,6 +267,16 @@ class UrlConverter {
       print('❌ 获取API基础URL失败: $e');
       return null;
     }
+  }
+
+  /// dawn 2026-06-30 MinIO bucket 直链 path(/openim/<key>) → API 网关对象 path(/object/<key>)。
+  /// 命中返回改写后的 path，否则返回 null。bucket 名 openim 与服务端 minio.yml 一致。
+  static String? _minioBucketObjectPath(String path) {
+    const bucketPrefix = '/openim/';
+    if (!path.startsWith(bucketPrefix) || path.length <= bucketPrefix.length) {
+      return null;
+    }
+    return '/object/${path.substring(bucketPrefix.length)}';
   }
 
   /// 判断是否为IP地址

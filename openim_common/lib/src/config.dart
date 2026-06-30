@@ -158,6 +158,11 @@ class Config {
     print('🧹🧹🧹 正在清除所有缓存...');
     await sp.remove('auto_route_host');
     await sp.remove('auto_route_time');
+    // dawn 2026-06-30 修复图片/媒体加载不出：远程配置(serverapi)不可达时，旧的 remote_config
+    // 缓存会让自动寻路继续选用已失效的历史线路 → imApiUrl 指向不可达 host → object/图片 URL
+    // 连不上一直转圈。这里随其它缓存一并清掉；_fetchRemoteConfig 紧接着会重新拉取，拉不到则
+    // 回退 _prodHost，最终 imApiUrl=http://_prodHost:10002(已实测 /object 正常)。
+    await sp.remove('remote_config');
     print('✅✅✅ 所有配置已清除，即将执行自动寻路');
 
     print('🚀🚀🚀 Config.init() 方法被调用！！！');
