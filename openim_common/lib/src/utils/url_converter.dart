@@ -100,11 +100,28 @@ class UrlConverter {
       // 判断当前主机是IP还是域名
       final isCurrentHostIP = _isIPAddress(currentHost);
 
+      // dawn 2026-06-30 完整 object URL 改写时保留原端口：原来 IP 模式强行改成 API 端口(_getCurrentPort)，
+      // 若对象其实在 minio(:10005) 等独立端口上(SDK 展开成完整 URL 的情况)，会连错端口卡住。
+      // 只改 host/scheme，端口优先沿用原 URL 自带的端口；原 URL 没端口才退回 API 端口。
+      final int? targetPort;
+      if (isCurrentHostIP) {
+        if (originalUri.hasPort &&
+            originalUri.port != 0 &&
+            originalUri.port != 80 &&
+            originalUri.port != 443) {
+          targetPort = originalUri.port;
+        } else {
+          targetPort = _getCurrentPort();
+        }
+      } else {
+        targetPort = null;
+      }
+
       // 创建新的URI
       final newUri = originalUri.replace(
         scheme: isCurrentHostIP ? 'http' : 'https',
         host: currentHost,
-        port: isCurrentHostIP ? _getCurrentPort() : null,
+        port: targetPort,
       );
 
       return newUri.toString();

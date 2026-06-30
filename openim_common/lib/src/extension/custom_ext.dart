@@ -55,12 +55,27 @@ extension StrExt on String {
   }
 
   String adjustThumbnailAbsoluteString(int size) {
-    final host = split('?').first;
-    final isGif = host.split('.').last.toLowerCase() == 'gif';
-    if (isGif) {
-      return host;
+    // dawn 2026-06-30 缩略图改写保留原 query：原实现 split('?').first 会把 X-Amz-* 预签名/
+    // token/sign 一并删掉，导致签名失效 → 403/404 加载不出。只追加/覆盖尺寸相关参数。
+    final uri = Uri.tryParse(this);
+    final oldParams = uri?.queryParameters ?? const <String, String>{};
+    final isPresigned =
+        oldParams.keys.any((k) => k.toLowerCase().startsWith('x-amz-'));
+    if (isPresigned) {
+      return this;
     }
-    return '$host?height=$size&width=$size&type=image';
+    final base = split('?').first;
+    final isGif = base.split('.').last.toLowerCase() == 'gif';
+    if (isGif) {
+      return base;
+    }
+    final params = <String, String>{
+      ...oldParams,
+      'height': '$size',
+      'width': '$size',
+      'type': 'image',
+    };
+    return '$base?${Uri(queryParameters: params).query}';
   }
 }
 

@@ -42,6 +42,12 @@ class ImageUtil {
   }) =>
       ExtendedImage.network(
         convertUrl ? UrlConverter.convertMediaUrl(url) : url,
+        // dawn 2026-06-30 修复图片一直转圈/看不见：ExtendedImage 原本无任何网络超时，
+        // 连到不可达 host:port 时永远停在 loading（只转圈不报错）。加超时+少量重试，
+        // 超时即进 failed → 显示破图图标，不再无限转圈。
+        timeLimit: const Duration(seconds: 15),
+        timeRetry: const Duration(milliseconds: 400),
+        retries: 2,
         width: width,
         height: height,
         fit: fit,
