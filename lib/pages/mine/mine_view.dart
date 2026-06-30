@@ -181,20 +181,29 @@ class _MinePageState extends State<MinePage> with WidgetsBindingObserver {
               children: [
                 Row(
                   children: [
-                    AvatarView(
-                      url: logic.imLogic.userInfo.value.faceURL,
-                      text: logic.imLogic.userInfo.value.nickname,
-                      width: 64.w,
-                      height: 64.w,
-                      textStyle: Styles.ts_FFFFFF_17sp,
+                    // dawn 2026-06-30 修复"我的信息"点不进去：头像+昵称区域接入 viewMyInfo。
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: logic.viewMyInfo,
+                      child: AvatarView(
+                        url: logic.imLogic.userInfo.value.faceURL,
+                        text: logic.imLogic.userInfo.value.nickname,
+                        width: 64.w,
+                        height: 64.w,
+                        textStyle: Styles.ts_FFFFFF_17sp,
+                      ),
                     ),
                     12.horizontalSpace,
                     Expanded(
-                      child: Text(
-                        logic.imLogic.userInfo.value.nickname ?? '',
-                        style: Styles.ts_0C1C33_17sp_medium,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: logic.viewMyInfo,
+                        child: Text(
+                          logic.imLogic.userInfo.value.nickname ?? '',
+                          style: Styles.ts_0C1C33_17sp_medium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
                     GestureDetector(
