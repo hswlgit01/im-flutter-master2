@@ -26,8 +26,10 @@ class SplashPage extends StatelessWidget {
           Positioned(
             bottom: 130.h,
             child: ImageRes.splashLogo.toImage
-              ..width = 55.61.w
-              ..height = 78.91.h,
+              // dawn 2026-06-30 统一为方形 app 图标，按比例缩放避免拉伸。
+              ..width = 78.91.w
+              ..height = 78.91.w
+              ..fit = BoxFit.contain,
           ),
         ],
       ),

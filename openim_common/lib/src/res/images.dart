@@ -7,8 +7,10 @@ class ImageRes {
   static const voiceBlueAnim = "assets/anim/voice_blue.json";
   static const voiceBlackAnim = "assets/anim/voice_black.json";
 
-  static const splashLogo = "$_dir/ic_splash_logo.webp";
-  static const loginLogo = "$_dir/login_logo.png";
+  // dawn 2026-06-30 全站心享 logo 统一为 app 图标(app_logo.png = launcher_icon/app-logo.png)。
+  static const appLogo = "$_dir/app_logo.png";
+  static const splashLogo = appLogo;
+  static const loginLogo = appLogo;
   static const eyeOpen = "$_dir/ic_eye_open.webp";
   static const eyeClose = "$_dir/ic_eye_close.webp";
   static const clearText = "$_dir/ic_clear_text.webp";
@@ -96,9 +98,10 @@ class ImageRes {
   static const minePassword = "$_dir/mine_password.png";
   static const mineGeneral = "$_dir/mine_general.png";
   static const mineAbout = "$_dir/mine_about.png";
-  static const mineHeaderLogo = "$_dir/mine_header_logo.png";
-  // dawn 2026-06-26 注册页设计 logo(登录 logo 复用上方 loginLogo)。
-  static const registerLogo = "$_dir/register_logo.png";
+  // dawn 2026-06-30 我的页头部 logo 统一为 app 图标。
+  static const mineHeaderLogo = appLogo;
+  // dawn 2026-06-30 注册页 logo 统一为 app 图标。
+  static const registerLogo = appLogo;
   static const rightArrow = "$_dir/ic_right_arrow.webp";
   static const myInfo = "$_dir/ic_mine_my_info.webp";
   static const workingCircle = "$_dir/ic_working_circle.webp";
