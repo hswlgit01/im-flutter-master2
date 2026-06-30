@@ -26,10 +26,8 @@ class MyInfoLogic extends GetxController {
   }
 
   void editMyName() {
-    // dawn 2026-05-15 修复旧 basic 用户无法改昵称：昵称权限统一走兼容判断。
-    if (orgController.canModifyNickname) {
-      AppNavigator.startEditMyInfo();
-    }
+    // dawn 2026-06-30 客户要求姓名必须可改：去掉权限门控，自己的资料页改自己昵称始终允许。
+    AppNavigator.startEditMyInfo();
   }
 
   void editEnglishName() => AppNavigator.startEditMyInfo(

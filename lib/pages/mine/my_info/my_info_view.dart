@@ -36,8 +36,8 @@ class MyInfoPage extends StatelessWidget {
                     _buildItemView(
                       label: StrRes.name,
                       value: imLogic.userInfo.value.nickname,
-                      // dawn 2026-05-15 修复旧 basic 用户无法改昵称：昵称权限统一走兼容判断。
-                      showRightArrow: logic.orgController.canModifyNickname,
+                      // dawn 2026-06-30 客户要求"我的信息"页姓名必须可改：去掉昵称权限门控，
+                      // 这是用户自己的资料页，改自己昵称始终允许。
                       onTap: logic.editMyName,
                     ),
                     _buildItemView(
