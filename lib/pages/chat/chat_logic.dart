@@ -1513,6 +1513,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     }).toList();
     if (filtered.length < messages.length) {
       _groupHistoryReachTimeLimit = true;
+      // dawn 2026-06-30 触达 5 小时上限后立即关闭顶部加载,任何重建路径都停止上滑拉取。
+      enabledTopLoad.value = false;
     }
     return filtered;
   }
@@ -1668,9 +1670,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         customChatListViewController.insertToBottom(message);
         if (isGroupChat) {
           // dawn 2026-06-18 修复3万人群消息不同步：实时消息插入后按 seq 规整顺序。
-          // dawn 2026-06-29 5 小时窗口仅上滑生效,实时新消息重建不套窗口。
-          final fullList =
-              _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList));
+          // dawn 2026-06-30 可见列表重建统一套群聊 5 小时窗口；真实新消息 time>=cutoff 不会被删,
+          // 否则同步/实时重建会把昨天>5h 的旧消息又灌回列表(codex 协同定位)。
+          final fullList = _applyGroupHistoryWindow(
+            _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList)),
+          );
           customChatListViewController.clear();
           customChatListViewController.insertAllToBottom(fullList);
           _syncRxListWithMessageList();
@@ -3224,7 +3228,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
             // 即使没有新消息，也对当前列表做一次排序，保证顺序一致
             final fullList = messageList;
             if (fullList.isNotEmpty) {
-              final sortedFull = _sortMessagesBySendTimeAsc(fullList);
+              // dawn 2026-06-30 恢复重建同样套 5 小时窗口,避免保留已污染的超窗旧消息。
+              final sortedFull =
+                  _applyGroupHistoryWindow(_sortMessagesBySendTimeAsc(fullList));
               customChatListViewController.clear();
               customChatListViewController.insertAllToBottom(sortedFull);
             }
@@ -4032,6 +4038,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (reachedEnd) {
       enabledTopLoad.value = false;
     }
+    // dawn 2026-06-30 本页过滤后触达 5 小时上限：关闭顶部加载并告知列表已无更早可展示。
+    if (_groupHistoryReachTimeLimit) {
+      enabledTopLoad.value = false;
+      return false;
+    }
     if (didServerPull) return !serverPulledIsEnd;
     return result.isEnd != true;
   }
@@ -4171,8 +4182,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   void _mergeHistoryMessages(List<Message> messages) {
-    final incoming =
-        _sortMessagesBySendTimeAsc(_filterMessagesForChat(messages));
+    // dawn 2026-06-30 同步/补拉进来的消息也套 5 小时窗口,不把超窗旧消息合并进可见列表。
+    final incoming = _applyGroupHistoryWindow(
+      _sortMessagesBySendTimeAsc(_filterMessagesForChat(messages)),
+    );
     final existingIds =
         messageList.map((m) => m.clientMsgID).whereType<String>().toSet();
 
@@ -4196,9 +4209,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
     }
 
-    // dawn 2026-06-29 5 小时窗口仅在上滑(onScrollToTopLoad)生效,同步/恢复重建不套窗口。
-    final fullList =
-        _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList));
+    // dawn 2026-06-30 同步/恢复/补偿拉取后重建的是可见列表,也必须套群聊 5 小时窗口。
+    final fullList = _applyGroupHistoryWindow(
+      _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList)),
+    );
     customChatListViewController.clear();
     customChatListViewController.insertAllToBottom(fullList);
     _syncRxListWithMessageList();
