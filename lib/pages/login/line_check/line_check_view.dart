@@ -157,8 +157,8 @@ class _LineCheckPageState extends State<LineCheckPage> {
                     : ListView.separated(
                         padding: EdgeInsets.only(top: 10.h),
                         itemCount: _lines.length,
-                        separatorBuilder: (_, __) => Divider(
-                            height: 1, color: const Color(0xFFF0F0F0)),
+                        separatorBuilder: (_, __) => const Divider(
+                            height: 1, color: Color(0xFFF0F0F0)),
                         itemBuilder: (_, i) => _lineRow(_lines[i], i),
                       )),
           ),

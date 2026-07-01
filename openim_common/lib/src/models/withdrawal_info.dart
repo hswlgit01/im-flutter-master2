@@ -9,6 +9,7 @@ class WithdrawalRule {
   double? feeFixed; // 固定手续费
   bool? needRealName; // 是否需要实名认证
   bool? needBindAccount; // 是否需要绑定收款账户
+  bool? needHandheldIdCardPhoto; // 是否需要上传手持身份证照片
 
   WithdrawalRule({
     this.isEnabled,
@@ -18,6 +19,7 @@ class WithdrawalRule {
     this.feeFixed,
     this.needRealName,
     this.needBindAccount,
+    this.needHandheldIdCardPhoto,
   });
 
   factory WithdrawalRule.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,10 @@ class WithdrawalRule {
       feeFixed: (json['feeFixed'] as num?)?.toDouble(),
       needRealName: json['needRealName'],
       needBindAccount: json['needBindAccount'],
+      // 兼容老后端没有返回该字段的情况；提现页当前固定每次都要求上传。
+      needHandheldIdCardPhoto: json.containsKey('needHandheldIdCardPhoto')
+          ? json['needHandheldIdCardPhoto']
+          : true,
     );
   }
 
@@ -41,6 +47,7 @@ class WithdrawalRule {
       'feeFixed': feeFixed,
       'needRealName': needRealName,
       'needBindAccount': needBindAccount,
+      'needHandheldIdCardPhoto': needHandheldIdCardPhoto,
     };
   }
 }
@@ -55,7 +62,7 @@ class WithdrawalAccount {
   String? alipayAccount; // 支付宝账号
   String? wechatOpenId; // 微信OpenID
   bool? isDefault;
-  
+
   WithdrawalAccount({
     this.id,
     this.type,
@@ -67,7 +74,7 @@ class WithdrawalAccount {
     this.wechatOpenId,
     this.isDefault,
   });
-  
+
   factory WithdrawalAccount.fromJson(Map<String, dynamic> json) {
     return WithdrawalAccount(
       id: json['id'],
@@ -81,7 +88,7 @@ class WithdrawalAccount {
       isDefault: json['isDefault'] ?? false,
     );
   }
-  
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -95,7 +102,7 @@ class WithdrawalAccount {
       'isDefault': isDefault,
     };
   }
-  
+
   String get displayText {
     switch (type) {
       case 'bank':
@@ -120,6 +127,7 @@ class WithdrawalRecord {
   int? status; // 状态: 0-待审核,1-已通过,2-打款中,3-已完成,4-已拒绝,5-已取消
   int? paymentType; // 收款方式类型: 0-银行卡,1-微信,2-支付宝
   String? paymentInfo; // 收款账户信息
+  String? handheldIdCardPhotoUrl; // 手持身份证照片
   String? rejectReason; // 拒绝原因
   DateTime? approveTime; // 审批时间
   DateTime? transferTime; // 打款时间
@@ -135,6 +143,7 @@ class WithdrawalRecord {
     this.status,
     this.paymentType,
     this.paymentInfo,
+    this.handheldIdCardPhotoUrl,
     this.rejectReason,
     this.approveTime,
     this.transferTime,
@@ -152,11 +161,20 @@ class WithdrawalRecord {
       status: json['status'],
       paymentType: json['paymentType'],
       paymentInfo: json['paymentInfo'],
+      handheldIdCardPhotoUrl: json['handheldIdCardPhotoUrl'],
       rejectReason: json['rejectReason'],
-      approveTime: json['approveTime'] != null ? DateTime.parse(json['approveTime']).toLocal() : null,
-      transferTime: json['transferTime'] != null ? DateTime.parse(json['transferTime']).toLocal() : null,
-      completeTime: json['completeTime'] != null ? DateTime.parse(json['completeTime']).toLocal() : null,
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']).toLocal() : null,
+      approveTime: json['approveTime'] != null
+          ? DateTime.parse(json['approveTime']).toLocal()
+          : null,
+      transferTime: json['transferTime'] != null
+          ? DateTime.parse(json['transferTime']).toLocal()
+          : null,
+      completeTime: json['completeTime'] != null
+          ? DateTime.parse(json['completeTime']).toLocal()
+          : null,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt']).toLocal()
+          : null,
     );
   }
 
@@ -170,6 +188,7 @@ class WithdrawalRecord {
       'status': status,
       'paymentType': paymentType,
       'paymentInfo': paymentInfo,
+      'handheldIdCardPhotoUrl': handheldIdCardPhotoUrl,
       'rejectReason': rejectReason,
       'approveTime': approveTime?.toIso8601String(),
       'transferTime': transferTime?.toIso8601String(),

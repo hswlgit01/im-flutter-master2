@@ -55,6 +55,16 @@ class _StableChatListViewState<T> extends State<StableChatListView<T>> {
       oldWidget.scrollController?.removeListener(_onScroll);
       _controller?.addListener(_onScroll);
     }
+    if (oldWidget.enabledTopLoad && !widget.enabledTopLoad && _topHasMore) {
+      _topHasMore = false;
+      _loadingTop = false;
+    }
+    if (oldWidget.enabledBottomLoad &&
+        !widget.enabledBottomLoad &&
+        _bottomHasMore) {
+      _bottomHasMore = false;
+      _loadingBottom = false;
+    }
   }
 
   @override
@@ -197,10 +207,10 @@ class _StableChatListViewState<T> extends State<StableChatListView<T>> {
         (showTopLoader ? 1 : 0) +
         (showBottomLoader ? 1 : 0);
 
-    // dawn 2026-06-23 修复聊天页消息少时顶部对齐留白：无分页且条目少时用贴底 Column（条目少不会溢出），
-    // 其余情况仍用 SliverList 懒加载，避免 3 万人群/大量历史消息被 Column 一次性撑爆出 99955 像素红色溢出。
-    final shortAndNoPaging =
-        !showTopLoader && !showBottomLoader && itemCount <= _bottomAnchorMaxItem;
+    // 无分页且条目少时用 Column 避免列表锚点产生大块空白；消息仍从顶部开始展示。
+    final shortAndNoPaging = !showTopLoader &&
+        !showBottomLoader &&
+        itemCount <= _bottomAnchorMaxItem;
 
     // dawn 2026-06-23 修复聊天页红色溢出：使用 SliverList 懒加载消息，避免 3 万人群/大量历史消息被 Column 一次性撑爆。
     return ColoredBox(
@@ -219,7 +229,7 @@ class _StableChatListViewState<T> extends State<StableChatListView<T>> {
             SliverFillRemaining(
               hasScrollBody: false,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: List.generate(
                   itemCount,

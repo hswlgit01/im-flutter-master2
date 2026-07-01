@@ -28,8 +28,7 @@ class ChatPage extends StatelessWidget {
 
   List<MessageOperationType> _messageOperationTypes(Message message) {
     final Map<MessageOperationType, bool> operationTypeMapping = {
-      // dawn 2026-06-26 撤回权限收紧：只有团队长和官方账号(超管/后台管理员/群管理员)可撤回消息；
-      // 普通用户(含本人)不再显示撤回入口。
+      // 撤回权限只允许组织后台"管理员"(GroupManager)，群主/群管理员/团队长不自动拥有撤回入口。
       MessageOperationType.revoke:
           logic.canRevokeMessages && !message.isCustomType,
       MessageOperationType.copy: message.isTextType ||
@@ -493,7 +492,11 @@ class ChatPage extends StatelessWidget {
             resizeToAvoidBottomInset: false,
             appBar: TitleBar.chat(
               title: logic.nickname.value,
+              titleCertified:
+                  logic.isSingleChat && logic.peerTitleCertified.value,
               member: logic.memberStr,
+              subtitle:
+                  logic.isSingleChat ? logic.lastLoginTimeText.value : null,
               isMultiModel: logic.isMultiSelectMode.value,
               showCallBtn: !logic.isGroupChat,
               onCloseMultiModel: logic.exit,

@@ -52,8 +52,8 @@ class OrgController extends GetxService {
   // 团队长。
   bool get isTermManager => currentOrgRole == 'TermManager';
 
-  // 只有团队长和官方账号可以撤回消息。
-  bool get canRevokeMessage => isOfficialAccount || isTermManager;
+  // 撤回消息只允许组织后台"管理员"(GroupManager)。
+  bool get canRevokeMessage => currentOrgRole == 'GroupManager';
 
   bool get canAddFriend => hasPermission('add_friend');
   bool get canCreateGroup => hasPermission('create_group');

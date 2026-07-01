@@ -1,4 +1,4 @@
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -110,6 +110,8 @@ class TitleBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     String? title,
     String? member,
+    String? subtitle,
+    bool titleCertified = false,
     bool isMultiModel = false,
     bool showCallBtn = true,
     bool isMuted = false,
@@ -117,7 +119,7 @@ class TitleBar extends StatelessWidget implements PreferredSizeWidget {
     Function()? onClickMoreBtn,
     Function()? onCloseMultiModel,
   })  : backgroundColor = null,
-        height = 48.h,
+        height = (subtitle?.isNotEmpty == true ? 56 : 48).h,
         showUnderline = true,
         center = Flexible(
             child: Column(
@@ -131,11 +133,27 @@ class TitleBar extends StatelessWidget implements PreferredSizeWidget {
                   Flexible(
                       flex: 5,
                       child: Container(
-                        child: title.trim().toText
-                          ..style = Styles.ts_0C1C33_17sp_semibold
-                          ..maxLines = 1
-                          ..overflow = TextOverflow.ellipsis
-                          ..textAlign = TextAlign.center,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Flexible(
+                              child: title.trim().toText
+                                ..style = Styles.ts_0C1C33_17sp_semibold
+                                ..maxLines = 1
+                                ..overflow = TextOverflow.ellipsis
+                                ..textAlign = TextAlign.center,
+                            ),
+                            if (titleCertified) ...[
+                              4.horizontalSpace,
+                              Icon(
+                                Icons.verified,
+                                size: 14.w,
+                                color: Styles.c_0089FF,
+                              ),
+                            ],
+                          ],
+                        ),
                       )),
                   if (null != member)
                     Flexible(
@@ -146,6 +164,17 @@ class TitleBar extends StatelessWidget implements PreferredSizeWidget {
                               ..maxLines = 1))
                 ],
               ),
+            if (subtitle?.isNotEmpty == true) ...[
+              2.verticalSpace,
+              subtitle!.toText
+                ..style = TextStyle(
+                  fontSize: 11.sp,
+                  color: Styles.c_8E9AB0,
+                )
+                ..maxLines = 1
+                ..overflow = TextOverflow.ellipsis
+                ..textAlign = TextAlign.center,
+            ],
           ],
         )),
         left = Container(

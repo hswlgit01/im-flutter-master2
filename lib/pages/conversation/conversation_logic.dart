@@ -49,6 +49,7 @@ class ConversationLogic extends GetxController {
   /// 红包整体状态缓存（无论谁领完，只要红包结束，用于纠正 [待领取]）
   Map<String, String> _packetOverallStatusCache = {};
   final _apiService = core.ApiService();
+  final _latestDisplayMsgCache = <String, Message>{};
 
   // dawn 2026-06-21 新增官方人员标识：单聊会话按需批量查询组织角色并缓存，避免每次构建列表都请求接口。
   final officialUserMap = <String, bool>{}.obs;
@@ -60,6 +61,7 @@ class ConversationLogic extends GetxController {
   static const _fallbackUnreadWindow = Duration(minutes: 10);
   final _fallbackUnreadCounts = <String, int>{};
   final _fallbackReadLatestMsgKeys = <String, String>{};
+  bool _syncingJoinedGroupConversations = false;
 
   @override
   void onInit() {
@@ -150,12 +152,8 @@ class ConversationLogic extends GetxController {
           dismissed = true;
         }
       }
-      if (!dismissed) {
-        print(
-            '[ConversationLogic] joinedGroupDeleted 非解散(普通退群/被踢),保留本地会话: $conversationID');
-        return;
-      }
-      print('[ConversationLogic] joinedGroupDeleted 确认解散,清本地: $conversationID');
+      print(
+          '[ConversationLogic] joinedGroupDeleted 清理本地群会话: $conversationID dismissed=$dismissed');
       try {
         await OpenIM.iMManager.conversationManager
             .deleteConversationAndDeleteAllMsg(conversationID: conversationID);
@@ -199,6 +197,7 @@ class ConversationLogic extends GetxController {
         // dawn 2026-05-11 修复手机端弱网私聊无提示：每次同步结束都重拉会话列表，避免 SDK 会话变更事件弱网下丢失。
         if (status == IMSdkStatus.syncEnded) {
           onRefresh();
+          unawaited(_syncJoinedGroupConversations());
         } else if (reInstall) {
           onRefresh();
           reInstall = false;
@@ -345,6 +344,7 @@ class ConversationLogic extends GetxController {
     _syncFallbackUnreadCounts(filteredList);
     // dawn 2026-06-21 新增官方人员标识：会话变更后异步补全单聊对象认证状态。
     unawaited(_loadOfficialRolesForConversations(filteredList));
+    unawaited(_refreshLatestDisplayMessages(filteredList));
 
     if (reInstall) {
       onChangeConversations.addAll(filteredList);
@@ -468,6 +468,224 @@ class ConversationLogic extends GetxController {
     return info.conversationID;
   }
 
+  bool _latestMsgBelongsToConversation(ConversationInfo info) {
+    final msg = info.latestMsg;
+    if (msg == null) return true;
+    if (info.isGroupChat) {
+      final conversationGroupID = info.groupID ?? '';
+      final msgGroupID = msg.groupID ?? '';
+      if (conversationGroupID.isNotEmpty &&
+          msgGroupID.isNotEmpty &&
+          conversationGroupID != msgGroupID) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _messageBelongsToConversation(ConversationInfo info, Message msg) {
+    if (info.isGroupChat) {
+      final conversationGroupID = info.groupID ?? '';
+      final msgGroupID = msg.groupID ?? '';
+      if (conversationGroupID.isNotEmpty &&
+          msgGroupID.isNotEmpty &&
+          conversationGroupID != msgGroupID) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _isPreviewableMessage(Message msg) {
+    final contentType = msg.contentType ?? 0;
+    if (contentType == 0) return false;
+    if (contentType == MessageType.revokeMessageNotification &&
+        _isSilentRevokeMessage(msg)) {
+      return false;
+    }
+    if (contentType >= 1000 &&
+        contentType < 2000 &&
+        contentType != MessageType.revokeMessageNotification) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _isSilentRevokeMessage(Message msg) {
+    final detail = msg.notificationElem?.detail;
+    if (detail == null || detail.isEmpty) return false;
+    try {
+      final decoded = json.decode(detail);
+      if (decoded is Map) {
+        return decoded['officialSilent'] == true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  String? _stringFromMap(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return null;
+    final text = value.toString();
+    return text.isEmpty ? null : text;
+  }
+
+  int? _intFromMap(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
+  Map<String, dynamic>? _decodeRevokeDetail(Message msg) {
+    final detail = msg.notificationElem?.detail;
+    if (detail == null || detail.isEmpty) return null;
+    try {
+      final decoded = json.decode(detail);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return null;
+  }
+
+  String? _revokeTargetClientMsgID(Map<String, dynamic> detail) {
+    final clientMsgID = _stringFromMap(detail, 'clientMsgID') ??
+        _stringFromMap(detail, 'client_msg_id') ??
+        _stringFromMap(detail, 'sourceClientMsgID') ??
+        _stringFromMap(detail, 'sourceMessageClientMsgID') ??
+        _stringFromMap(detail, 'sourceMessageId') ??
+        _stringFromMap(detail, 'clientMessageID') ??
+        _stringFromMap(detail, 'msgID') ??
+        _stringFromMap(detail, 'messageID');
+    return clientMsgID == null || clientMsgID.isEmpty ? null : clientMsgID;
+  }
+
+  String? _revokeSourceKey(Map<String, dynamic> detail) {
+    final sourceID = _stringFromMap(detail, 'sourceMessageSendID');
+    final sourceTime = _intFromMap(detail, 'sourceMessageSendTime');
+    if (sourceID == null || sourceID.isEmpty || sourceTime == null) {
+      return null;
+    }
+    return '$sourceID|$sourceTime';
+  }
+
+  String? _messageSourceKey(Message msg) {
+    final sendID = msg.sendID;
+    final sendTime = msg.sendTime;
+    if (sendID == null || sendID.isEmpty || sendTime == null) return null;
+    return '$sendID|$sendTime';
+  }
+
+  List<Message> _previewableHistoryMessages(
+    ConversationInfo info,
+    List<Message> rawMessages,
+  ) {
+    final scoped = rawMessages
+        .where((msg) => _messageBelongsToConversation(info, msg))
+        .toList();
+    final revokedClientMsgIDs = <String>{};
+    final revokedSourceKeys = <String>{};
+
+    for (final msg in scoped) {
+      if (msg.contentType != MessageType.revokeMessageNotification) continue;
+      final detail = _decodeRevokeDetail(msg);
+      if (detail == null) continue;
+      final target = _revokeTargetClientMsgID(detail);
+      if (target != null && target.isNotEmpty) {
+        revokedClientMsgIDs.add(target);
+      }
+      final sourceKey = _revokeSourceKey(detail);
+      if (sourceKey != null) {
+        revokedSourceKeys.add(sourceKey);
+      }
+    }
+
+    return scoped.where((msg) {
+      if (msg.contentType != MessageType.revokeMessageNotification) {
+        final clientMsgID = msg.clientMsgID;
+        if (clientMsgID != null && revokedClientMsgIDs.contains(clientMsgID)) {
+          return false;
+        }
+        final sourceKey = _messageSourceKey(msg);
+        if (sourceKey != null && revokedSourceKeys.contains(sourceKey)) {
+          return false;
+        }
+      }
+      return _isPreviewableMessage(msg);
+    }).toList();
+  }
+
+  int _compareMessageOrder(Message a, Message b) {
+    final aSeq = a.seq ?? 0;
+    final bSeq = b.seq ?? 0;
+    if (aSeq > 0 && bSeq > 0 && aSeq != bSeq) {
+      return aSeq.compareTo(bSeq);
+    }
+    return (a.sendTime ?? a.createTime ?? 0)
+        .compareTo(b.sendTime ?? b.createTime ?? 0);
+  }
+
+  Message? _effectiveLatestMsg(ConversationInfo info) {
+    final cached = _latestDisplayMsgCache[info.conversationID];
+    if (cached != null) return cached;
+    final latest = info.latestMsg;
+    if (latest != null && !_isPreviewableMessage(latest)) return null;
+    return latest;
+  }
+
+  bool _isSamePreviewMessage(Message? a, Message? b) {
+    if (a == null || b == null) return a == b;
+    final aID = a.clientMsgID ?? a.serverMsgID ?? '';
+    final bID = b.clientMsgID ?? b.serverMsgID ?? '';
+    if (aID.isNotEmpty || bID.isNotEmpty) return aID == bID;
+    return _compareMessageOrder(a, b) == 0 &&
+        a.contentType == b.contentType &&
+        a.sendID == b.sendID;
+  }
+
+  Future<void> _refreshLatestDisplayMessages(
+      Iterable<ConversationInfo> conversations) async {
+    final targets = conversations
+        .where((info) => info.isGroupChat && info.conversationID.isNotEmpty)
+        .toList();
+    if (targets.isEmpty) return;
+
+    var changed = false;
+    for (final info in targets) {
+      try {
+        final result =
+            await OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
+          conversationID: info.conversationID,
+          count: 50,
+          startMsg: null,
+        );
+        final messages =
+            _previewableHistoryMessages(info, result.messageList ?? []);
+        if (messages.isEmpty) {
+          if (_latestDisplayMsgCache.remove(info.conversationID) != null) {
+            changed = true;
+          }
+          continue;
+        }
+        messages.sort(_compareMessageOrder);
+        final latest = messages.last;
+
+        final currentCached = _latestDisplayMsgCache[info.conversationID];
+        if (!_isSamePreviewMessage(currentCached, latest)) {
+          _latestDisplayMsgCache[info.conversationID] = latest;
+          changed = true;
+        }
+      } catch (e) {
+        Logger.print('[ConversationLogic] 刷新本地最新摘要失败: $e');
+      }
+    }
+    if (changed) {
+      _sortConversationList();
+      list.refresh();
+    }
+  }
+
   String? getPrefixTag(ConversationInfo info) {
     if (info.groupAtType == GroupAtType.groupNotification) {
       return '[${StrRes.groupAc}]';
@@ -540,14 +758,15 @@ class ConversationLogic extends GetxController {
   String _maskPreviewText(String text) =>
       _apiService.maskSensitiveWordsFromCache(text);
 
-  String _formatLatestMsgPreview(ConversationInfo info, String content) {
+  String _formatLatestMsgPreview(
+      ConversationInfo info, Message latestMsg, String content) {
     final preview = _maskPreviewText(content);
     if (info.isSingleChat ||
-        info.latestMsg?.sendID == OpenIM.iMManager.userID ||
+        latestMsg.sendID == OpenIM.iMManager.userID ||
         info.conversationType == ConversationType.notification) {
       return preview;
     }
-    return "${info.latestMsg?.senderNickname ?? ''}: $preview ";
+    return "${latestMsg.senderNickname ?? ''}: $preview ";
   }
 
   String getContent(ConversationInfo info) {
@@ -560,24 +779,26 @@ class ConversationLogic extends GetxController {
         }
       }
 
-      if (null == info.latestMsg) return "";
+      final latestMsg = _effectiveLatestMsg(info);
+      if (latestMsg == null) return "";
+      if (!_messageBelongsToConversation(info, latestMsg)) return "";
 
       // 普通文件
-      if (info.latestMsg!.contentType == MessageType.file) {
-        final fileElem = info.latestMsg!.fileElem;
+      if (latestMsg.contentType == MessageType.file) {
+        final fileElem = latestMsg.fileElem;
         if (fileElem != null && fileElem.fileName != null) {
           return '[${StrRes.file}] ${fileElem.fileName}';
         } else {
           return '[${StrRes.file}]';
         }
       }
-      if (info.latestMsg?.contentType == MessageType.card) {
+      if (latestMsg.contentType == MessageType.card) {
         return '[${StrRes.carte}]';
       }
       // 处理自定义消息
-      if (info.latestMsg!.contentType == MessageType.custom) {
+      if (latestMsg.contentType == MessageType.custom) {
         try {
-          final data = json.decode(info.latestMsg!.customElem!.data!);
+          final data = json.decode(latestMsg.customElem!.data!);
           final customType = data['customType'];
 
           // 处理转账消息
@@ -652,29 +873,29 @@ class ConversationLogic extends GetxController {
             }
             return '[${StrRes.callVoice}]';
           }
-          final customPreview = _getCustomMessagePreview(info.latestMsg!);
+          final customPreview = _getCustomMessagePreview(latestMsg);
           if (customPreview != null && customPreview.isNotEmpty) {
-            return _formatLatestMsgPreview(info, customPreview);
+            return _formatLatestMsgPreview(info, latestMsg, customPreview);
           }
         } catch (e) {
           ILogger.e('解析自定义消息失败: $e');
-          final customPreview = _getCustomMessagePreview(info.latestMsg!);
+          final customPreview = _getCustomMessagePreview(latestMsg);
           if (customPreview != null && customPreview.isNotEmpty) {
-            return _formatLatestMsgPreview(info, customPreview);
+            return _formatLatestMsgPreview(info, latestMsg, customPreview);
           }
         }
       }
 
-      final text = IMUtils.parseNtf(info.latestMsg!, isConversation: true);
+      final text = IMUtils.parseNtf(latestMsg, isConversation: true);
       if (text != null) return text;
       if (info.isSingleChat ||
-          info.latestMsg!.sendID == OpenIM.iMManager.userID ||
+          latestMsg.sendID == OpenIM.iMManager.userID ||
           info.conversationType == ConversationType.notification) {
         return _maskPreviewText(
-            IMUtils.parseMsg(info.latestMsg!, isConversation: true));
+            IMUtils.parseMsg(latestMsg, isConversation: true));
       }
 
-      return "${info.latestMsg!.senderNickname}: ${_maskPreviewText(IMUtils.parseMsg(info.latestMsg!, isConversation: true))} ";
+      return "${latestMsg.senderNickname}: ${_maskPreviewText(IMUtils.parseMsg(latestMsg, isConversation: true))} ";
     } catch (e, s) {
       Logger.print('------e:$e s:$s');
     }
@@ -697,7 +918,14 @@ class ConversationLogic extends GetxController {
   }
 
   String getTime(ConversationInfo info) {
-    return IMUtils.getChatTimeline(info.latestMsgSendTime!);
+    final latestMsg = _effectiveLatestMsg(info);
+    if (latestMsg == null || !_messageBelongsToConversation(info, latestMsg)) {
+      return "";
+    }
+    final time =
+        latestMsg.sendTime ?? latestMsg.createTime ?? info.latestMsgSendTime;
+    if (time == null || time <= 0) return "";
+    return IMUtils.getChatTimeline(time);
   }
 
   int getUnreadCount(ConversationInfo info) {
@@ -791,8 +1019,26 @@ class ConversationLogic extends GetxController {
       // imStatus.value == IMSdkStatus.connectionFailed ||
       imStatus.value == IMSdkStatus.syncFailed;
 
-  void _sortConversationList() =>
-      OpenIM.iMManager.conversationManager.simpleSort(list);
+  int _conversationSortTime(ConversationInfo info) {
+    final cached = _latestDisplayMsgCache[info.conversationID];
+    if (cached != null) {
+      return cached.sendTime ??
+          cached.createTime ??
+          info.latestMsgSendTime ??
+          0;
+    }
+    return info.latestMsgSendTime ?? 0;
+  }
+
+  void _sortConversationList() {
+    OpenIM.iMManager.conversationManager.simpleSort(list);
+    list.sort((a, b) {
+      final pinnedA = a.isPinned == true;
+      final pinnedB = b.isPinned == true;
+      if (pinnedA != pinnedB) return pinnedA ? -1 : 1;
+      return _conversationSortTime(b).compareTo(_conversationSortTime(a));
+    });
+  }
 
   Future<void> onRefresh() async {
     late List<ConversationInfo> list;
@@ -802,6 +1048,8 @@ class ConversationLogic extends GetxController {
       this.list.assignAll(list);
       // dawn 2026-06-21 新增官方人员标识：刷新会话列表后补拉单聊角色。
       unawaited(_loadOfficialRolesForConversations(list));
+      unawaited(_refreshLatestDisplayMessages(list));
+      unawaited(_syncJoinedGroupConversations());
 
       if (list.isEmpty || list.length < pageSize) {
         refreshController.loadNoData();
@@ -877,14 +1125,17 @@ class ConversationLogic extends GetxController {
     _loadRedPacketStatusCache();
     // dawn 2026-06-21 新增官方人员标识：首屏会话加载后补全认证图标。
     unawaited(_loadOfficialRolesForConversations(filteredResult));
+    unawaited(_refreshLatestDisplayMessages(filteredResult));
+    unawaited(_syncJoinedGroupConversations());
   }
 
   String _normalizeOrgRole(String? role) {
     final text = role?.trim() ?? '';
     if (text.isEmpty) return '';
     const aliases = {
-      '管理员': 'BackendAdmin',
-      '群管理员': 'GroupManager',
+      '管理员': 'GroupManager',
+      '组织管理员': 'GroupManager',
+      '后台管理员': 'BackendAdmin',
       '超级管理员': 'SuperAdmin',
       '团队长': 'TermManager',
     };
@@ -892,13 +1143,8 @@ class ConversationLogic extends GetxController {
   }
 
   bool _isOfficialOrgRole(String? role) {
-    // dawn 2026-06-26 修复官方人员标识漏 GroupManager(群管理员)，与聊天页/服务端角色集合对齐。
     final normalized = _normalizeOrgRole(role).toLowerCase();
-    return normalized == 'admin' ||
-        normalized == 'backendadmin' ||
-        normalized == 'superadmin' ||
-        normalized == 'groupmanager' ||
-        normalized == 'termmanager';
+    return normalized == 'groupmanager';
   }
 
   bool isOfficialConversation(ConversationInfo info) {
@@ -994,13 +1240,86 @@ class ConversationLogic extends GetxController {
     return temp;
   }
 
+  Future<void> _syncJoinedGroupConversations() async {
+    if (_syncingJoinedGroupConversations) return;
+    _syncingJoinedGroupConversations = true;
+    try {
+      const count = 200;
+      var offset = 0;
+      var changed = false;
+      final joinedConversationIDs = <String>{};
+      while (true) {
+        final groups = await OpenIM.iMManager.groupManager
+            .getJoinedGroupListPage(offset: offset, count: count);
+        if (groups.isEmpty) break;
+
+        final existingIDs = list.map((e) => e.conversationID).toSet();
+        for (final group in groups) {
+          final groupID = group.groupID;
+          if (groupID.isEmpty) continue;
+          final conversationID = 'sg_$groupID';
+          joinedConversationIDs.add(conversationID);
+          if (existingIDs.contains(conversationID)) continue;
+
+          try {
+            final conversation =
+                await OpenIM.iMManager.conversationManager.getOneConversation(
+              sourceID: groupID,
+              sessionType: group.sessionType,
+            );
+            if (conversation.conversationID.isEmpty) continue;
+            conversation.showName ??= group.groupName;
+            conversation.faceURL ??= group.faceURL;
+            list.add(conversation);
+            existingIDs.add(conversation.conversationID);
+            changed = true;
+          } catch (e) {
+            Logger.print(
+                '[ConversationLogic] 补齐已加入群会话失败: groupID=$groupID, err=$e');
+          }
+        }
+
+        if (groups.length < count) break;
+        offset += groups.length;
+      }
+
+      final staleGroupConversations = list
+          .where((info) =>
+              info.isGroupChat &&
+              info.conversationID.isNotEmpty &&
+              !joinedConversationIDs.contains(info.conversationID))
+          .toList();
+      for (final info in staleGroupConversations) {
+        try {
+          await OpenIM.iMManager.conversationManager
+              .deleteConversationAndDeleteAllMsg(
+                  conversationID: info.conversationID);
+        } catch (e) {
+          Logger.print(
+              '[ConversationLogic] 清理未加入群会话失败: ${info.conversationID}, err=$e');
+        }
+        list.removeWhere((e) => e.conversationID == info.conversationID);
+        changed = true;
+      }
+
+      if (changed) {
+        _sortConversationList();
+        list.refresh();
+      }
+    } catch (e) {
+      Logger.print('[ConversationLogic] 同步已加入群会话失败: $e');
+    } finally {
+      _syncingJoinedGroupConversations = false;
+    }
+  }
+
   bool isValidConversation(ConversationInfo info) {
     return info.isValid;
   }
 
   // dawn 2026-06-23 建群后/首次进入会话时，确保该会话已存在于列表中（避免依赖 SDK 回调时序）。
   void _ensureConversationInList(ConversationInfo info) {
-    if (!isValidConversation(info)) return;
+    if (info.conversationID.isEmpty) return;
     final exists = list.any((e) => e.conversationID == info.conversationID);
     if (exists) return;
     list.insert(0, info);

@@ -26,7 +26,8 @@ class WalletController extends GetxService {
 
   final _apiService = app_api.ApiService();
   Timer? _balanceTimer; // 定时器
-  static const Duration _updateInterval = Duration(seconds: 5);
+  static const Duration _updateInterval = Duration(seconds: 30);
+  bool _balanceTimerAllowed = false;
   bool _compensationInitAttempted = false; // 标记是否已尝试过初始化补偿金
 
   OrgData get currentOrg {
@@ -56,6 +57,7 @@ class WalletController extends GetxService {
   /// 在页面不可见时应调用此方法
   void stopBalanceTimer() {
     LogUtil.i(_TAG, '钱包页面离开，停止余额定时器');
+    _balanceTimerAllowed = false;
     _stopBalanceTimer();
   }
 
@@ -63,6 +65,7 @@ class WalletController extends GetxService {
   /// 在页面可见时应调用此方法
   void resumeBalanceTimer() {
     LogUtil.i(_TAG, '钱包页面进入，恢复余额定时器');
+    _balanceTimerAllowed = true;
     if (isWalletActivated.value) {
       _startBalanceTimer();
     }
@@ -132,7 +135,9 @@ class WalletController extends GetxService {
 
       if (status) {
         await _getWalletInfo();
-        _startBalanceTimer();
+        if (_balanceTimerAllowed) {
+          _startBalanceTimer();
+        }
       }
       return status;
     } catch (e) {
@@ -179,10 +184,12 @@ class WalletController extends GetxService {
         // 检查补偿金余额是否为0或空
         final compensationStr = walletData.compensationBalance ?? '0';
         final hasCompensation = compensationStr != '0' &&
-                               compensationStr != '0.00' &&
-                               compensationStr.isNotEmpty;
+            compensationStr != '0.00' &&
+            compensationStr.isNotEmpty;
 
-        if (!hasCompensation && isWalletActivated.value && !_compensationInitAttempted) {
+        if (!hasCompensation &&
+            isWalletActivated.value &&
+            !_compensationInitAttempted) {
           // 标记为已尝试初始化，防止重复触发
           _compensationInitAttempted = true;
 
@@ -200,10 +207,12 @@ class WalletController extends GetxService {
             Future.delayed(Duration(seconds: 10), () async {
               LogUtil.i(_TAG, '延迟10秒后重新获取钱包信息，以确认补偿金是否已初始化');
               // 不要连环调用_getWalletInfo，而是直接通过API获取最新数据
-              final updatedWalletData = await _apiService.walletBalanceByOrg(selectOrgId.value);
+              final updatedWalletData =
+                  await _apiService.walletBalanceByOrg(selectOrgId.value);
               if (updatedWalletData != null) {
                 balanceDetail.value = updatedWalletData;
-                final updatedCompensation = updatedWalletData.compensationBalance ?? '0';
+                final updatedCompensation =
+                    updatedWalletData.compensationBalance ?? '0';
                 LogUtil.i(_TAG, '初始化后补偿金余额: $updatedCompensation');
               }
             });
