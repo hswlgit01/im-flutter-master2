@@ -39,7 +39,8 @@ android {
     namespace 'cn.rentsoft.flutter.openim.business'
     // dawn 2026-06-22 修复 Android 调试构建：AndroidX Camera/Core 新依赖要求 compileSdk 36，targetSdk 暂不变。
     compileSdkVersion 36
-    ndkVersion flutter.ndkVersion
+    // dawn 2026-06-30 修复 Docker release 构建：当前插件统一要求 NDK 27。
+    ndkVersion "27.0.12077973"
 
     compileOptions {
         // dawn 2026-06-22 修复 Android 调试构建：flutter_local_notifications 需要 Java 8+ desugaring。

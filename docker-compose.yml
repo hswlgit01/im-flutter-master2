@@ -6,6 +6,10 @@ services:
     container_name: openim_flutter
     # 使用宿主网络，使Shorebird可以监听宿主端口进行登录
     network_mode: "host"
+    extra_hosts:
+      # dawn 2026-06-30 修复部分网络/DNS 无法解析个推 Maven 域名。
+      - "mvn.getui.com:115.236.20.201"
+      - "mvn.gt.getui.com:115.236.20.201"
     volumes:
       - .:/app
       # 缓存Flutter和Gradle依赖，减少重复下载
@@ -48,8 +52,16 @@ services:
     container_name: openim_flutter_build
     # 使用宿主网络，使Shorebird可以监听宿主端口进行登录
     network_mode: "host"
+    extra_hosts:
+      # dawn 2026-06-30 修复部分网络/DNS 无法解析个推 Maven 域名。
+      - "mvn.getui.com:115.236.20.201"
+      - "mvn.gt.getui.com:115.236.20.201"
     volumes:
       - .:/app
+      # 构建中间产物放到 Docker 原生卷，避免共享目录路径长度限制。
+      - apk_build_cache:/app/build
+      # 最终 APK 复制回宿主机 build 目录。
+      - ./build:/app/build-host
       - flutter_cache:/root/.pub-cache
       - gradle_cache:/root/.gradle
     working_dir: /app
@@ -104,3 +116,4 @@ services:
 volumes:
   flutter_cache:
   gradle_cache:
+  apk_build_cache:

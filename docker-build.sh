@@ -68,7 +68,9 @@ function build_apk {
   local env=${1:-dev}
   echo -e "${YELLOW}开始构建Android APK (环境: ${env})...${NC}"
   # dawn 2026-05-21 修复安装包体积：本地 Docker 构建也输出 ABI 拆分包，并保留 arm64 为 app-release.apk。
-  docker compose run --rm -e BUILD_ENV=${env} build_apk bash -c "flutter clean && flutter pub get && flutter build apk --release --split-per-abi --dart-define=ENV=${env} && cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/app-release.apk"
+  # dawn 2026-06-30 修复共享目录下插件 javac class 路径过长：/app/build 使用 Docker 原生卷，最终 APK 复制回宿主机 build 目录。
+  local build_cmd="set -e; flutter clean; flutter pub get; flutter build apk --release --split-per-abi --dart-define=ENV=${env}; cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/app-release.apk; mkdir -p /app/build-host/app/outputs/flutter-apk; cp build/app/outputs/flutter-apk/*.apk /app/build-host/app/outputs/flutter-apk/"
+  docker compose run --rm -e BUILD_ENV=${env} build_apk bash -c "${build_cmd}"
   if [ $? -eq 0 ]; then
     echo -e "${GREEN}APK构建成功!${NC}"
     echo -e "环境: ${BLUE}${env}${NC}"

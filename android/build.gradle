@@ -21,7 +21,15 @@ allprojects {
         google()
         mavenCentral()  // io.github.maitrungduc1410 在 Maven Central
         maven { url 'https://jitpack.io' }
+        // dawn 2026-06-30 修复本地 Windows DNS 无法解析个推 Maven 域名：
+        // 先查项目内缓存，缓存不存在时再走远程仓库。
+        maven { url "$rootDir/local_maven" }
         maven { url 'https://mvn.getui.com/nexus/content/repositories/releases/' }  // GeTui Maven 仓库
+        // dawn 2026-06-30 修复 Docker 构建环境解析 mvn.getui.com 失败：个推旧域名仍提供同一 releases 仓库。
+        maven {
+            url 'http://mvn.gt.getui.com/nexus/content/repositories/releases/'
+            allowInsecureProtocol = true
+        }
         // FFmpeg Kit 官方仓库已不可用，使用 Maven Central 中的替代版本
         // maven { url 'https://github.com/arthenica/ffmpeg-kit/releases' }
     }
@@ -58,7 +66,9 @@ subprojects { subproject ->
     }
 }
 
-rootProject.buildDir = '../build'
+// dawn 2026-06-30 修复 Windows/Docker 挂载目录下 javac "File name too long"：
+// Docker 构建可通过 GRADLE_BUILD_DIR 把中间产物放到容器内短路径。
+rootProject.buildDir = System.getenv('GRADLE_BUILD_DIR') ?: '../build'
 subprojects { afterEvaluate { android { compileSdkVersion 36 } } }
 
 subprojects {
