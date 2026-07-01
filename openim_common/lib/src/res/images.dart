@@ -89,7 +89,8 @@ class ImageRes {
   static const mineRealname = "$_dir/mine_realname.png";
   static const mineArrow = "$_dir/mine_arrow.png";
   static const mineCheckin = "$_dir/mine_checkin.png";
-  static const mineInviteCode = "$_dir/mine_invite_code.png";
+  // dawn 2026-07-01 "心享邀请码"行图标(心享品牌心形)统一为 app 图标。
+  static const mineInviteCode = appLogo;
   static const mineInviteQr = "$_dir/mine_invite_qr.png";
   static const mineTeam = "$_dir/mine_team.png";
   static const mineServices = "$_dir/mine_services.png";
