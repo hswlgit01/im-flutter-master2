@@ -14,9 +14,11 @@ import 'package:path_provider/path_provider.dart';
 
 class Config {
   // 远程配置URL - 更改此URL以获取远程服务器配置
-   static const String remoteConfigUrl = "https://serverapi.438712.cc/servers.json";
+  // dawn 2026-07-03 测试期：置空关闭远程配置拉取，避免客户远程(438712.cc,可达)把线路覆盖到客户服务器，
+  // 使测试机的包锁定到本地 _prodHost(8.148.66.77)。客户正式包请恢复下方客户远程配置。
+  static const String remoteConfigUrl = "";
+  // static const String remoteConfigUrl = "https://serverapi.438712.cc/servers.json"; // 客户正式远程配置
   // static const String remoteConfigUrl = "http://serverapi.qqkh8.com/servers.json";
-  // static const String remoteConfigUrl = ""
 
   // 定义不同环境的主机
   /// 本地开发默认用 10.0.2.2（Android 模拟器访问宿主机）；真机请用 flutter run --dart-define=DEV_HOST=你的电脑局域网IP
@@ -25,10 +27,11 @@ class Config {
   // 生产环境服务器：默认 fallback。Config.init() 仍会先尝试从 remoteConfigUrl
   // 拉 servers.json 走 API 自动寻路，那份配置拉不到 / 里面没有可用节点时，
   // 就退回这个默认值，避免 serverIp 为空导致 init 抛异常（白屏）。
-  static const String _prodHost = "";   // 生产环境服务器
+  static const String _prodHost = "8.148.66.77";   // dawn 2026-07-03 测试期生产服务器锁定 8.148.66.77
 
   // 从环境变量获取当前环境，默认为dev（本地开发）
-  static final String _currentEnv = const String.fromEnvironment('ENV', defaultValue: 'dev');
+  // dawn 2026-07-03 测试期：未传 ENV 的手动/CI 包默认走 prod → 连 _prodHost(8.148.66.77)，不回退到空 dev 主机。
+  static final String _currentEnv = const String.fromEnvironment('ENV', defaultValue: 'prod');
   /// 开发环境主机覆盖：可手动指定，如 flutter run --dart-define=DEV_HOST=10.0.2.2
   static const String _devHostOverride = String.fromEnvironment('DEV_HOST', defaultValue: '');
   /// Android 模拟器访问宿主机专用地址（ENV=dev 且未设置 DEV_HOST 时会自动检测模拟器并使用）
