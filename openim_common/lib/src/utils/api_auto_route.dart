@@ -74,13 +74,15 @@ class ApiAutoRoute {
       if (fallbackHost != null &&
           fallbackHost.isNotEmpty &&
           !_isInvalidRuntimeHost(fallbackHost)) {
-        // dawn 2026-06-26 调试环境暂无第二台服务器：用当前 host 凑两条线路(线路一/线路二)，
-        // 演示多线路 UI 与"自动选最快"。后台 servers.json 返回多节点后会以真实多线路为准。
+        // dawn 2026-07-04 调试环境暂无多台服务器：用当前 host 凑三条线路(线路一/二/三)，
+        // 演示多线路 UI 与"自动选最快"。后台 servers.json 返回多节点后会以真实多线路为准(条数不再固定)。
         servers = [
           ApiServerConfig(
               name: '线路一', host: fallbackHost, priority: 1, region: 'global'),
           ApiServerConfig(
               name: '线路二', host: fallbackHost, priority: 2, region: 'global'),
+          ApiServerConfig(
+              name: '线路三', host: fallbackHost, priority: 3, region: 'global'),
         ];
       }
     }

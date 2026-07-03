@@ -38,16 +38,33 @@ class LoginPage extends StatelessWidget {
                     ? _buildLoginCard()
                     : _buildRegisterCard()),
                 30.verticalSpace,
-                // 线路检测入口(保留功能；设计稿未画，放在卡片下方)
+                // dawn 2026-07-04 登录页网络测试：一键测全部线路自动选最快，并保留手动"线路检测"入口。
+                Center(
+                  child: OutlinedButton.icon(
+                    onPressed: logic.autoTestAndSelectFastestLine,
+                    icon: Icon(Icons.speed, size: 18.w, color: Styles.c_0089FF),
+                    label: Text('网络测试（自动选最快）',
+                        style: TextStyle(
+                            color: Styles.c_0089FF, fontSize: 14.sp)),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: Size(220.w, 40.h),
+                      side: BorderSide(color: Styles.c_0089FF),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20.r)),
+                    ),
+                  ),
+                ),
+                8.verticalSpace,
+                // 手动线路检测入口(逐条测速、手动选择切换)
                 Center(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: logic.openLineCheck,
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 6.h),
-                      child: Text('线路检测',
+                      child: Text('线路检测（手动选择）',
                           style: TextStyle(
-                              color: Styles.c_0089FF, fontSize: 14.sp)),
+                              color: Styles.c_8E9AB0, fontSize: 13.sp)),
                     ),
                   ),
                 ),

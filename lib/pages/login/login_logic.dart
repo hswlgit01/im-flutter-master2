@@ -365,6 +365,23 @@ class LoginLogic extends GetxController with GetTickerProviderStateMixin {
   // dawn 2026-06-26 登录页线路检测入口：进入测速页手动选择/切换访问线路。
   void openLineCheck() => Get.to(() => const LineCheckPage());
 
+  // dawn 2026-07-04 登录页一键网络测试：测试后台返回的全部线路(条数不固定)，按延迟自动选最快的一条并应用。
+  Future<void> autoTestAndSelectFastestLine() => LoadingView.singleton.wrap(
+        asyncFunction: () async {
+          final lines = await ApiAutoRoute.testAllLines();
+          final ok = lines.where((l) => l.isSuccess).toList()
+            ..sort((a, b) => a.responseTime.compareTo(b.responseTime));
+          if (ok.isEmpty) {
+            IMViews.showToast('未测到可用线路，请检查网络');
+            return;
+          }
+          final fastest = ok.first;
+          await ApiAutoRoute.applyHost(fastest.host);
+          IMViews.showToast(
+              '已自动选择最快线路：${fastest.name}（${fastest.responseTime}ms）');
+        },
+      );
+
   void forgetPassword() => AppNavigator.startForgetPassword();
 
   /// 切换记住密码状态
