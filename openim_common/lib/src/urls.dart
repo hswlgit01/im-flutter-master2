@@ -12,6 +12,9 @@ class Urls {
 
   static final getVerificationCode = "${Config.appAuthUrl}/account/code/send";
   static final changeEmail = "${Config.appAuthUrl}/third/user/change_email";
+  // dawn 2026-07-04 最近操作时间：客户端打开APP上报
+  static final reportOperation =
+      "${Config.appAuthUrl}/third/user/report_operation";
   static final checkVerificationCode =
       "${Config.appAuthUrl}/account/code/verify";
   static final register = "${Config.appAuthUrl}/account/register";

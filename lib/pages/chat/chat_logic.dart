@@ -422,24 +422,26 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       return;
     }
 
-    lastLoginTimeText.value = '最近登录：加载中';
+    // dawn 2026-07-04 单聊头部改为展示"最近操作时间"(客户端打开APP上报)，不再用最近登录时间。
+    lastLoginTimeText.value = '最近操作：加载中';
     try {
       final users = await Apis.getUserFullInfo(userIDList: [peerUserID]);
       final user = users?.firstOrNull;
       peerTitleCertified.value = _isOfficialOrgRole(user?.orgRole);
-      final lastLoginTime = user?.lastLoginTime;
-      if (lastLoginTime == null || lastLoginTime <= 0) {
-        lastLoginTimeText.value = '最近登录：暂无记录';
+      // 优先用最近操作时间；无操作记录时回退到最近登录时间，避免空白。
+      final ts = (user?.lastOperationTime != null && user!.lastOperationTime! > 0)
+          ? user.lastOperationTime
+          : user?.lastLoginTime;
+      if (ts == null || ts <= 0) {
+        lastLoginTimeText.value = '最近操作：暂无记录';
         return;
       }
-      final lastLoginTimeMs =
-          lastLoginTime < 10000000000 ? lastLoginTime * 1000 : lastLoginTime;
-      final text =
-          DateUtil.formatDateMs(lastLoginTimeMs, format: 'yyyy-MM-dd HH:mm');
-      lastLoginTimeText.value = '最近登录：$text';
+      final tsMs = ts < 10000000000 ? ts * 1000 : ts;
+      final text = DateUtil.formatDateMs(tsMs, format: 'yyyy-MM-dd HH:mm');
+      lastLoginTimeText.value = '最近操作：$text';
     } catch (e) {
-      ILogger.d('[ChatLogic] 加载最近登录时间失败: $e');
-      lastLoginTimeText.value = '最近登录：暂无记录';
+      ILogger.d('[ChatLogic] 加载最近操作时间失败: $e');
+      lastLoginTimeText.value = '最近操作：暂无记录';
       peerTitleCertified.value = false;
     }
   }

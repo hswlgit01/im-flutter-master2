@@ -452,6 +452,15 @@ class Apis {
     }
   }
 
+  /// dawn 2026-07-04 最近操作时间：客户端每次打开 APP 上报当前操作时间(失败静默，不影响使用)。
+  static Future<void> reportOperation() async {
+    try {
+      await HttpUtil.post(Urls.reportOperation, data: {}, options: chatTokenOptions);
+    } catch (e) {
+      Logger.print('reportOperation error: $e');
+    }
+  }
+
   static Future<List<UserFullInfo>?> getUserFullInfo({
     int pageNumber = 0,
     int showNumber = 10,

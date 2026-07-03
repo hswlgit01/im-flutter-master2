@@ -133,6 +133,8 @@ class HomeLogic extends SuperController {
     requestNotificationPermission();
     // dawn 2026-06-23 敏感词架构改：登录进入主页后全量预热词表(持久化缓存)。
     app_api.ApiService().prefetchSensitiveWords();
+    // dawn 2026-07-04 最近操作时间：每次打开APP进入主页时上报当前操作时间。
+    Apis.reportOperation();
     super.onReady();
   }
 
