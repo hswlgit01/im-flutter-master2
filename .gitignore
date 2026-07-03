@@ -16,6 +16,7 @@ android/app/proguard
 **/android/gradlew
 **/android/gradlew.bat
 **/android/local.properties
+**/android/local_maven/
 **/android/**/GeneratedPluginRegistrant.java
 **/android/key.properties
 *.jks

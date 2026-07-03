@@ -59,6 +59,10 @@ class _MinePageState extends State<MinePage> with WidgetsBindingObserver {
     }
   }
 
+  String get _identityActionText {
+    return (logic.identityInfo?.status ?? 0) == 2 ? '已实名' : '点击实名';
+  }
+
   @override
   Widget build(BuildContext context) {
     // dawn 2026-06-26 "我的"页按设计稿改版：头部(头像+昵称+点击实名+性别/实名chip)、
@@ -212,7 +216,8 @@ class _MinePageState extends State<MinePage> with WidgetsBindingObserver {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('点击实名', style: Styles.ts_8E9AB0_14sp),
+                          Text(_identityActionText,
+                              style: Styles.ts_8E9AB0_14sp),
                           ImageRes.mineArrow.toImage
                             ..width = 16.w
                             ..height = 16.w,
@@ -363,7 +368,8 @@ class _MinePageState extends State<MinePage> with WidgetsBindingObserver {
               Text('余额', style: Styles.ts_0C1C33_17sp),
               const Spacer(),
               Obx(() => Text('${logic.balanceText}元',
-                  style: Styles.ts_8E9AB0_14sp.copyWith(color: Styles.c_0089FF))),
+                  style:
+                      Styles.ts_8E9AB0_14sp.copyWith(color: Styles.c_0089FF))),
               8.horizontalSpace,
               Text('点击提现',
                   style: Styles.ts_0089FF_14sp

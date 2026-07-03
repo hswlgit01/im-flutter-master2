@@ -22,6 +22,8 @@ class ApiService {
   List<String> _sensitiveWordsCache = [];
   String _sensitiveWordsVersion = '';
   bool _sensitiveWordsLoadedFromSp = false;
+  bool _sensitiveWordsPrefetchAttempted = false;
+  Future<void>? _sensitiveWordsPrefetching;
 
   /// 检查 chatToken 是否有效
   bool _checkChatToken() {
@@ -53,9 +55,30 @@ class ApiService {
   }
 
   /// 登录后调用：全量拉取启用词表与版本号，写入内存与本地持久化缓存。
-  Future<void> prefetchSensitiveWords() async {
+  Future<void> prefetchSensitiveWords({bool force = false}) async {
     _ensureLoadedFromSp();
     if (!_checkChatToken()) return;
+
+    if (_sensitiveWordsPrefetching != null) {
+      await _sensitiveWordsPrefetching;
+      return;
+    }
+    if (!force &&
+        _sensitiveWordsPrefetchAttempted &&
+        _sensitiveWordsCache.isEmpty) {
+      return;
+    }
+
+    _sensitiveWordsPrefetching = _doPrefetchSensitiveWords();
+    try {
+      await _sensitiveWordsPrefetching;
+    } finally {
+      _sensitiveWordsPrefetching = null;
+    }
+  }
+
+  Future<void> _doPrefetchSensitiveWords() async {
+    _sensitiveWordsPrefetchAttempted = true;
     try {
       final data = await HttpUtil.get(
         Urls.sensitiveWordEnabled,
@@ -99,9 +122,9 @@ class ApiService {
       if (remoteVersion.isEmpty || remoteVersion == _sensitiveWordsVersion) {
         return;
       }
-      LogUtil.i(TAG,
-          '敏感词版本变更: 本地=$_sensitiveWordsVersion 远端=$remoteVersion，重新拉取词表');
-      await prefetchSensitiveWords();
+      LogUtil.i(
+          TAG, '敏感词版本变更: 本地=$_sensitiveWordsVersion 远端=$remoteVersion，重新拉取词表');
+      await prefetchSensitiveWords(force: true);
     } catch (e) {
       LogUtil.e(TAG, '检查敏感词版本失败: $e');
     }

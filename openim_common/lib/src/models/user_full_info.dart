@@ -39,6 +39,7 @@ class UserFullInfo {
   // 团队数据字段
   int? teamSize; // 团队总人数
   int? directDownlineCount; // 直接下线数量
+  int? lastLoginTime; // 最近一次登录时间（毫秒时间戳）
 
   bool get isMale => gender == 1;
 
@@ -84,6 +85,7 @@ class UserFullInfo {
     this.verifiedTime,
     this.teamSize,
     this.directDownlineCount,
+    this.lastLoginTime,
   });
 
   UserFullInfo.fromJson(Map<String, dynamic> json) {
@@ -129,6 +131,7 @@ class UserFullInfo {
     teamSize = json['team_size'] ?? json['teamSize'];
     directDownlineCount =
         json['direct_downline_count'] ?? json['directDownlineCount'];
+    lastLoginTime = json['last_login_time'] ?? json['lastLoginTime'];
   }
 
   Map<String, dynamic> toJson() {
@@ -169,6 +172,7 @@ class UserFullInfo {
     data['verified_time'] = verifiedTime;
     data['team_size'] = teamSize;
     data['direct_downline_count'] = directDownlineCount;
+    data['last_login_time'] = lastLoginTime;
     return data;
   }
 }

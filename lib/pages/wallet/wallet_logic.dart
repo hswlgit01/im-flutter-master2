@@ -64,12 +64,12 @@ class WalletLogic extends GetxController {
     // 初始化安全服务
     _initSecurityService();
     getExchageRate();
-    walletController.checkWalletStatus();
     checkWithdrawalRule();
     getIdentityInfo();
 
-    // 恢复余额定时器（页面初始化时）
+    // 钱包页可见时才允许余额轮询；checkWalletStatus 完成后会按该标记启动定时器。
     walletController.resumeBalanceTimer();
+    walletController.checkWalletStatus();
   }
 
   @override
@@ -461,13 +461,15 @@ class WalletLogic extends GetxController {
           withdrawalAccounts.value = methods.map((pm) {
             return WithdrawalAccount(
               id: pm.id,
-              type:
-                  pm.type == PaymentMethodType.bankCard ? 'bank' : (pm.type == PaymentMethodType.wechat ? 'wechat' : 'alipay'),
+              type: pm.type == PaymentMethodType.bankCard
+                  ? 'bank'
+                  : (pm.type == PaymentMethodType.wechat ? 'wechat' : 'alipay'),
               accountName: pm.accountName,
               accountNumber: pm.cardNumber,
               bankName: pm.bankName,
               bankBranch: pm.branchName,
-              alipayAccount: pm.type == PaymentMethodType.alipay ? pm.accountName : null,
+              alipayAccount:
+                  pm.type == PaymentMethodType.alipay ? pm.accountName : null,
               isDefault: pm.isDefault,
             );
           }).toList();
@@ -505,7 +507,9 @@ class WalletLogic extends GetxController {
           final currencySymbol = pending['currencySymbol'] ?? '\$';
           // 安全地转换 amount,支持 int 和 double
           final amountValue = pending['amount'];
-          final amount = (amountValue is int) ? amountValue.toDouble() : (amountValue as double? ?? 0.0);
+          final amount = (amountValue is int)
+              ? amountValue.toDouble()
+              : (amountValue as double? ?? 0.0);
           final statusText = pending['statusText'] ?? '处理中';
           final orderNo = pending['orderNo'] ?? '';
 
@@ -534,12 +538,15 @@ class WalletLogic extends GetxController {
         withdrawalAccounts.value = methods.map((pm) {
           return WithdrawalAccount(
             id: pm.id,
-            type: pm.type == PaymentMethodType.bankCard ? 'bank' : (pm.type == PaymentMethodType.wechat ? 'wechat' : 'alipay'),
+            type: pm.type == PaymentMethodType.bankCard
+                ? 'bank'
+                : (pm.type == PaymentMethodType.wechat ? 'wechat' : 'alipay'),
             accountName: pm.accountName,
             accountNumber: pm.cardNumber,
             bankName: pm.bankName,
             bankBranch: pm.branchName,
-            alipayAccount: pm.type == PaymentMethodType.alipay ? pm.accountName : null,
+            alipayAccount:
+                pm.type == PaymentMethodType.alipay ? pm.accountName : null,
             isDefault: pm.isDefault,
           );
         }).toList();

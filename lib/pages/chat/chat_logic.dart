@@ -302,6 +302,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   final GlobalKey scrollViewKey = GlobalKey();
   Message? searchMessage;
   final nickname = ''.obs;
+  final lastLoginTimeText = ''.obs;
+  final peerTitleCertified = false.obs;
   final faceUrl = ''.obs;
   final isReadNotification = true.obs;
   final notification = "".obs;
@@ -325,6 +327,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   final quote = Rxn<Message?>(null);
 
   final isInGroup = true.obs;
+  bool _closingInvalidGroupConversation = false;
   final memberCount = 0.obs;
   final lookMemberInfo = 0.obs;
   final privateMessageList = <Message>[];
@@ -371,18 +374,25 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   bool _syncingLatestGroupPage = false;
   int _lastLatestGroupPageSyncMs = 0;
   Timer? _latestGroupPageSyncTimer;
+  bool _latestGroupPageSyncEnabled = false;
+  int _latestGroupPageIdleRounds = 0;
+  final _serverPulledMessageKeys = <String>{};
   // dawn 2026-06-18 修复3万人群消息不同步：当前打开的大群低频补拉服务端最新页，
   // 避免弱网或压测直写消息没有实时推送时，两台手机长期停在不同 seq。
   static const int _largeGroupLatestSyncThreshold = 1000;
-  static const int _largeGroupLatestSyncSeconds = 5;
+  static const int _largeGroupLatestSyncFastSeconds = 5;
+  static const int _largeGroupLatestSyncNormalSeconds = 30;
+  static const int _largeGroupLatestSyncIdleSeconds = 60;
+  static const int _largeGroupLatestSyncIdleThreshold = 3;
   // dawn 2026-06-21 新增官方人员标识：聊天页按消息发送人懒加载组织角色，避免大群一次性查全员。
   final officialMessageUserMap = <String, bool>{}.obs;
   // dawn 2026-06-26 官方账号(超管/后台管理员/群管理员，不含团队长)：用于"官方账号撤回不提示"。
   final officialAccountUserMap = <String, bool>{};
+  final _pendingRevokeDetails = <Map<String, dynamic>>[];
 
-  // 当前用户是否有撤回权限(团队长 + 官方账号)。
-  // dawn 2026-06-26 撤回权限：本群群主/群管理员(官方) 或 组织团队长 可撤回；普通成员不可。
-  bool get canRevokeMessages => isAdminOrOwner || orgController.isTermManager;
+  // 撤回权限只看组织后台角色：仅"管理员"(GroupManager)可撤回。
+  // 群主、群管理员、团队长、普通成员都不会因对应身份获得撤回权限。
+  bool get canRevokeMessages => orgController.canRevokeMessage;
   final _officialMessageRoleRequestedAt = <String, DateTime>{};
   static const _officialRoleRefreshInterval = Duration(minutes: 10);
 
@@ -404,6 +414,36 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       ? OpenIM.iMManager.userInfo.nickname
       : groupMembersInfo?.nickname;
 
+  Future<void> _loadPeerLastLoginTime() async {
+    final peerUserID = userID;
+    if (peerUserID == null || peerUserID.isEmpty) {
+      lastLoginTimeText.value = '';
+      peerTitleCertified.value = false;
+      return;
+    }
+
+    lastLoginTimeText.value = '最近登录：加载中';
+    try {
+      final users = await Apis.getUserFullInfo(userIDList: [peerUserID]);
+      final user = users?.firstOrNull;
+      peerTitleCertified.value = _isOfficialOrgRole(user?.orgRole);
+      final lastLoginTime = user?.lastLoginTime;
+      if (lastLoginTime == null || lastLoginTime <= 0) {
+        lastLoginTimeText.value = '最近登录：暂无记录';
+        return;
+      }
+      final lastLoginTimeMs =
+          lastLoginTime < 10000000000 ? lastLoginTime * 1000 : lastLoginTime;
+      final text =
+          DateUtil.formatDateMs(lastLoginTimeMs, format: 'yyyy-MM-dd HH:mm');
+      lastLoginTimeText.value = '最近登录：$text';
+    } catch (e) {
+      ILogger.d('[ChatLogic] 加载最近登录时间失败: $e');
+      lastLoginTimeText.value = '最近登录：暂无记录';
+      peerTitleCertified.value = false;
+    }
+  }
+
   bool get isAdmin => groupMemberRoleLevel.value == GroupRoleLevel.admin;
 
   bool get isOwner => groupMemberRoleLevel.value == GroupRoleLevel.owner;
@@ -414,8 +454,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final text = role?.trim() ?? '';
     if (text.isEmpty) return '';
     const aliases = {
-      '管理员': 'BackendAdmin',
-      '群管理员': 'GroupManager',
+      '管理员': 'GroupManager',
+      '组织管理员': 'GroupManager',
+      '后台管理员': 'BackendAdmin',
       '超级管理员': 'SuperAdmin',
       '团队长': 'TermManager',
     };
@@ -423,23 +464,36 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   bool _isOfficialOrgRole(String? role) {
-    // dawn 2026-06-26 修复群聊官方人员不显示"官方"：补上 GroupManager(群管理员)，
-    // 与服务端官方/特权角色集合(SuperAdmin/BackendAdmin/GroupManager/TermManager)对齐。
     final normalized = _normalizeOfficialRole(role).toLowerCase();
-    return normalized == 'admin' ||
-        normalized == 'backendadmin' ||
-        normalized == 'superadmin' ||
-        normalized == 'groupmanager' ||
-        normalized == 'termmanager';
+    return normalized == 'groupmanager';
   }
 
-  // dawn 2026-06-26 官方账号(不含团队长)：超管/后台管理员/群管理员。用于撤回静默。
+  // 组织后台"管理员"(GroupManager)：用于官方标识和管理员撤回静默。
   bool _isOfficialAccountRole(String? role) {
-    final normalized = _normalizeOfficialRole(role).toLowerCase();
-    return normalized == 'admin' ||
-        normalized == 'backendadmin' ||
-        normalized == 'superadmin' ||
-        normalized == 'groupmanager';
+    return _isOfficialOrgRole(role);
+  }
+
+  bool _isAdminUserForRevoke(String? userID) {
+    if (userID == null || userID.isEmpty) return false;
+    if (userID == OpenIM.iMManager.userID) {
+      return orgController.canRevokeMessage;
+    }
+    return officialMessageUserMap[userID] == true;
+  }
+
+  Future<void> _ensureAdminRoleForRevoke(String? userID) async {
+    if (userID == null || userID.isEmpty) return;
+    if (userID == OpenIM.iMManager.userID) return;
+    if (officialMessageUserMap.containsKey(userID)) return;
+    try {
+      final users = await Apis.getUserFullInfo(userIDList: [userID]);
+      final user = users?.firstOrNull;
+      officialMessageUserMap[userID] = _isOfficialOrgRole(user?.orgRole);
+      officialAccountUserMap[userID] = _isOfficialAccountRole(user?.orgRole);
+      officialMessageUserMap.refresh();
+    } catch (e) {
+      ILogger.d('[ChatLogic] 加载撤回人管理员角色失败: $e');
+    }
   }
 
   // dawn 2026-06-26 判断某 userID 是否为【本群】群主/群管理员(官方)。单聊恒 false。
@@ -454,9 +508,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     return lv == GroupRoleLevel.owner || lv == GroupRoleLevel.admin;
   }
 
-  // dawn 2026-06-26 群聊"官方"标识(红名+官方)：仅本群群主/群管理员；单聊不显示。
+  // 群聊"官方"标识只看组织后台用户角色：仅"管理员"显示，群主/群管理员/团队长不再自动显示。
   bool isOfficialMessageSender(Message message) =>
-      _isGroupOwnerOrAdmin(message.sendID);
+      officialMessageUserMap[message.sendID] == true;
 
   Future<void> _loadOfficialRolesForMessages(Iterable<Message> messages) async {
     final now = DateTime.now();
@@ -497,9 +551,75 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
       if (changed) {
         officialMessageUserMap.refresh();
+        _refreshRevokeSilentFlagsForLoadedRoles();
       }
     } catch (e) {
       ILogger.d('[ChatLogic] 加载官方人员标识失败: $e');
+    }
+  }
+
+  void _refreshRevokeSilentFlagsForLoadedRoles() {
+    final touched = <String>{};
+    for (final msg in messageList) {
+      if (msg.contentType != MessageType.revokeMessageNotification) continue;
+      final detail = msg.notificationElem?.detail;
+      if (detail == null || detail.isEmpty) continue;
+      try {
+        final decoded = _decodeRevokeDetail(detail);
+        final revokerID = _stringFromMap(decoded, 'revokerID') ??
+            _stringFromMap(decoded, 'revokerUserID');
+        if (!_isAdminUserForRevoke(revokerID) ||
+            decoded['officialSilent'] == true) {
+          continue;
+        }
+        decoded['officialSilent'] = true;
+        msg.notificationElem = NotificationElem(detail: json.encode(decoded));
+        if (msg.clientMsgID != null) touched.add(msg.clientMsgID!);
+      } catch (_) {}
+    }
+    if (touched.isNotEmpty) {
+      _rebuildItemsByClientMsgID(touched);
+      update();
+    }
+  }
+
+  Future<void> _prepareRevokeSilentFlagsForMessages(
+    List<Message> messages,
+  ) async {
+    final revokerIDs = <String>{};
+    for (final msg in messages) {
+      if (msg.contentType != MessageType.revokeMessageNotification) continue;
+      final detail = msg.notificationElem?.detail;
+      if (detail == null || detail.isEmpty) continue;
+      try {
+        final decoded = _decodeRevokeDetail(detail);
+        final revokerID = _stringFromMap(decoded, 'revokerID') ??
+            _stringFromMap(decoded, 'revokerUserID');
+        if (revokerID != null &&
+            revokerID.isNotEmpty &&
+            !officialMessageUserMap.containsKey(revokerID)) {
+          revokerIDs.add(revokerID);
+        }
+      } catch (_) {}
+    }
+    if (revokerIDs.isNotEmpty) {
+      await Future.wait(revokerIDs.map(_ensureAdminRoleForRevoke));
+    }
+
+    for (final msg in messages) {
+      if (msg.contentType != MessageType.revokeMessageNotification) continue;
+      final detail = msg.notificationElem?.detail;
+      if (detail == null || detail.isEmpty) continue;
+      try {
+        final decoded = _decodeRevokeDetail(detail);
+        final revokerID = _stringFromMap(decoded, 'revokerID') ??
+            _stringFromMap(decoded, 'revokerUserID');
+        if (_isAdminUserForRevoke(revokerID) &&
+            decoded['officialSilent'] != true) {
+          decoded['officialSilent'] = true;
+          msg.notificationElem = NotificationElem(detail: json.encode(decoded));
+        }
+      } catch (_) {}
     }
   }
 
@@ -672,6 +792,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     searchMessage = arguments['searchMessage'];
     nickname.value = conversationInfo.showName ?? '';
     faceUrl.value = conversationInfo.faceURL ?? '';
+    if (isSingleChat) {
+      unawaited(_loadPeerLastLoginTime());
+    }
     _initChatConfig();
     _setSdkSyncDataListener();
 
@@ -708,7 +831,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     print('[ChatLogic] conversationInfo.showName=${conversationInfo.showName}');
     print('[ChatLogic] this.userID=$userID');
     print('[ChatLogic] this.groupID=$groupID');
-    print('[ChatLogic] OpenIM.iMManager.userID=${OpenIM.iMManager.userID}');
+    print('[ChatLogic] OpenIM.c.userID=${OpenIM.iMManager.userID}');
     print('[ChatLogic] isSingleChat=$isSingleChat');
     print('========================================');
 
@@ -719,7 +842,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     });
 
     revokedMessageSub =
-        imLogic.revokedMessageSubject.listen((RevokedInfo value) {
+        imLogic.revokedMessageSubject.listen((RevokedInfo value) async {
+      final detail = value.toJson();
+      final revokerID =
+          (detail['revokerID'] ?? detail['revokerUserID'])?.toString();
+      await _ensureAdminRoleForRevoke(revokerID);
       final updated = _applyRevokedInfo(value);
       if (!updated) {
         Future.microtask(_loadHistoryForSyncEnd);
@@ -783,6 +910,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       if (event.groupID == groupID) {
         isInGroup.value = false;
         inputCtrl.clear();
+        _closeInvalidGroupConversation('joinedGroupDeleted');
       }
     });
 
@@ -797,6 +925,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       if (info.groupID == groupID && info.userID == OpenIM.iMManager.userID) {
         isInGroup.value = false;
         inputCtrl.clear();
+        _closeInvalidGroupConversation('memberDeleted');
       }
     });
 
@@ -927,12 +1056,6 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   bool _applyRevokedInfo(RevokedInfo value) {
     final detail = value.toJson();
-    // dawn 2026-06-26 官方账号撤回不提示：撤回人是本群群主/群管理员(官方)时，
-    // 在撤回详情里打上 officialSilent 标记，提示视图据此不渲染"撤回了一条消息"。
-    // (团队长撤回仍正常显示提示)
-    final revokerID =
-        (detail['revokerID'] ?? detail['revokerUserID'])?.toString();
-    final officialSilent = _isGroupOwnerOrAdmin(revokerID);
     var updated = false;
     final touched = <String>{};
     for (var msg in messageList) {
@@ -941,7 +1064,6 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         updated = true;
         msg.contentType = MessageType.revokeMessageNotification;
         final normalized = _normalizeRevokeDetail(detail, msg);
-        if (officialSilent) normalized['officialSilent'] = true;
         msg.notificationElem = NotificationElem(
           detail: json.encode(normalized),
         );
@@ -961,6 +1083,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       // 重新赋同一个引用，触发 GetX list 元素变更事件，强制 itemBuilder rebuild。
       _rebuildItemsByClientMsgID(touched);
       update();
+    } else {
+      _rememberPendingRevoke(detail);
     }
     return updated;
   }
@@ -1069,7 +1193,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     } else if (revokerNickname == null || revokerNickname.isEmpty) {
       revokerNickname = _cachedNicknameForUser(revokerID);
     }
-    return <String, dynamic>{
+    final normalized = <String, dynamic>{
       'revokerID': revokerID ?? sourceSendID ?? OpenIM.iMManager.userID,
       'revokerRole': _intFromMap(detail, 'revokerRole') ?? 0,
       'clientMsgID':
@@ -1089,9 +1213,48 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       'seq': _intFromMap(detail, 'seq') ?? sourceMessage.seq ?? 0,
       'ex': _stringFromMap(detail, 'ex') ?? sourceMessage.ex ?? '',
     };
+    if (_isAdminUserForRevoke(normalized['revokerID']?.toString())) {
+      normalized['officialSilent'] = true;
+    }
+    return normalized;
   }
 
-  bool _applyRevokeDetail(Map<String, dynamic> detail) {
+  void _rememberPendingRevoke(Map<String, dynamic> detail) {
+    final target = _revokeTargetClientMsgID(detail);
+    final srcID = _stringFromMap(detail, 'sourceMessageSendID');
+    final srcTime = _intFromMap(detail, 'sourceMessageSendTime');
+    if ((target == null || target.isEmpty) &&
+        (srcID == null || srcTime == null)) {
+      return;
+    }
+    final key = target?.isNotEmpty == true ? target! : '$srcID|$srcTime';
+    final exists = _pendingRevokeDetails.any((item) {
+      final itemTarget = _revokeTargetClientMsgID(item);
+      final itemKey = itemTarget?.isNotEmpty == true
+          ? itemTarget!
+          : '${_stringFromMap(item, 'sourceMessageSendID')}|${_intFromMap(item, 'sourceMessageSendTime')}';
+      return itemKey == key;
+    });
+    if (!exists) {
+      _pendingRevokeDetails.add(Map<String, dynamic>.from(detail));
+    }
+  }
+
+  void _applyPendingRevokeDetails() {
+    if (_pendingRevokeDetails.isEmpty) return;
+    final pending = List<Map<String, dynamic>>.from(_pendingRevokeDetails);
+    for (final detail in pending) {
+      final applied = _applyRevokeDetail(detail, keepPendingOnMiss: false);
+      if (applied) {
+        _pendingRevokeDetails.remove(detail);
+      }
+    }
+  }
+
+  bool _applyRevokeDetail(
+    Map<String, dynamic> detail, {
+    bool keepPendingOnMiss = true,
+  }) {
     final targetClientMsgID = _revokeTargetClientMsgID(detail);
     // dawn 2026-04-27 增强：clientMsgID 命中不到时，按 sourceMessageSendID +
     // sourceMessageSendTime 双键再扫一遍，应对 SDK 偶尔不带回 clientMsgID 的情况。
@@ -1125,6 +1288,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (updated) {
       _rebuildItemsByClientMsgID(touched);
       update();
+    } else if (keepPendingOnMiss) {
+      _rememberPendingRevoke(detail);
     }
     return updated;
   }
@@ -1136,7 +1301,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   /// return true so the caller skips inserting the bare notification row,
   /// otherwise the receiver would see both the revoked placeholder AND the
   /// original message still sitting there.
-  bool _applyRevokeNotificationMessage(Message message) {
+  Future<bool> _applyRevokeNotificationMessage(Message message) async {
     final detail = message.notificationElem?.detail;
     if (detail == null || detail.isEmpty) {
       // dawn 2026-04-27 临时：跟踪 newMessage 路径上的 2101 处理
@@ -1147,7 +1312,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       return false;
     }
     try {
-      final ok = _applyRevokeDetail(_decodeRevokeDetail(detail));
+      final decodedDetail = _decodeRevokeDetail(detail);
+      final revokerID = _stringFromMap(decodedDetail, 'revokerID') ??
+          _stringFromMap(decodedDetail, 'revokerUserID');
+      await _ensureAdminRoleForRevoke(revokerID);
+      final ok = _applyRevokeDetail(decodedDetail);
       DebugLogUploader.send('apply_notif_msg', {
         'reason': ok ? 'ok' : 'no_match',
         'notificationClientMsgID': message.clientMsgID,
@@ -1238,6 +1407,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   /// 过滤后用于聊天列表展示的消息：去掉通话信令；群聊时去掉群通知类消息
   List<Message> _filterMessagesForChat(List<Message> messages) {
     var list = _filterCallSignalingMessages(messages);
+    if (isGroupChat) {
+      final currentGroupID = groupID ?? '';
+      if (currentGroupID.isNotEmpty) {
+        list = list.where((msg) {
+          final msgGroupID = msg.groupID ?? '';
+          return msgGroupID.isEmpty || msgGroupID == currentGroupID;
+        }).toList();
+      }
+    }
     // dawn 2026-04-27 临时调查：每次进入 fold 都统计一下 list 形态，看是否有
     // 同 clientMsgID 同时出现 text 和 2101 的真实证据；以及 fold 跑完最后剩多少条。
     var revokeCount = 0;
@@ -1644,9 +1822,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       _scheduleGroupInfoRefresh();
     }
     if (isGroupChat && message.isGroupChat && message.groupID == groupID) {
-      // dawn 2026-06-18 修复3万人群消息不同步：只要当前群有实时消息到达，
-      // 就低频补拉服务端最新页，补齐同一时间窗口内漏推的相邻消息。
-      unawaited(_syncLatestGroupPageFromServer(reason: 'recvGroupMessage'));
+      // 当前群有实时消息到达时，临时唤醒一次补拉，补齐同一时间窗口内可能漏推的相邻消息。
+      _triggerLatestGroupPageSync(reason: 'recvGroupMessage');
     }
 
     if (isCurrentChat(message)) {
@@ -1676,7 +1853,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           'currentChatUserID': userID,
           'isCurrent': isCurrentChat(message),
         });
-        final updated = _applyRevokeNotificationMessage(message);
+        final updated = await _applyRevokeNotificationMessage(message);
         if (!updated) {
           Future.microtask(_loadHistoryForSyncEnd);
         }
@@ -1720,6 +1897,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           _syncRxListWithMessageList();
           customChatListViewController.refresh();
         }
+        _applyPendingRevokeDetails();
 
         // 处理自定义消息（转账消息和红包消息）
         if (message.contentType == MessageType.custom &&
@@ -1783,23 +1961,30 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       if (bottomMessageRes.isEnd == true) {
         enabledBottomLoad.value = false;
 
-        customChatListViewController.insertAllToBottom([
+        final displayMessages = [
           ..._sortMessagesBySendTimeAsc(
               _filterMessagesForChat(topMessageRes.messageList ?? [])),
           searchMessage!,
           ..._sortMessagesBySendTimeAsc(
               _filterMessagesForChat(bottomMessageRes.messageList ?? []))
-        ]);
+        ];
+        await _prepareRevokeSilentFlagsForMessages(displayMessages);
+        customChatListViewController.insertAllToBottom(displayMessages);
       } else {
         enabledBottomLoad.value = true;
-        customChatListViewController.insertAllToTop([
+        final topDisplayMessages = [
           ..._sortMessagesBySendTimeAsc(
               _filterMessagesForChat(topMessageRes.messageList ?? [])),
           searchMessage!
+        ];
+        final bottomDisplayMessages = _sortMessagesBySendTimeAsc(
+            _filterMessagesForChat(bottomMessageRes.messageList ?? []));
+        await _prepareRevokeSilentFlagsForMessages([
+          ...topDisplayMessages,
+          ...bottomDisplayMessages,
         ]);
-        customChatListViewController.insertAllToBottom(
-            _sortMessagesBySendTimeAsc(
-                _filterMessagesForChat(bottomMessageRes.messageList ?? [])));
+        customChatListViewController.insertAllToTop(topDisplayMessages);
+        customChatListViewController.insertAllToBottom(bottomDisplayMessages);
       }
     }
     // 非搜索：仅拉一页（本地或群聊服务端最近一页），上滑时 onScrollToTopLoad 再按需拉更早历史
@@ -1807,6 +1992,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // 否则列表组件内部 _topHasMore 永远为 true 导致顶部一直转圈。(codex 协同定位)
     final hasMoreTop = await onScrollToTopLoad();
     enabledTopLoad.value = hasMoreTop;
+    // 客户端(dev-20260630)：首屏后补齐撤回详情。
+    _applyPendingRevokeDetails();
     // dawn 2026-06-21 新增官方人员标识：首屏消息渲染后异步补全认证图标，不阻塞进会话。
     unawaited(_loadOfficialRolesForMessages(messageList));
     unawaited(_syncLatestGroupPageFromServer(reason: 'init'));
@@ -3245,7 +3432,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     _groupMutedRefreshTimer?.cancel();
     _groupInfoDebounceTimer?.cancel();
     _groupMutedRetryTimer?.cancel();
-    _latestGroupPageSyncTimer?.cancel();
+    _stopLatestGroupPageSyncTimer();
 
     _debounce?.cancel();
     GetTags.destroyChatTag();
@@ -3267,9 +3454,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (!_isAppInForeground) {
       // 切换到后台：清除活跃会话，启用推送通知
       appLogic.clearActiveConversation();
+      _stopLatestGroupPageSyncTimer();
     } else if (wasInBackground) {
       // 从后台返回前台：恢复会话并同步消息
       appLogic.setActiveConversation(conversationInfo.conversationID);
+      _ensureLatestGroupPageSyncTimer(reason: 'resume');
 
       // 延迟执行，确保 UI 完全恢复
       Future.delayed(Duration(milliseconds: 300), () async {
@@ -3283,7 +3472,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           );
 
           if (result.messageList != null && result.messageList!.isNotEmpty) {
-            _mergeHistoryMessages(result.messageList!);
+            await _mergeHistoryMessages(result.messageList!);
           } else {
             // 即使没有新消息，也对当前列表做一次排序，保证顺序一致
             final fullList = messageList;
@@ -3317,7 +3506,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         // 标记未读消息为已读
         try {
           final unreadMsgs = messageList
-              .where((m) => m.isRead != true && m.sendID != OpenIM.iMManager.userID)
+              .where((m) =>
+                  m.isRead != true && m.sendID != OpenIM.iMManager.userID)
               .toList();
 
           if (unreadMsgs.isNotEmpty) {
@@ -3449,10 +3639,29 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       groupID: groupID!,
     );
     if (!isInGroup.value) {
+      _closeInvalidGroupConversation('isJoinedGroup=false');
       return;
     }
     _queryGroupInfo();
     _queryOwnerAndAdmin();
+  }
+
+  Future<void> _closeInvalidGroupConversation(String reason) async {
+    if (!isGroupChat || _closingInvalidGroupConversation) return;
+    _closingInvalidGroupConversation = true;
+    final conversationID = conversationInfo.conversationID;
+    inputCtrl.clear();
+    try {
+      if (conversationID.isNotEmpty) {
+        await OpenIM.iMManager.conversationManager
+            .deleteConversationAndDeleteAllMsg(conversationID: conversationID);
+      }
+    } catch (e) {
+      ILogger.d('[ChatLogic] 清理已退出群会话失败: $reason, $e');
+    }
+    if (!isClosed && Get.currentRoute.isNotEmpty) {
+      Get.back();
+    }
   }
 
   void _queryGroupInfo() async {
@@ -3692,8 +3901,22 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   /// 将服务端 PullMessageBySeqs 返回的单条 MsgData（Map）转为 SDK Message 并写入本地
   Future<Message?> _insertServerMsgToLocal(
       Map<String, dynamic> raw, String groupID) async {
-    final msg = _messageFromServerRaw(raw);
+    if (!_serverRawBelongsToGroup(raw, groupID)) {
+      ILogger.w(
+          '[群聊补拉] 跳过非当前群消息 expected=$groupID rawGroupID=${raw['groupID']} recvID=${raw['recvID']} clientMsgID=${raw['clientMsgID']}');
+      return null;
+    }
+
+    final msg = _messageFromServerRaw(raw, groupID);
     if (msg == null) return null;
+    if (!_messageBelongsToCurrentConversation(msg)) {
+      ILogger.w(
+          '[群聊补拉] 跳过非当前会话消息 currentGroupID=${this.groupID} msgGroupID=${msg.groupID} clientMsgID=${msg.clientMsgID}');
+      return null;
+    }
+    if (_hasServerPulledMessage(msg)) {
+      return null;
+    }
     final sendID = raw['sendID'] as String? ?? '';
     // dawn 2026-06-29 修复大群补拉历史消息时间变今天：SDK insertGroupMessageToLocalStorage
     // 会用"当前时间"覆盖 sendTime 且【重写 clientMsgID】(该方法本用于插入新本地消息)，导致
@@ -3719,11 +3942,45 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       // 也先返回给当前 UI 合并展示；下次进入仍会再次从服务端补偿。
       ILogger.d('_insertServerMsgToLocal parse/insert error: $e');
     }
+    _rememberServerPulledMessage(msg);
     return msg;
   }
 
+  bool _serverRawBelongsToGroup(
+      Map<String, dynamic> raw, String expectedGroupID) {
+    final rawGroupID = raw['groupID']?.toString() ?? '';
+    final recvID = raw['recvID']?.toString() ?? '';
+    if (expectedGroupID.isEmpty) return true;
+    if (rawGroupID.isNotEmpty && rawGroupID != expectedGroupID) return false;
+    if (rawGroupID.isEmpty && recvID.isNotEmpty && recvID != expectedGroupID) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _messageBelongsToCurrentConversation(Message msg) {
+    if (!isGroupChat) return true;
+    final currentGroupID = groupID ?? '';
+    final msgGroupID = msg.groupID ?? '';
+    if (currentGroupID.isEmpty || msgGroupID.isEmpty) return true;
+    return msgGroupID == currentGroupID;
+  }
+
+  bool _hasServerPulledMessage(Message msg) {
+    final keys = customChatListViewController._messageKeys(msg);
+    if (keys.isEmpty) return false;
+    return keys.any(_serverPulledMessageKeys.contains) ||
+        customChatListViewController._hasExistingMessage(msg);
+  }
+
+  void _rememberServerPulledMessage(Message msg) {
+    _serverPulledMessageKeys
+        .addAll(customChatListViewController._messageKeys(msg));
+  }
+
   // dawn 2026-06-18 修复3万人群消息不同步：复用服务端消息转换结果，补拉后可直接合并到 UI。
-  Message? _messageFromServerRaw(Map<String, dynamic> raw) {
+  Message? _messageFromServerRaw(
+      Map<String, dynamic> raw, String expectedGroupID) {
     final sendID = raw['sendID'] as String? ?? '';
     final contentType = raw['contentType'] as int? ?? 0;
     final content = raw['content'];
@@ -3755,7 +4012,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       'senderPlatformID': raw['senderPlatformID'],
       'senderNickname': raw['senderNickname'],
       'senderFaceUrl': raw['senderFaceURL'],
-      'groupID': raw['groupID'],
+      'groupID': raw['groupID'] ?? expectedGroupID,
       'seq': raw['seq'],
       'isRead': raw['isRead'],
       'status': raw['status'] ?? 2,
@@ -3871,47 +4128,116 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   void _ensureLatestGroupPageSyncTimer({required String reason}) {
-    if (!isGroupChat) return;
-    final count = memberCount.value;
-    if (count < _largeGroupLatestSyncThreshold) return;
-    if (_latestGroupPageSyncTimer != null) return;
+    if (!_shouldRunLatestGroupPageSync) return;
+    _latestGroupPageSyncEnabled = true;
+    if (_latestGroupPageSyncTimer != null || _syncingLatestGroupPage) return;
 
-    // dawn 2026-06-18 修复3万人群消息不同步：只对当前打开的大群启用低频补偿轮询。
-    // 普通群继续依赖 SDK 实时推送，避免无谓增加服务端请求。
-    _latestGroupPageSyncTimer = Timer.periodic(
-      const Duration(seconds: _largeGroupLatestSyncSeconds),
-      (_) => unawaited(
-        _syncLatestGroupPageFromServer(reason: 'largeGroupTimer'),
-      ),
-    );
-    unawaited(_syncLatestGroupPageFromServer(reason: reason));
+    // 只对当前打开的大群启用补偿轮询；每轮结束后按是否有新消息自适应退避。
+    unawaited(_syncLatestGroupPageFromServer(
+      reason: reason,
+      scheduleNext: true,
+    ));
   }
 
-  Future<void> _syncLatestGroupPageFromServer({required String reason}) async {
+  bool get _shouldRunLatestGroupPageSync =>
+      isGroupChat &&
+      _isAppInForeground &&
+      memberCount.value >= _largeGroupLatestSyncThreshold &&
+      (conversationInfo.groupID ?? '').isNotEmpty;
+
+  void _stopLatestGroupPageSyncTimer() {
+    _latestGroupPageSyncEnabled = false;
+    _latestGroupPageSyncTimer?.cancel();
+    _latestGroupPageSyncTimer = null;
+  }
+
+  void _triggerLatestGroupPageSync({required String reason}) {
+    if (!_shouldRunLatestGroupPageSync) return;
+    _latestGroupPageSyncEnabled = true;
+    _latestGroupPageIdleRounds = 0;
+    _latestGroupPageSyncTimer?.cancel();
+    _latestGroupPageSyncTimer = null;
+    unawaited(_syncLatestGroupPageFromServer(
+      reason: reason,
+      scheduleNext: true,
+    ));
+  }
+
+  void _scheduleNextLatestGroupPageSync({required bool hadNewMessages}) {
+    if (!_latestGroupPageSyncEnabled || !_shouldRunLatestGroupPageSync) {
+      _stopLatestGroupPageSyncTimer();
+      return;
+    }
+
+    if (hadNewMessages) {
+      _latestGroupPageIdleRounds = 0;
+    } else {
+      _latestGroupPageIdleRounds++;
+    }
+
+    final seconds = hadNewMessages
+        ? _largeGroupLatestSyncFastSeconds
+        : (_latestGroupPageIdleRounds >= _largeGroupLatestSyncIdleThreshold
+            ? _largeGroupLatestSyncIdleSeconds
+            : _largeGroupLatestSyncNormalSeconds);
+
+    _latestGroupPageSyncTimer?.cancel();
+    _latestGroupPageSyncTimer = Timer(Duration(seconds: seconds), () {
+      _latestGroupPageSyncTimer = null;
+      if (!_latestGroupPageSyncEnabled || !_shouldRunLatestGroupPageSync) {
+        _stopLatestGroupPageSyncTimer();
+        return;
+      }
+      unawaited(_syncLatestGroupPageFromServer(
+        reason: 'largeGroupTimer',
+        scheduleNext: true,
+      ));
+    });
+  }
+
+  Future<void> _syncLatestGroupPageFromServer({
+    required String reason,
+    bool scheduleNext = false,
+  }) async {
     if (searchMessage != null || !isGroupChat || _syncingLatestGroupPage) {
+      if (scheduleNext) {
+        _scheduleNextLatestGroupPageSync(hadNewMessages: false);
+      }
       return;
     }
     final currentGroupID = conversationInfo.groupID ?? '';
-    if (currentGroupID.isEmpty) return;
+    if (currentGroupID.isEmpty) {
+      if (scheduleNext) {
+        _scheduleNextLatestGroupPageSync(hadNewMessages: false);
+      }
+      return;
+    }
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastLatestGroupPageSyncMs < 2000) return;
+    if (now - _lastLatestGroupPageSyncMs < 2000) {
+      if (scheduleNext) {
+        _scheduleNextLatestGroupPageSync(hadNewMessages: false);
+      }
+      return;
+    }
 
     _syncingLatestGroupPage = true;
     _lastLatestGroupPageSyncMs = now;
+    var inserted = 0;
     try {
       final latestMessages = <Message>[];
       // dawn 2026-06-18 修复3万人群消息不同步：当前群进入/同步结束后主动补服务端最新一页。
       // 只读 SDK 本地缓存时，弱网或超大群偶发停在旧 seq；直接补拉服务端最新 50 条并合并到 UI。
-      final (inserted, _) = await _pullGroupHistoryFromServer(
+      final (insertedCount, _) = await _pullGroupHistoryFromServer(
         conversationID: conversationInfo.conversationID,
         groupID: currentGroupID,
         endSeq: null,
         count: _initialHistoryPageSize,
         insertedMessages: latestMessages,
       );
+      inserted = insertedCount;
       if (latestMessages.isNotEmpty) {
-        _mergeHistoryMessages(latestMessages);
+        await _mergeHistoryMessages(latestMessages);
       } else if (inserted > 0) {
         final result =
             await OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
@@ -3920,7 +4246,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           startMsg: null,
         );
         if (result.messageList != null && result.messageList!.isNotEmpty) {
-          _mergeHistoryMessages(result.messageList!);
+          await _mergeHistoryMessages(result.messageList!);
         }
       }
       ILogger.d(
@@ -3929,6 +4255,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       ILogger.w('[群聊最新补拉] reason=$reason error=$e');
     } finally {
       _syncingLatestGroupPage = false;
+      if (scheduleNext) {
+        _scheduleNextLatestGroupPageSync(hadNewMessages: inserted > 0);
+      }
     }
   }
 
@@ -4061,6 +4390,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       enabledTopLoad.value = false;
       return false;
     }
+
+    await _prepareRevokeSilentFlagsForMessages(filteredList);
 
     if (searchMessage == null && _isFirstLoad) {
       customChatListViewController.insertAllToBottom(filteredList);
@@ -4238,10 +4569,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       startMsg: null,
     );
     if (result.messageList == null || result.messageList!.isEmpty) return;
-    _mergeHistoryMessages(result.messageList!);
+    await _mergeHistoryMessages(result.messageList!);
   }
 
-  void _mergeHistoryMessages(List<Message> messages) {
+  Future<void> _mergeHistoryMessages(List<Message> messages) async {
     // dawn 2026-06-30 同步/补拉进来的消息也套 5 小时窗口,不把超窗旧消息合并进可见列表。
     final incoming = _applyGroupHistoryWindow(
       _sortMessagesBySendTimeAsc(_filterMessagesForChat(messages)),
@@ -4273,10 +4604,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final fullList = _applyGroupHistoryWindow(
       _sortMessagesBySendTimeAsc(_filterMessagesForChat(messageList)),
     );
+    // 客户端(dev-20260630)：重建后为撤回消息准备静默标记。
+    await _prepareRevokeSilentFlagsForMessages(fullList);
     customChatListViewController.clear();
     customChatListViewController.insertAllToBottom(fullList);
     _syncRxListWithMessageList();
     customChatListViewController.refresh();
+    _applyPendingRevokeDetails();
     // dawn 2026-06-21 新增官方人员标识：历史合并后补全新增发送人的认证状态。
     unawaited(_loadOfficialRolesForMessages(fullList));
     update();
@@ -4837,11 +5171,29 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         break;
       case MessageOperationType.revoke:
         focusNode.unfocus();
+        if (!canRevokeMessages) {
+          IMViews.showToast(StrRes.revokeFailed);
+          break;
+        }
         try {
-          await OpenIM.iMManager.messageManager.revokeMessage(
-            conversationID: conversationInfo.conversationID,
-            clientMsgID: message.clientMsgID!,
-          );
+          final isOwnMessage = message.sendID == OpenIM.iMManager.userID;
+          if (isOwnMessage) {
+            await OpenIM.iMManager.messageManager.revokeMessage(
+              conversationID: conversationInfo.conversationID,
+              clientMsgID: message.clientMsgID!,
+            );
+          } else {
+            final seq = message.seq;
+            if (seq == null || seq <= 0) {
+              IMViews.showToast(StrRes.revokeFailed);
+              break;
+            }
+            await Apis.revokeChatMessage(
+              conversationID: conversationInfo.conversationID,
+              seq: seq,
+              userID: OpenIM.iMManager.userID,
+            );
+          }
           _applyRevokeDetail(<String, dynamic>{
             'revokerID': OpenIM.iMManager.userID,
             'clientMsgID': message.clientMsgID,

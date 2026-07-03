@@ -87,6 +87,8 @@ class Urls {
       "${Config.appAuthUrl}/third/organization/join_using_invitation_code";
   static final checkUserProtection =
       "${Config.appAuthUrl}/third_admin/organization/internal/check_user_protection";
+  static final chatMessageRevoke =
+      "${Config.appAuthUrl}/third_admin/message/revoke";
   static final appLogUpload = "${Config.appAuthUrl}/third/app_log/upload";
   // dawn 2026-05-15 修复手机端发送方敏感词未脱敏：客户端发送前读取启用词表。
   static final sensitiveWordEnabled =

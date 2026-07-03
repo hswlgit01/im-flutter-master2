@@ -1,11 +1,17 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:openim/utils/log_util.dart';
 import 'package:openim_common/src/models/withdrawal_info.dart';
 import 'package:openim_common/src/models/payment_method.dart';
 import 'package:openim/routes/app_pages.dart';
+import 'package:path_provider/path_provider.dart';
 import '../wallet_logic.dart';
 import 'package:openim_common/openim_common.dart';
 
@@ -13,7 +19,7 @@ class WithdrawalPage extends StatefulWidget {
   final WithdrawalRule rule;
   final List<WithdrawalAccount> accounts;
   final VoidCallback? onSuccess;
-  
+
   const WithdrawalPage({
     super.key,
     required this.rule,
@@ -39,6 +45,10 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
 
   // 提现结果
   Map<String, dynamic>? _withdrawalResult;
+  final ImagePicker _picker = ImagePicker();
+  File? _handheldIdCardPhotoFile;
+  String? _handheldIdCardPhotoUrl;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -59,14 +69,16 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
 
   // 选择默认币种（余额最多的）
   void _selectDefaultCurrency() {
-    final currencies = logic.walletController.balanceDetail.value?.currency ?? [];
+    final currencies =
+        logic.walletController.balanceDetail.value?.currency ?? [];
     if (currencies.isEmpty) return;
 
     double maxBalance = 0;
     int maxIndex = 0;
 
     for (int i = 0; i < currencies.length; i++) {
-      final balance = num.tryParse(currencies[i].balanceInfo?.availableBalance ?? '0') ?? 0;
+      final balance =
+          num.tryParse(currencies[i].balanceInfo?.availableBalance ?? '0') ?? 0;
       if (balance > maxBalance) {
         maxBalance = balance.toDouble();
         maxIndex = i;
@@ -75,20 +87,23 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
 
     _selectedCurrencyIndex = maxIndex;
   }
-  
+
   @override
   void dispose() {
     _amountController.dispose();
     _amountFocusNode.dispose();
     super.dispose();
   }
-  
+
   // 计算实际到账金额和手续费
   void _calculateAmount() {
     final amount = double.tryParse(_amountController.text) ?? 0;
 
     // 将金额换算成人民币（手续费按人民币计算）
-    final exchangeRate = num.tryParse(_selectedCurrency?.currencyInfo?.exchangeRate ?? '1')?.toDouble() ?? 1.0;
+    final exchangeRate =
+        num.tryParse(_selectedCurrency?.currencyInfo?.exchangeRate ?? '1')
+                ?.toDouble() ??
+            1.0;
     final cnyRate = logic.rate.value;
     final amountInCNY = amount * exchangeRate * cnyRate;
 
@@ -109,7 +124,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       _actualAmount = amount - feeInCurrency; // 实际到账用原币种
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -125,9 +140,12 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
             // 提现金额输入
             _buildAmountInput(),
             SizedBox(height: 20.h),
-            
+
             // 提现规则
             _buildWithdrawalRules(),
+            SizedBox(height: 20.h),
+
+            _buildHandheldIdCardPhotoUpload(),
             SizedBox(height: 20.h),
 
             // 提现方式选择
@@ -150,10 +168,11 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       ),
     );
   }
-  
+
   // 获取当前选中的币种信息
   dynamic get _selectedCurrency {
-    final currencies = logic.walletController.balanceDetail.value?.currency ?? [];
+    final currencies =
+        logic.walletController.balanceDetail.value?.currency ?? [];
     if (currencies.isEmpty || _selectedCurrencyIndex >= currencies.length) {
       return null;
     }
@@ -164,7 +183,9 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
   double get _currentBalance {
     final currency = _selectedCurrency;
     if (currency == null) return 0;
-    return num.tryParse(currency.balanceInfo?.availableBalance ?? '0')?.toDouble() ?? 0;
+    return num.tryParse(currency.balanceInfo?.availableBalance ?? '0')
+            ?.toDouble() ??
+        0;
   }
 
   // 获取当前币种的符号
@@ -189,7 +210,9 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
     if (currency == null) return amount * 7.0; // 默认汇率
 
     // 获取当前币种兑人民币汇率
-    final exchangeRate = num.tryParse(currency.currencyInfo?.exchangeRate ?? '1')?.toDouble() ?? 1.0;
+    final exchangeRate =
+        num.tryParse(currency.currencyInfo?.exchangeRate ?? '1')?.toDouble() ??
+            1.0;
     final cnyRate = logic.rate.value; // 用户选择的货币汇率
 
     // 先转换为USD，再转换为CNY
@@ -272,7 +295,9 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                 itemCount: currencies.length,
                 itemBuilder: (context, index) {
                   final currency = currencies[index];
-                  final balance = num.tryParse(currency.balanceInfo?.availableBalance ?? '0') ?? 0;
+                  final balance = num.tryParse(
+                          currency.balanceInfo?.availableBalance ?? '0') ??
+                      0;
                   final name = currency.currencyInfo?.name ?? '';
                   final isSelected = index == _selectedCurrencyIndex;
 
@@ -285,7 +310,8 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                       Navigator.pop(context);
                     },
                     child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+                      padding: EdgeInsets.symmetric(
+                          horizontal: 16.w, vertical: 14.h),
                       decoration: BoxDecoration(
                         color: isSelected ? Color(0xFFF0F8FF) : Colors.white,
                       ),
@@ -336,7 +362,8 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
 
   // 金额输入区域
   Widget _buildAmountInput() {
-    final currencies = logic.walletController.balanceDetail.value?.currency ?? [];
+    final currencies =
+        logic.walletController.balanceDetail.value?.currency ?? [];
 
     return Container(
       padding: EdgeInsets.all(16.w),
@@ -375,15 +402,15 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-              if (currencies.isEmpty)
-                SizedBox(width: 8.w),
+              if (currencies.isEmpty) SizedBox(width: 8.w),
               Expanded(
                 child: TextField(
                   controller: _amountController,
                   focusNode: _amountFocusNode,
                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                    FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d{0,2}')),
                   ],
                   decoration: InputDecoration(
                     hintText: StrRes.enterAmount,
@@ -432,7 +459,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
               color: Color(0xFF999999),
             ),
           ),
-          
+
           // 手续费显示（人民币）
           if (_fee > 0) ...[
             SizedBox(height: 8.h),
@@ -472,7 +499,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       ),
     );
   }
-  
+
   // 提现规则
   Widget _buildWithdrawalRules() {
     return Container(
@@ -496,15 +523,18 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
 
           // 规则列表
           if (widget.rule.minAmount != null)
-            _buildRuleItem('1. ${widget.rule.minAmount!.toStringAsFixed(2)}${StrRes.minWithdrawal}'),
+            _buildRuleItem(
+                '1. ${widget.rule.minAmount!.toStringAsFixed(2)}${StrRes.minWithdrawal}'),
           if (widget.rule.maxAmount != null)
-            _buildRuleItem('2. ${StrRes.singleTransaction}${widget.rule.maxAmount!.toStringAsFixed(2)}${StrRes.maxWithdrawal}'),
-          _buildRuleItem('3. ${StrRes.withdrawalInstructions} 1-3 ${StrRes.businessDays}'),
+            _buildRuleItem(
+                '2. ${StrRes.singleTransaction}${widget.rule.maxAmount!.toStringAsFixed(2)}${StrRes.maxWithdrawal}'),
+          _buildRuleItem(
+              '3. ${StrRes.withdrawalInstructions} 1-3 ${StrRes.businessDays}'),
         ],
       ),
     );
   }
-  
+
   Widget _buildRuleItem(String text) {
     return Padding(
       padding: EdgeInsets.only(bottom: 8.h),
@@ -531,10 +561,12 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       ),
     );
   }
-  
-  // 账户选择
-  Widget _buildAccountSelection() {
-    return Obx(() => Container(
+
+  Widget _buildHandheldIdCardPhotoUpload() {
+    final hasPhoto = _handheldIdCardPhotoFile != null ||
+        (_handheldIdCardPhotoUrl?.isNotEmpty == true);
+
+    return Container(
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -543,124 +575,350 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
+              Text(
+                '手持身份证照片',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  color: Color(0xFF0C1C33),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(width: 4.w),
+              Text(
+                '*',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  color: Color(0xFFFF4D4F),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
           Text(
-            StrRes.withdrawTo,
+            '每次提现都需要上传本人手持身份证照片，用于本次提现审核。',
             style: TextStyle(
-              fontSize: 16.sp,
-              color: Color(0xFF0C1C33),
-              fontWeight: FontWeight.w500,
+              fontSize: 12.sp,
+              color: Color(0xFF999999),
             ),
           ),
           SizedBox(height: 12.h),
-
-          ...logic.withdrawalAccounts.map((account) {
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedAccount = account;
-                });
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(vertical: 12.h),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Color(0xFFE8EAEF),
-                      width: 0.5,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    // 图标
-                    _buildAccountIcon(account.type),
-                    SizedBox(width: 12.w),
-                    
-                    // 账户信息
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _getLocalizedAccountText(account), // 使用本地化方法
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              color: Color(0xFF0C1C33),
-                            ),
-                          ),
-                          if (account.accountName != null) ...[
-                            SizedBox(height: 4.h),
-                            Text(
-                              '${StrRes.accountName}: ${account.accountName!}',
-                              style: TextStyle(
-                                fontSize: 12.sp,
-                                color: Color(0xFF999999),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    
-                    // 单选按钮
-                    Container(
-                      width: 20.w,
-                      height: 20.w,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: _selectedAccount?.id == account.id 
-                              ? Color(0xFF0089FF) 
-                              : Color(0xFFD9D9D9),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: _selectedAccount?.id == account.id
-                          ? Center(
-                              child: Container(
-                                width: 10.w,
-                                height: 10.w,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFF0089FF),
-                                ),
-                              ),
-                            )
-                          : null,
-                    ),
-                  ],
+          GestureDetector(
+            onTap: _pickHandheldIdCardPhoto,
+            child: Container(
+              width: double.infinity,
+              height: 150.h,
+              decoration: BoxDecoration(
+                color: Color(0xFFF8F9FA),
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(
+                  color: hasPhoto ? Color(0xFF0089FF) : Color(0xFFE8EAEF),
                 ),
               ),
-            );
-          }).toList(),
-          
-          // 添加新账户按钮
-          GestureDetector(
-            onTap: _addNewAccount,
-            child: Container(
-              padding: EdgeInsets.symmetric(vertical: 16.h),
-              child: Row(
+              child: Stack(
                 children: [
-                  Icon(
-                    Icons.add_circle_outline,
-                    size: 20.w,
-                    color: Color(0xFF0089FF),
+                  Positioned.fill(
+                    child: hasPhoto
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(8.r),
+                            child: _handheldIdCardPhotoFile != null
+                                ? Image.file(
+                                    _handheldIdCardPhotoFile!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Center(
+                                    child: Text(
+                                      '已上传',
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        color: Color(0xFF0089FF),
+                                      ),
+                                    ),
+                                  ),
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.add_a_photo_outlined,
+                                size: 36.w,
+                                color: Color(0xFF999999),
+                              ),
+                              SizedBox(height: 8.h),
+                              Text(
+                                '点击上传照片',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  color: Color(0xFF666666),
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
-                  SizedBox(width: 8.w),
-                  Text(
-                    StrRes.addAccount,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: Color(0xFF0089FF),
+                  if (hasPhoto)
+                    Positioned(
+                      right: 8.w,
+                      top: 8.h,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _handheldIdCardPhotoFile = null;
+                            _handheldIdCardPhotoUrl = null;
+                          });
+                        },
+                        child: Container(
+                          width: 26.w,
+                          height: 26.w,
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            size: 16.w,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
           ),
         ],
       ),
-    ));
+    );
+  }
+
+  Future<File?> _persistPickedImage(XFile xFile) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final ext = xFile.name.contains('.')
+          ? xFile.name.substring(xFile.name.lastIndexOf('.'))
+          : '.jpg';
+      final name =
+          'withdrawal_handheld_${DateTime.now().millisecondsSinceEpoch}_${xFile.name.hashCode & 0x7fffffff}$ext';
+      final dest = File('${dir.path}/$name');
+
+      try {
+        await xFile.saveTo(dest.path);
+        if (await dest.exists() && await dest.length() > 0) {
+          return dest;
+        }
+      } catch (_) {}
+
+      try {
+        final source = File(xFile.path);
+        if (await source.exists()) {
+          final copied = await source.copy(dest.path);
+          if (await copied.exists() && await copied.length() > 0) {
+            return copied;
+          }
+        }
+      } catch (_) {}
+
+      final bytes = await xFile.readAsBytes();
+      if (bytes.isEmpty) return null;
+      await dest.writeAsBytes(bytes, flush: true);
+      return dest;
+    } catch (e) {
+      LogUtil.e('WithdrawalPage', '保存手持身份证照片失败: $e');
+      return null;
+    }
+  }
+
+  Future<void> _pickHandheldIdCardPhoto() async {
+    final source = await Get.bottomSheet<ImageSource>(
+      Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.camera_alt),
+                title: Text('拍照'),
+                onTap: () => Get.back(result: ImageSource.camera),
+              ),
+              Divider(height: 1),
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('从相册选择'),
+                onTap: () => Get.back(result: ImageSource.gallery),
+              ),
+              Divider(height: 1),
+              ListTile(
+                leading: Icon(Icons.cancel),
+                title: Text('取消', style: TextStyle(color: Colors.red)),
+                onTap: () => Get.back(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    try {
+      final image = await _picker.pickImage(
+        source: source,
+        maxWidth: 1080,
+        maxHeight: 1080,
+        imageQuality: 85,
+      );
+      if (image == null) return;
+
+      final file = await _persistPickedImage(image);
+      if (!mounted) return;
+      if (file == null) {
+        IMViews.showToast('保存照片失败，请重新选择');
+        return;
+      }
+
+      setState(() {
+        _handheldIdCardPhotoFile = file;
+        _handheldIdCardPhotoUrl = null;
+      });
+    } catch (e) {
+      LogUtil.e('WithdrawalPage', '选择手持身份证照片失败: $e');
+      IMViews.showToast('选择照片失败: $e');
+    }
+  }
+
+  // 账户选择
+  Widget _buildAccountSelection() {
+    return Obx(() => Container(
+          padding: EdgeInsets.all(16.w),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8.r),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                StrRes.withdrawTo,
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  color: Color(0xFF0C1C33),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(height: 12.h),
+
+              ...logic.withdrawalAccounts.map((account) {
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedAccount = account;
+                    });
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Color(0xFFE8EAEF),
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        // 图标
+                        _buildAccountIcon(account.type),
+                        SizedBox(width: 12.w),
+
+                        // 账户信息
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _getLocalizedAccountText(account), // 使用本地化方法
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  color: Color(0xFF0C1C33),
+                                ),
+                              ),
+                              if (account.accountName != null) ...[
+                                SizedBox(height: 4.h),
+                                Text(
+                                  '${StrRes.accountName}: ${account.accountName!}',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: Color(0xFF999999),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+
+                        // 单选按钮
+                        Container(
+                          width: 20.w,
+                          height: 20.w,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _selectedAccount?.id == account.id
+                                  ? Color(0xFF0089FF)
+                                  : Color(0xFFD9D9D9),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: _selectedAccount?.id == account.id
+                              ? Center(
+                                  child: Container(
+                                    width: 10.w,
+                                    height: 10.w,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Color(0xFF0089FF),
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+
+              // 添加新账户按钮
+              GestureDetector(
+                onTap: _addNewAccount,
+                child: Container(
+                  padding: EdgeInsets.symmetric(vertical: 16.h),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.add_circle_outline,
+                        size: 20.w,
+                        color: Color(0xFF0089FF),
+                      ),
+                      SizedBox(width: 8.w),
+                      Text(
+                        StrRes.addAccount,
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: Color(0xFF0089FF),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ));
   }
 
   Widget _buildAccountIcon(String? type) {
@@ -717,15 +975,20 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
         );
     }
   }
-  
+
   // 提交按钮
   Widget _buildSubmitButton() {
     final amount = double.tryParse(_amountController.text) ?? 0;
-    final totalBalance = num.parse(logic.walletController.balanceDetail.value?.totalBalanceUsd ?? "0");
-    final isAmountValid = amount >= (widget.rule.minAmount ?? 0) && amount <= totalBalance;
+    final totalBalance = num.parse(
+        logic.walletController.balanceDetail.value?.totalBalanceUsd ?? "0");
+    final isAmountValid =
+        amount >= (widget.rule.minAmount ?? 0) && amount <= totalBalance;
     final isAccountSelected = _selectedAccount != null;
-    final isFormValid = isAmountValid && isAccountSelected;
-    
+    final isPhotoReady = _handheldIdCardPhotoFile != null ||
+        (_handheldIdCardPhotoUrl?.isNotEmpty == true);
+    final isFormValid =
+        isAmountValid && isAccountSelected && isPhotoReady && !_isSubmitting;
+
     return SizedBox(
       width: double.infinity,
       height: 44.h,
@@ -738,7 +1001,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
           ),
         ),
         child: Text(
-          StrRes.submitApplication,
+          _isSubmitting ? '提交中...' : StrRes.submitApplication,
           style: TextStyle(
             fontSize: 16.sp,
             color: Colors.white,
@@ -747,7 +1010,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       ),
     );
   }
-  
+
   // 添加新账户
   void _addNewAccount() async {
     // 跳转到收款方式管理页面
@@ -761,12 +1024,15 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
         final updatedAccounts = methods.map((pm) {
           return WithdrawalAccount(
             id: pm.id,
-            type: pm.type == PaymentMethodType.bankCard ? 'bank' : (pm.type == PaymentMethodType.wechat ? 'wechat' : 'alipay'),
+            type: pm.type == PaymentMethodType.bankCard
+                ? 'bank'
+                : (pm.type == PaymentMethodType.wechat ? 'wechat' : 'alipay'),
             accountName: pm.accountName,
             accountNumber: pm.cardNumber,
             bankName: pm.bankName,
             bankBranch: pm.branchName,
-            alipayAccount: pm.type == PaymentMethodType.alipay ? pm.accountName : null,
+            alipayAccount:
+                pm.type == PaymentMethodType.alipay ? pm.accountName : null,
             isDefault: pm.isDefault,
           );
         }).toList();
@@ -792,7 +1058,7 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       IMViews.showToast('刷新失败: $e');
     }
   }
-  
+
   // 提交提现申请
   void _submitWithdrawal() async {
     final amount = double.parse(_amountController.text);
@@ -809,6 +1075,12 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       return;
     }
 
+    if (_handheldIdCardPhotoFile == null &&
+        (_handheldIdCardPhotoUrl?.isNotEmpty != true)) {
+      IMViews.showToast('请上传手持身份证照片');
+      return;
+    }
+
     // 检查是否有未完成的提现
     try {
       final pendingCheck = await Apis.checkPendingWithdrawal();
@@ -816,7 +1088,8 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
         final pendingInfo = pendingCheck['pendingWithdrawal'];
         final orderNo = pendingInfo['orderNo'] ?? '';
         final statusText = pendingInfo['statusText'] ?? '';
-        IMViews.showToast('您有一个提现申请正在处理中(订单号: $orderNo, 状态: $statusText),请等待完成后再申请新的提现');
+        IMViews.showToast(
+            '您有一个提现申请正在处理中(订单号: $orderNo, 状态: $statusText),请等待完成后再申请新的提现');
         return;
       }
     } catch (e) {
@@ -844,11 +1117,11 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       Get.back();
     }
   }
-  
+
   // 显示支付密码输入框
   Future<String?> _showPasswordDialog() async {
     final controller = TextEditingController();
-    
+
     return await Get.dialog<String>(
       Dialog(
         shape: RoundedRectangleBorder(
@@ -905,9 +1178,13 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       ),
     );
   }
-  
+
   // 处理提现申请
   Future<bool> _processWithdrawal(double amount, String password) async {
+    setState(() {
+      _isSubmitting = true;
+    });
+
     try {
       // 获取当前选中的币种ID
       String? currencyId;
@@ -916,16 +1193,19 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
         currencyId = currency.currencyInfo!.id!;
       }
 
+      final photoUrl = await _ensureHandheldIdCardPhotoUploaded();
+
       // 调用真实的提现API
       final result = await Apis.submitWithdrawal(
         amount: amount,
         paymentMethodId: _selectedAccount!.id!,
         payPassword: password,
-        currencyId: currencyId,  // 传递币种ID
+        currencyId: currencyId, // 传递币种ID
+        handheldIdCardPhotoUrl: photoUrl,
       );
 
       if (result != null) {
-        _withdrawalResult = result;  // 保存提现结果
+        _withdrawalResult = result; // 保存提现结果
         return true;
       } else {
         IMViews.showToast(StrRes.withdrawalFailed);
@@ -935,14 +1215,55 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
       LogUtil.e('WithdrawalPage', '${StrRes.withdrawalFailed}: $e');
       IMViews.showToast('${StrRes.withdrawalFailed}: $e');
       return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
-  
+
+  Future<String?> _ensureHandheldIdCardPhotoUploaded() async {
+    if (_handheldIdCardPhotoUrl?.isNotEmpty == true) {
+      return _handheldIdCardPhotoUrl;
+    }
+    final file = _handheldIdCardPhotoFile;
+    if (file == null) {
+      throw StateError('请上传手持身份证照片');
+    }
+    if (!await file.exists()) {
+      throw StateError('手持身份证照片已失效，请重新选择');
+    }
+
+    final result = await LoadingView.singleton.wrap(
+      asyncFunction: () => OpenIM.iMManager.uploadFile(
+        id: 'withdrawal_handheld_${DateTime.now().millisecondsSinceEpoch}',
+        filePath: file.path,
+        fileName: file.path.split('/').last,
+      ),
+    );
+    if (result is! String) {
+      throw StateError('手持身份证照片上传失败');
+    }
+
+    final data = jsonDecode(result);
+    final url = data['url'] as String?;
+    if (url == null || url.isEmpty) {
+      throw StateError('手持身份证照片上传失败');
+    }
+
+    _handheldIdCardPhotoUrl = url;
+    return url;
+  }
+
   // 显示成功页面
   Future<void> _showSuccessPage() async {
     // 从API返回结果中获取数据
-    final orderNo = _withdrawalResult?['orderNo'] ?? 'W${DateTime.now().millisecondsSinceEpoch}';
-    final amount = _withdrawalResult?['amount'] ?? double.parse(_amountController.text);
+    final orderNo = _withdrawalResult?['orderNo'] ??
+        'W${DateTime.now().millisecondsSinceEpoch}';
+    final amount =
+        _withdrawalResult?['amount'] ?? double.parse(_amountController.text);
     final fee = _withdrawalResult?['fee'] ?? _fee;
     final actualAmount = _withdrawalResult?['actualAmount'] ?? _actualAmount;
 
@@ -951,7 +1272,10 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
 
     // 计算人民币金额（用于显示）
     // 注意：手续费(fee)已经是人民币金额，不需要换算
-    final exchangeRate = num.tryParse(_selectedCurrency?.currencyInfo?.exchangeRate ?? '1')?.toDouble() ?? 1.0;
+    final exchangeRate =
+        num.tryParse(_selectedCurrency?.currencyInfo?.exchangeRate ?? '1')
+                ?.toDouble() ??
+            1.0;
     final cnyRate = logic.rate.value;
     final amountInCNY = amount * exchangeRate * cnyRate;
     final actualAmountInCNY = actualAmount * exchangeRate * cnyRate;
@@ -1080,12 +1404,14 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
   String _getLocalizedAccountText(WithdrawalAccount account) {
     switch (account.type) {
       case 'bank':
-        final bankName = account.bankName?.isNotEmpty == true 
-            ? account.bankName! 
+        final bankName = account.bankName?.isNotEmpty == true
+            ? account.bankName!
             : StrRes.bankCard;
-        final last4Digits = account.accountNumber != null && account.accountNumber!.length >= 4 
-            ? account.accountNumber!.substring(account.accountNumber!.length - 4)
-            : '';
+        final last4Digits =
+            account.accountNumber != null && account.accountNumber!.length >= 4
+                ? account.accountNumber!
+                    .substring(account.accountNumber!.length - 4)
+                : '';
         return last4Digits.isNotEmpty ? '$bankName $last4Digits' : bankName;
       case 'alipay':
         return '${StrRes.alipay}(${account.alipayAccount ?? ''})';
@@ -1099,10 +1425,14 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
   // 辅助方法：获取账户类型名称
   String? _getAccountTypeName(String? type) {
     switch (type) {
-      case 'bank': return StrRes.bankCard;
-      case 'alipay': return StrRes.alipay;
-      case 'wechat': return StrRes.wechat;
-      default: return null;
+      case 'bank':
+        return StrRes.bankCard;
+      case 'alipay':
+        return StrRes.alipay;
+      case 'wechat':
+        return StrRes.wechat;
+      default:
+        return null;
     }
   }
 }

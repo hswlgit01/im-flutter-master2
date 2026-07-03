@@ -54,8 +54,17 @@ function install_sdk_components {
   echo -e "${YELLOW}安装 platforms;android-33...${NC}"
   yes | $sdkmanager --verbose "platforms;android-33" || echo -e "${YELLOW}安装失败，继续执行...${NC}"
 
+  echo -e "${YELLOW}安装 platforms;android-36...${NC}"
+  yes | $sdkmanager --verbose "platforms;android-36" || echo -e "${YELLOW}安装失败，继续执行...${NC}"
+
   echo -e "${YELLOW}安装 build-tools;33.0.0...${NC}"
   yes | $sdkmanager --verbose "build-tools;33.0.0" || echo -e "${YELLOW}安装失败，继续执行...${NC}"
+
+  echo -e "${YELLOW}安装 build-tools;35.0.0...${NC}"
+  yes | $sdkmanager --verbose "build-tools;35.0.0" || echo -e "${YELLOW}安装失败，继续执行...${NC}"
+
+  echo -e "${YELLOW}安装 ndk;27.0.12077973...${NC}"
+  yes | $sdkmanager --verbose "ndk;27.0.12077973" || echo -e "${YELLOW}安装失败，继续执行...${NC}"
 
   echo -e "${YELLOW}安装 extras;android;m2repository...${NC}"
   yes | $sdkmanager --verbose "extras;android;m2repository" || echo -e "${YELLOW}安装失败，继续执行...${NC}"

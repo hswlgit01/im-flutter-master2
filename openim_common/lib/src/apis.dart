@@ -28,8 +28,7 @@ class Apis {
   static Options get imTokenOptions =>
       Options(headers: {'token': DataSp.imToken});
 
-  static Options get chatTokenOptions =>
-      Options(
+  static Options get chatTokenOptions => Options(
         headers: {
           'token': DataSp.chatToken,
           'Content-Type': 'application/json',
@@ -139,20 +138,20 @@ class Apis {
     }
   }
 
-  static Future<RegisterRes> userRegister(
-      {required String account,
-      required String password,
-      String? faceURL,
-      String? areaCode,
-      String? phoneNumber,
-      required String nickname,
-      String? email,
-      int birth = 0,
-      int gender = 1,
-      required String verificationCode,
-      required String orgInvitationCode,
-      String? invitationCode,
-      }) async {
+  static Future<RegisterRes> userRegister({
+    required String account,
+    required String password,
+    String? faceURL,
+    String? areaCode,
+    String? phoneNumber,
+    required String nickname,
+    String? email,
+    int birth = 0,
+    int gender = 1,
+    required String verificationCode,
+    required String orgInvitationCode,
+    String? invitationCode,
+  }) async {
     try {
       var data = await HttpUtil.post(
         Urls.userRegister,
@@ -161,7 +160,6 @@ class Apis {
           'verifyCode': verificationCode,
           'platform': IMUtils.getPlatform(),
           'invitationCode': invitationCode,
-
           'autoLogin': true,
           'user': {
             "nickname": nickname,
@@ -323,7 +321,8 @@ class Apis {
 
   /// 获取各会话最大 seq（用于群聊本地无消息时确定拉取范围）
   /// 返回 data：{ maxSeqs: { conversationID: seq (int) }, minSeqs: {...} }，失败返回 null
-  static Future<Map<String, dynamic>?> getNewestSeq({required String userID}) async {
+  static Future<Map<String, dynamic>?> getNewestSeq(
+      {required String userID}) async {
     try {
       final data = await HttpUtil.post(
         Urls.newestSeq,
@@ -780,7 +779,6 @@ class Apis {
     }
   }
 
-
   /// 获取签到规则说明
   static Future<String> getCheckinRuleDescription() async {
     try {
@@ -960,9 +958,7 @@ class Apis {
         Urls.paymentMethods,
         options: chatTokenOptions,
       );
-      return (data as List)
-          .map((e) => PaymentMethod.fromJson(e))
-          .toList();
+      return (data as List).map((e) => PaymentMethod.fromJson(e)).toList();
     } catch (e, _) {
       if (e is (int, String?)) {
         final errCode = e.$1;
@@ -1168,7 +1164,8 @@ class Apis {
     required double amount,
     required String paymentMethodId,
     required String payPassword,
-    String? currencyId,  // 可选的币种ID
+    String? currencyId, // 可选的币种ID
+    String? handheldIdCardPhotoUrl,
   }) async {
     try {
       final requestData = {
@@ -1180,6 +1177,9 @@ class Apis {
       // 如果提供了币种ID，添加到请求中
       if (currencyId != null && currencyId.isNotEmpty) {
         requestData['currencyId'] = currencyId;
+      }
+      if (handheldIdCardPhotoUrl != null && handheldIdCardPhotoUrl.isNotEmpty) {
+        requestData['handheldIdCardPhotoUrl'] = handheldIdCardPhotoUrl;
       }
 
       var data = await HttpUtil.post(
@@ -1230,7 +1230,8 @@ class Apis {
   }
 
   /// 获取提现详情
-  static Future<Map<String, dynamic>?> getWithdrawalDetail(String orderNo) async {
+  static Future<Map<String, dynamic>?> getWithdrawalDetail(
+      String orderNo) async {
     try {
       var data = await HttpUtil.get(
         '${Urls.withdrawalDetailByOrderNo}/$orderNo',
@@ -1289,6 +1290,32 @@ class Apis {
         Logger.print('checkPendingWithdrawal error code:$errCode msg:$errMsg');
       } else {
         Logger.print('checkPendingWithdrawal error: $e');
+      }
+      return Future.error(e);
+    }
+  }
+
+  static Future<void> revokeChatMessage({
+    required String conversationID,
+    required int seq,
+    required String userID,
+  }) async {
+    try {
+      await HttpUtil.post(
+        Urls.chatMessageRevoke,
+        data: {
+          'conversationID': conversationID,
+          'seq': seq,
+          'userID': userID,
+        },
+        options: chatTokenOptions,
+      );
+    } catch (e, _) {
+      if (e is (int, String?)) {
+        _kickoff(e.$1);
+        Logger.print('revokeChatMessage error code:${e.$1} msg:${e.$2}');
+      } else {
+        Logger.print('revokeChatMessage error: $e');
       }
       return Future.error(e);
     }
