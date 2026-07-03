@@ -69,7 +69,6 @@ class _StableChatListViewState<T> extends State<StableChatListView<T>> {
       _bottomHasMore = false;
       _loadingBottom = false;
     }
-    }
   }
 
   @override

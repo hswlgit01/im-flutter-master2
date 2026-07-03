@@ -78,8 +78,10 @@ dependencies:
   video_player: ^2.9.1
   flutter_cache_manager: ^3.3.0
   # dawn 2026-06-29 兼容 Docker 构建 Dart 3.5.4：Syncfusion 29.x+ 要求 Dart 3.7+，固定到已验证可解析的 25.2.7。
-  syncfusion_flutter_core: 25.2.7
-  syncfusion_flutter_sliders: 25.2.7
+  # dawn 2026-07-04 合并客户分支把 Syncfusion 覆盖回 25.2.7(要 intl<0.20.0)与 flutter_localizations
+  # (intl 0.20.2)冲突导致 CI pub get 失败。恢复 33.x(兼容 intl 0.20.x，已在 lock 验证)。
+  syncfusion_flutter_core: ^33.2.3
+  syncfusion_flutter_sliders: ^33.2.3
   flutter_map: ^6.0.1
   mobile_device_identifier: ^0.0.3
   # ffmpeg_kit_flutter_full_gpl: 6.0.3
