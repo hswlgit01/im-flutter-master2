@@ -1345,6 +1345,13 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   /// 并返回 true 让调用方跳过再次 insert，避免出现「发送方自己看到两条一模一样
   /// 的消息」这种幻影。
   bool _mergeSyncedMessage(Message newMsg) {
+    // dawn 2026-07-04 修复"收不到别人发的消息(要退出重进)"：本方法只用于把【自己发送】的
+    // SDK 回显合并进乐观插入的那一条(去重发送圈)。若对【所有】消息做稳定key合并，别人发来的
+    // 新消息一旦命中(seq/clientMsgID 巧合等)就会被当作重复跳过插入 → 群里收不到别人的消息。
+    // 因此只对"我发的"消息尝试合并；别人的消息一律返回 false，交给调用方正常插入。
+    if (newMsg.sendID != OpenIM.iMManager.userID) {
+      return false;
+    }
     // dawn 2026-06-30 改用稳定 key(serverMsgID/seq/clientMsgID)匹配：SDK 同步会重写
     // clientMsgID，仅按 clientMsgID 匹配会把同步副本当成新消息追加，且发送圈清不掉。
     final keys = _sendStatusKeys(newMsg);
@@ -1712,9 +1719,15 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         _groupHistoryCutoffMs != null) {
       return;
     }
+    // dawn 2026-07-04 cutoff 锚点 clamp 到当前时间附近：若某条消息 sendTime 被污染成未来时间，
+    // 会把 cutoff 抬得过高，导致刚收到的新消息(time≈现在)被 5 小时窗口过滤掉而收不到。
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final maxAnchor = now + const Duration(minutes: 5).inMilliseconds;
     var latest = 0;
     for (final message in messages) {
-      final time = _messageTimeMs(message);
+      var time = _messageTimeMs(message);
+      if (time <= 0) continue;
+      if (time > maxAnchor) time = now;
       if (time > latest) latest = time;
     }
     if (latest > 0) {
