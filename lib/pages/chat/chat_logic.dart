@@ -510,9 +510,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     return lv == GroupRoleLevel.owner || lv == GroupRoleLevel.admin;
   }
 
-  // 群聊"官方"标识只看组织后台用户角色：仅"管理员"显示，群主/群管理员/团队长不再自动显示。
+  // dawn 2026-07-04 修复"普通群成员也显示官方"：官方标识只看【本群群角色】(群主/群管理员)，
+  // 不用组织角色。合并客户分支把它改回了组织角色(GroupManager)，导致组织GroupManager当普通群成员时
+  // 也被标官方。撤回权限仍用组织角色，两套角色分开。
   bool isOfficialMessageSender(Message message) =>
-      officialMessageUserMap[message.sendID] == true;
+      _isGroupOwnerOrAdmin(message.sendID);
 
   Future<void> _loadOfficialRolesForMessages(Iterable<Message> messages) async {
     final now = DateTime.now();
