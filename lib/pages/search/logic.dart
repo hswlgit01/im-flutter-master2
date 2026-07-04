@@ -3,6 +3,7 @@ import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:get/get.dart';
 import 'package:openim/pages/chat/chat_search/chat_search_text/chat_search_text_logic.dart';
 import 'package:openim/pages/conversation/conversation_logic.dart';
+import 'package:openim/pages/contacts/group_profile_panel/group_profile_panel_logic.dart';
 import 'package:openim/routes/app_navigator.dart';
 import 'package:openim_common/openim_common.dart';
 
@@ -51,10 +52,24 @@ class SearchLogic extends GetxController {
     );
   }
 
-  void toGroupChat(GroupInfo info) {
+  void toGroupChat(GroupInfo info) async {
+    final groupID = info.groupID;
+    if (groupID == null || groupID.isEmpty) return;
+    // dawn 2026-07-04 修复"搜索群聊点击闪退回"：搜索结果可能含未加入的群，直接进聊天会被聊天页
+    // _isJoinedGroup=false 删会话并 Get.back()(闪进闪出)。先判断是否已入群：已入群→进聊天；
+    // 未入群→跳群资料页(可申请加入)。
+    final joined = await OpenIM.iMManager.groupManager
+        .isJoinedGroup(groupID: groupID);
+    if (!joined) {
+      AppNavigator.startGroupProfilePanel(
+        groupID: groupID,
+        joinGroupMethod: JoinGroupMethod.search,
+      );
+      return;
+    }
     conversationLogic.toChat(
       offUntilHome: false,
-      groupID: info.groupID,
+      groupID: groupID,
       nickname: info.groupName,
       faceURL: info.faceURL,
       sessionType: info.sessionType,

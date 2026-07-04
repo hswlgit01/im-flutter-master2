@@ -860,10 +860,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // dawn 2026-06-18 修复3万人群消息不同步：恢复当前聊天页直接回调兜底。
     // SDK 会先触发 onRecvNewMessage 再广播 newMessageSubject，_handleNewMessage
     // 内部已有 MessageDeduplicator 去重，避免弱网/大群下只依赖全局广播导致当前会话漏消息。
-    imLogic.onRecvNewMessage = (Message message) async {
+    // dawn 2026-07-04 改用多监听器注册(以 this 为 owner)，避免被通知页覆盖导致聊天页实时收不到消息。
+    imLogic.addRecvNewMessageListener(this, (Message message) async {
       print('[ChatLogic] ✅ onRecvNewMessage兜底收到消息: ${message.contentType}');
       _handleNewMessage(message);
-    };
+    });
 
     print('[ChatLogic] ✅ 消息监听设置完成');
 
@@ -3429,7 +3430,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
 
     // 清理消息回调，避免内存泄漏和回调混乱（已读回执改由 c2cReadReceiptSubject 订阅，此处不再覆盖全局回调）
-    imLogic.onRecvNewMessage = null;
+    imLogic.removeRecvNewMessageListener(this);
     imLogic.onSignalingMessage = null;
 
     _muteTimer?.cancel();
@@ -5175,12 +5176,14 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         break;
       case MessageOperationType.revoke:
         focusNode.unfocus();
-        if (!canRevokeMessages) {
+        // dawn 2026-07-04 修复"撤不回自己的消息"：合并客户分支后 canRevokeMessages 只剩管理员，
+        // 连撤自己的消息都被拦。自己的消息始终可撤(走 SDK)；撤【别人】的消息才需要管理员权限(走审计接口)。
+        final isOwnMessage = message.sendID == OpenIM.iMManager.userID;
+        if (!isOwnMessage && !canRevokeMessages) {
           IMViews.showToast(StrRes.revokeFailed);
           break;
         }
         try {
-          final isOwnMessage = message.sendID == OpenIM.iMManager.userID;
           if (isOwnMessage) {
             await OpenIM.iMManager.messageManager.revokeMessage(
               conversationID: conversationInfo.conversationID,

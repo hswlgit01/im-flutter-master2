@@ -28,9 +28,10 @@ class ChatPage extends StatelessWidget {
 
   List<MessageOperationType> _messageOperationTypes(Message message) {
     final Map<MessageOperationType, bool> operationTypeMapping = {
-      // 撤回权限只允许组织后台"管理员"(GroupManager)，群主/群管理员/团队长不自动拥有撤回入口。
+      // dawn 2026-07-04 修复"撤不回自己的消息/红包"：自己的消息始终可撤(含红包等 custom)；
+      // 撤【别人】的消息才需组织后台"管理员"权限。
       MessageOperationType.revoke:
-          logic.canRevokeMessages && !message.isCustomType,
+          message.sendID == OpenIM.iMManager.userID || logic.canRevokeMessages,
       MessageOperationType.copy: message.isTextType ||
           message.contentType == MessageType.atText ||
           message.contentType == MessageType.quote ||

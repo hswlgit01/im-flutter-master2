@@ -31,7 +31,9 @@ class ChatNotificationLogic extends GetxController {
     conversationInfo = arguments['conversationInfo'];
     nickname.value = conversationInfo.showName ?? '';
 
-    imLogic.onRecvNewMessage = (Message message) async {
+    // dawn 2026-07-04 改用多监听器注册(以 this 为 owner)，不再独占覆盖全局 onRecvNewMessage，
+    // 避免与聊天页互相覆盖导致实时收不到消息；onClose 时注销。
+    imLogic.addRecvNewMessageListener(this, (Message message) async {
       ILogger.d('收到新消息: ${json.encode(message)}');
       if (isCurrentChat(message)) {
         if (message.contentType == MessageType.typing) {
@@ -43,9 +45,15 @@ class ChatNotificationLogic extends GetxController {
           messageList.add(message);
         }
       }
-    };
+    });
 
     super.onInit();
+  }
+
+  @override
+  void onClose() {
+    imLogic.removeRecvNewMessageListener(this);
+    super.onClose();
   }
 
   Future<AdvancedMessage> _fetchHistoryMessages() {

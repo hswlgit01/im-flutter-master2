@@ -37,6 +37,18 @@ mixin IMCallback {
 
   Function(Message msg)? onRecvNewMessage;
 
+  // dawn 2026-07-04 修复"实时收不到消息(要退出会话再进来才收到)"：onRecvNewMessage 是【单个可覆盖】回调，
+  // 聊天页(设/清)与通知页(设)互相覆盖，导致聊天页的实时收消息处理被通知页覆盖 → 聊天页收不到新消息。
+  // 改为按 owner 注册的多监听器，各自独立互不覆盖。
+  final Map<Object, FutureOr<void> Function(Message msg)> _recvNewMessageListeners = {};
+  void addRecvNewMessageListener(
+      Object owner, FutureOr<void> Function(Message msg) listener) {
+    _recvNewMessageListeners[owner] = listener;
+  }
+  void removeRecvNewMessageListener(Object owner) {
+    _recvNewMessageListeners.remove(owner);
+  }
+
   Function(Message msg)? onRecvOfflineMessage;
 
   // 新增：消息Subject，用于向所有订阅者广播新消息
@@ -501,6 +513,10 @@ mixin IMCallback {
     initLogic.showNotification(msg);
     _markPromptedMessage(msg);
     onRecvNewMessage?.call(msg);
+    // dawn 2026-07-04 分发给所有已注册监听器(聊天页/通知页各自独立，不再互相覆盖)。
+    for (final listener in List.of(_recvNewMessageListeners.values)) {
+      Future.sync(() => listener(msg));
+    }
 
     // 通过Subject广播消息，让所有订阅者都能收到
     newMessageSubject.addSafely(msg);
