@@ -122,7 +122,13 @@ class GroupSetupLogic extends GetxController {
           isJoinedGroup.value = true;
           _queryAllInfo();
         } else {
-          memberList.add(e);
+          // dawn 2026-07-04 修复"入群同意后成员不刷新"：新成员加入时去重后加入预览列表并排序，
+          // 同时重新拉取群信息刷新 memberCount（"查看全部群成员(N)"里的 N）。
+          if (memberList.every((m) => m.userID != e.userID)) {
+            memberList.add(e);
+            _sortMemberList();
+          }
+          getGroupInfo();
         }
       }
     });
@@ -132,6 +138,7 @@ class GroupSetupLogic extends GetxController {
           isJoinedGroup.value = false;
         } else {
           memberList.removeWhere((element) => element.userID == e.userID);
+          getGroupInfo();
         }
       }
     });
@@ -194,6 +201,15 @@ class GroupSetupLogic extends GetxController {
       getGroupMembers();
       getMyGroupMemberInfo();
     }
+  }
+
+  void _sortMemberList() {
+    memberList.sort((a, b) {
+      if (b.roleLevel != a.roleLevel) {
+        return (b.roleLevel ?? 0).compareTo(a.roleLevel ?? 0);
+      }
+      return (b.joinTime ?? 0).compareTo(a.joinTime ?? 0);
+    });
   }
 
   getGroupMembers() async {

@@ -36,6 +36,8 @@ class GroupMemberListLogic extends GetxController {
   late GroupInfo groupInfo;
   late GroupMemberOpType opType;
   late StreamSubscription mISub;
+  late StreamSubscription _mASub;
+  late StreamSubscription _mDSub;
 
   // 搜索相关
   final searchCtrl = TextEditingController();
@@ -66,6 +68,8 @@ class GroupMemberListLogic extends GetxController {
   @override
   void onClose() {
     mISub.cancel();
+    _mASub.cancel();
+    _mDSub.cancel();
     searchCtrl.dispose();
     focusNode.dispose();
     super.onClose();
@@ -76,6 +80,23 @@ class GroupMemberListLogic extends GetxController {
     groupInfo = Get.arguments['groupInfo'];
     opType = Get.arguments['opType'];
     mISub = imLogic.memberInfoChangedSubject.listen(_updateMemberLevel);
+
+    // dawn 2026-07-04 修复"入群同意后成员不刷新"：成员列表页实时监听成员加入/退出，
+    // 无需退出重进即可看到新成员（去重后追加并排序；退群则移除）。
+    _mASub = imLogic.memberAddedSubject.listen((e) {
+      if (e.groupID == groupInfo.groupID &&
+          memberList.every((m) => m.userID != e.userID)) {
+        memberList.add(e);
+        _sortMemberList();
+        filterMembers();
+      }
+    });
+    _mDSub = imLogic.memberDeletedSubject.listen((e) {
+      if (e.groupID == groupInfo.groupID) {
+        memberList.removeWhere((m) => m.userID == e.userID);
+        filterMembers();
+      }
+    });
 
     // 设置搜索监听
     searchCtrl.addListener(() {
@@ -90,6 +111,15 @@ class GroupMemberListLogic extends GetxController {
   void onReady() {
     _queryMyGroupMemberLevel();
     super.onReady();
+  }
+
+  void _sortMemberList() {
+    memberList.sort((a, b) {
+      if (b.roleLevel != a.roleLevel) {
+        return (b.roleLevel ?? 0).compareTo(a.roleLevel ?? 0);
+      }
+      return (b.joinTime ?? 0).compareTo(a.joinTime ?? 0);
+    });
   }
 
   void _updateMemberLevel(GroupMembersInfo e) {
