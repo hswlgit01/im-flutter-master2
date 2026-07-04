@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:openim_common/src/utils/data_sp.dart';
+import 'package:openim_common/src/config.dart';
 
 /// API自动寻路工具类
 /// 负责从CDN获取服务器列表，测试服务器响应时间，选择最快的服务器
@@ -70,7 +71,17 @@ class ApiAutoRoute {
     // dawn 2026-06-26 修复线路检测"暂无可用线路"：远程配置没返回 servers 时(网络拉不到/后台未配)，
     // 兜底用当前已应用的线路 host 生成一条，至少能测试/显示当前线路。
     if (servers.isEmpty) {
-      final fallbackHost = _currentHost ?? _currentAppliedHost();
+      var fallbackHost = _currentHost ?? _currentAppliedHost();
+      // dawn 2026-07-04 修复"线路一个都没有了"：登录时服务器配置可能尚未写入(getServerConfig 为空)，
+      // 兜底 host 为 null 会导致 0 条线路。再补一层 Config 默认 host(始终有效，prod 锁定 8.148.66.77)。
+      if (fallbackHost == null ||
+          fallbackHost.isEmpty ||
+          _isInvalidRuntimeHost(fallbackHost)) {
+        try {
+          final h = Config.serverIp;
+          if (h.isNotEmpty && !_isInvalidRuntimeHost(h)) fallbackHost = h;
+        } catch (_) {}
+      }
       if (fallbackHost != null &&
           fallbackHost.isNotEmpty &&
           !_isInvalidRuntimeHost(fallbackHost)) {
