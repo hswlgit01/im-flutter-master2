@@ -139,6 +139,11 @@ class SecurityManager {
       return true;
     } catch (e) {
       LogUtil.e(TAG, '恢复密钥失败: $e');
+      // dawn 2026-07-06 本地存的密钥已损坏(非法PEM/block type错误)时清掉，避免每次启动都拿坏 key 反复
+      // 恢复失败并污染 RSA 状态；清掉后交由 initAfterLogin 重新生成密钥对并向服务端重新注册。
+      try {
+        await clearSecurityData();
+      } catch (_) {}
       return false;
     }
   }

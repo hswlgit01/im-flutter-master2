@@ -390,11 +390,12 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   final officialAccountUserMap = <String, bool>{};
   final _pendingRevokeDetails = <Map<String, dynamic>>[];
 
-  // dawn 2026-07-06 收紧"撤回【别人】消息"权限：修复"群里普通成员(业务员)也能撤群主/官方消息"。
-  // 现在撤别人的消息需满足其一：① 本群【群主/群管理员】(群角色)；② 组织【超管/后台管理员】(全局审计)。
-  // 业务员(GroupManager)若在本群只是普通成员，则不能撤别人的（自己的消息仍始终可撤，走 SDK）。
-  // 服务端 /third_admin/message/revoke 同步按此判权（业务员改用本人 IM token 交由 IM 核心按群角色校验）。
-  bool get canRevokeMessages => isAdminOrOwner || orgController.isOrgSuperAdmin;
+  // dawn 2026-07-06 恢复原设计(fb8e55a #25)：撤【别人】消息 = 本群群主/群管理员(群角色) 或 组织团队长(TermManager)。
+  // 客户分支 ff97da2 曾误改成"仅组织业务员(GroupManager)可撤"，导致群里恰是业务员的普通成员也能撤群主/官方消息。
+  // 业务员(GroupManager)/普通成员 若在本群不是群主/群管理员则不能撤别人的（自己的消息始终可撤，走 SDK）。
+  // 服务端 /third_admin/message/revoke 同步：超管/后台管理员/团队长走 admin token 全局审计撤回；
+  // 其余角色改用本人 IM token 交由 IM 核心按群角色校验（只有群主/群管理员放行）。
+  bool get canRevokeMessages => isAdminOrOwner || orgController.isTermManager;
   final _officialMessageRoleRequestedAt = <String, DateTime>{};
   static const _officialRoleRefreshInterval = Duration(minutes: 10);
 

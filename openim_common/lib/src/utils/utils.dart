@@ -1368,11 +1368,20 @@ class IMUtils {
                 final progress = count / total;
                 final progressPercent = (progress * 100).round();
                 Logger.print('下载进度: $progressPercent%');
-                
+
                 // 显示下载进度
                 EasyLoading.showProgress(
                   progress,
                   status: StrRes.downloadingProgress(progressPercent),
+                  maskType: EasyLoadingMaskType.black,
+                );
+              } else {
+                // dawn 2026-07-06 修复"大文件点开一直卡在正在处理文件"：服务器未返回 Content-Length
+                // 时 total<=0，原来不更新任何进度，看着像卡死。改为按已下载字节数显示，明确还在下载中。
+                final mb = (count / 1024 / 1024).toStringAsFixed(1);
+                Logger.print('下载中(无总大小): ${mb}MB');
+                EasyLoading.show(
+                  status: '正在下载 ${mb}MB...',
                   maskType: EasyLoadingMaskType.black,
                 );
               }
