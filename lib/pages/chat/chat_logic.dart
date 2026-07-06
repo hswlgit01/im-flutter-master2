@@ -477,12 +477,17 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     return _isOfficialOrgRole(role);
   }
 
-  bool _isAdminUserForRevoke(String? userID) {
-    if (userID == null || userID.isEmpty) return false;
-    // dawn 2026-07-06 "官方撤回不提示"只对【本群官方】(群主/群管理员，群角色)生效。
-    // 原先按组织角色(业务员 GroupManager)判定，导致"恰好是业务员的普通群成员"撤自己的消息
-    // 也被当官方静默、看不到"撤回了一条消息"。官方标识统一按群角色，与 isOfficialMessageSender 一致。
-    return _isGroupOwnerOrAdmin(userID);
+  // dawn 2026-07-06 "官方账号撤回不提示"只在【本群官方(群主/群管理员) 撤"别人"的消息】时静默：
+  // ① 官方身份按【群角色】判定(不再用组织角色/业务员，否则普通成员恰是业务员也被静默)；
+  // ② 自己撤自己的一律显示"撤回了一条消息"(含群主/官方本人)——self-revoke = 撤回者==源消息发送者。
+  bool _isSilentOfficialRevoke(String? revokerID, String? sourceSendID) {
+    if (revokerID == null || revokerID.isEmpty) return false;
+    if (sourceSendID != null &&
+        sourceSendID.isNotEmpty &&
+        revokerID == sourceSendID) {
+      return false; // 自己撤自己的：显示提示
+    }
+    return _isGroupOwnerOrAdmin(revokerID);
   }
 
   Future<void> _ensureAdminRoleForRevoke(String? userID) async {
@@ -574,7 +579,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         final decoded = _decodeRevokeDetail(detail);
         final revokerID = _stringFromMap(decoded, 'revokerID') ??
             _stringFromMap(decoded, 'revokerUserID');
-        if (!_isAdminUserForRevoke(revokerID) ||
+        final sourceSendID = _stringFromMap(decoded, 'sourceMessageSendID');
+        if (!_isSilentOfficialRevoke(revokerID, sourceSendID) ||
             decoded['officialSilent'] == true) {
           continue;
         }
@@ -620,7 +626,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         final decoded = _decodeRevokeDetail(detail);
         final revokerID = _stringFromMap(decoded, 'revokerID') ??
             _stringFromMap(decoded, 'revokerUserID');
-        if (_isAdminUserForRevoke(revokerID) &&
+        final sourceSendID = _stringFromMap(decoded, 'sourceMessageSendID');
+        if (_isSilentOfficialRevoke(revokerID, sourceSendID) &&
             decoded['officialSilent'] != true) {
           decoded['officialSilent'] = true;
           msg.notificationElem = NotificationElem(detail: json.encode(decoded));
@@ -1220,7 +1227,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       'seq': _intFromMap(detail, 'seq') ?? sourceMessage.seq ?? 0,
       'ex': _stringFromMap(detail, 'ex') ?? sourceMessage.ex ?? '',
     };
-    if (_isAdminUserForRevoke(normalized['revokerID']?.toString())) {
+    if (_isSilentOfficialRevoke(normalized['revokerID']?.toString(),
+        normalized['sourceMessageSendID']?.toString())) {
       normalized['officialSilent'] = true;
     }
     return normalized;
