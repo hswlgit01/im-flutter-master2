@@ -390,9 +390,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   final officialAccountUserMap = <String, bool>{};
   final _pendingRevokeDetails = <Map<String, dynamic>>[];
 
-  // 撤回权限只看组织后台角色：仅"管理员"(GroupManager)可撤回。
-  // 群主、群管理员、团队长、普通成员都不会因对应身份获得撤回权限。
-  bool get canRevokeMessages => orgController.canRevokeMessage;
+  // dawn 2026-07-06 收紧"撤回【别人】消息"权限：修复"群里普通成员(业务员)也能撤群主/官方消息"。
+  // 现在撤别人的消息需满足其一：① 本群【群主/群管理员】(群角色)；② 组织【超管/后台管理员】(全局审计)。
+  // 业务员(GroupManager)若在本群只是普通成员，则不能撤别人的（自己的消息仍始终可撤，走 SDK）。
+  // 服务端 /third_admin/message/revoke 同步按此判权（业务员改用本人 IM token 交由 IM 核心按群角色校验）。
+  bool get canRevokeMessages => isAdminOrOwner || orgController.isOrgSuperAdmin;
   final _officialMessageRoleRequestedAt = <String, DateTime>{};
   static const _officialRoleRefreshInterval = Duration(minutes: 10);
 
@@ -3653,13 +3655,21 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     if (!isGroupChat) {
       return;
     }
-    isInGroup.value = await OpenIM.iMManager.groupManager.isJoinedGroup(
+    final joined = await OpenIM.iMManager.groupManager.isJoinedGroup(
       groupID: groupID!,
     );
-    if (!isInGroup.value) {
-      _closeInvalidGroupConversation('isJoinedGroup=false');
+    if (joined) {
+      isInGroup.value = true;
+      _queryGroupInfo();
+      _queryOwnerAndAdmin();
       return;
     }
+    // dawn 2026-07-06 修复"被邀请入群后点进去立即被弹出、会话还被删"：
+    // isJoinedGroup 读的是 SDK 本地缓存，刚被邀请/入群的成员本地成员缓存可能尚未同步，
+    // 会误判"未入群"。原逻辑据此直接 deleteConversationAndDeleteAllMsg + Get.back()（破坏性）。
+    // 现改为：进入群聊时本地一次判定 false 不再销毁会话，也不把 isInGroup 置 false（保持乐观，
+    // 等 joinedGroupAddedSubject 同步补偿）。真正的退群/被踢由 joinedGroupDeletedSubject /
+    // memberDeletedSubject 事件权威关闭；群已解散由 _queryGroupInfo 的 _handleGroupDismissedError 处理。
     _queryGroupInfo();
     _queryOwnerAndAdmin();
   }

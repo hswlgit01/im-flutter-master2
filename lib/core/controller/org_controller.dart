@@ -55,6 +55,11 @@ class OrgController extends GetxService {
   // 撤回消息只允许组织后台"管理员"(GroupManager)。
   bool get canRevokeMessage => currentOrgRole == 'GroupManager';
 
+  // dawn 2026-07-06 组织超管/后台管理员：保留全局撤回(审计)权限，可撤任意群/任意人的消息。
+  // 业务员(GroupManager)不在此列——撤别人的消息改按【群角色】(群主/群管理员)判定。
+  bool get isOrgSuperAdmin =>
+      currentOrgRole == 'SuperAdmin' || currentOrgRole == 'BackendAdmin';
+
   bool get canAddFriend => hasPermission('add_friend');
   bool get canCreateGroup => hasPermission('create_group');
   bool get canSendFile => hasPermission('send_file');
