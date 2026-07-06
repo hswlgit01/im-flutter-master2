@@ -1,5 +1,6 @@
 import 'package:openim/utils/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:synchronized/synchronized.dart';
 import '../utils/log_util.dart';
 import 'rsa_service.dart';
 import 'aes_util.dart';
@@ -23,7 +24,10 @@ class SecurityManager {
   // 服务实例
   final _rsaService = RSAService();
   final _apiService = ApiService();
-  
+
+  // dawn 2026-07-06 串行化初始化，修复并发初始化竞态导致的"RSA 解密失败 block type 79"。
+  final Lock _initLock = Lock();
+
   bool _isInitialized = false;
   
   /// 是否已初始化
@@ -52,16 +56,19 @@ class SecurityManager {
   /// 3. 接收并解密AES密钥
   /// 4. 安全存储私钥和AES密钥
   Future<bool> initAfterLogin() async {
-    
-    // 如果已经初始化，先重置
-    if (_isInitialized) {
-      await clearSecurityData();
-    }
-    
-    int retryCount = 0;
-    const maxRetries = 3;
-    
-    while (retryCount < maxRetries) {
+    // dawn 2026-07-06 修复"RSA 解密失败: Unsupported block type 79"：登录页/钱包/首页会并发调用初始化，
+    // 之前无锁并发 generateKeyPair 会覆盖共享 _rsaService 的密钥对——一个流程发出的是公钥A，
+    // 解密时却用了另一个流程覆盖进来的私钥B，导致解密出乱码块类型。加锁串行，并在锁内二次判断
+    // 已初始化则直接返回，保证一次初始化流程内公私钥一致。
+    return _initLock.synchronized<bool>(() async {
+      if (_isInitialized) {
+        return true;
+      }
+
+      int retryCount = 0;
+      const maxRetries = 3;
+
+      while (retryCount < maxRetries) {
       try {
         // 生成RSA密钥对
         final publicKey = _rsaService.generateKeyPair();
@@ -110,10 +117,11 @@ class SecurityManager {
         await Future.delayed(Duration(seconds: 1));
       }
     }
-    
-    return false;
+
+      return false;
+    });
   }
-  
+
   /// 检查并恢复密钥（应用启动时调用）
   Future<bool> checkAndRestoreKeys() async {
     

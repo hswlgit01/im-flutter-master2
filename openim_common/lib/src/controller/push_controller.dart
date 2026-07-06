@@ -223,27 +223,16 @@ class GetuiPushController {
       );
       print("✅ 事件监听器注册完成");
 
-      // 手动启动 SDK（某些情况下需要显式调用）
+      // dawn 2026-07-06 修复日志里的 MissingPluginException(startSdk)：getuiflut 0.2.41 原生并未实现
+      // 'startSdk' 方法(onMethodCall 无此 case → notImplemented → 抛 MissingPluginException)，且它是多余的——
+      // GeTui SDK 的真正启动由 initGetuiSdk(getter → invokeMethod('initGetuiPush') → 原生 initGtSdk()) 完成，
+      // AppID 从 AndroidManifest 的 GETUI_APPID 读取。因此只调 initGetuiSdk，不再调 startSdk。
       try {
-        print("📱 尝试初始化 GeTui SDK (Android)...");
-        // Android 需要调用 initGetuiSdk
-        if (_getuiflut != null) {
-          _getuiflut!.initGetuiSdk;
-          print("✅ initGetuiSdk 调用完成");
-        }
-
-        print("📱 尝试启动 GeTui SDK...");
-        _getuiflut?.startSdk(
-          appId: appID,
-          appKey: appKey,
-          appSecret: appSecret,
-        );
-        print("✅ GeTui SDK 启动调用完成");
+        print("📱 初始化并启动 GeTui SDK (initGetuiPush)...");
+        _getuiflut!.initGetuiSdk;
+        print("✅ initGetuiSdk 调用完成");
       } catch (e) {
-        print("⚠️  GeTui SDK 启动失败（可能未注册或已自动启动）: $e");
-        if (e.toString().contains('MissingPluginException')) {
-          print("提示: getuiflut 原生未注册时会出现此错误，可忽略或检查插件配置");
-        }
+        print("⚠️  GeTui SDK 初始化失败: $e");
       }
 
       // 延迟一下，等待 SDK 初始化（GeTui SDK 需要较长时间）
