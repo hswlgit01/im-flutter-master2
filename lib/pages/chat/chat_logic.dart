@@ -479,10 +479,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   bool _isAdminUserForRevoke(String? userID) {
     if (userID == null || userID.isEmpty) return false;
-    if (userID == OpenIM.iMManager.userID) {
-      return orgController.canRevokeMessage;
-    }
-    return officialMessageUserMap[userID] == true;
+    // dawn 2026-07-06 "官方撤回不提示"只对【本群官方】(群主/群管理员，群角色)生效。
+    // 原先按组织角色(业务员 GroupManager)判定，导致"恰好是业务员的普通群成员"撤自己的消息
+    // 也被当官方静默、看不到"撤回了一条消息"。官方标识统一按群角色，与 isOfficialMessageSender 一致。
+    return _isGroupOwnerOrAdmin(userID);
   }
 
   Future<void> _ensureAdminRoleForRevoke(String? userID) async {
