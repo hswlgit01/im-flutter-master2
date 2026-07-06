@@ -5208,10 +5208,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         break;
       case MessageOperationType.revoke:
         focusNode.unfocus();
-        // dawn 2026-07-04 修复"撤不回自己的消息"：合并客户分支后 canRevokeMessages 只剩管理员，
-        // 连撤自己的消息都被拦。自己的消息始终可撤(走 SDK)；撤【别人】的消息才需要管理员权限(走审计接口)。
+        // dawn 2026-07-06 "群众无撤回"(用户确认含本人)：只有 canRevokeMessages(本群群主/群管理员 或
+        // 组织团队长)可撤回；普通成员/业务员连自己发的消息也不能撤。撤自己的走 SDK，撤别人的走审计接口。
         final isOwnMessage = message.sendID == OpenIM.iMManager.userID;
-        if (!isOwnMessage && !canRevokeMessages) {
+        if (!canRevokeMessages) {
           IMViews.showToast(StrRes.revokeFailed);
           break;
         }
