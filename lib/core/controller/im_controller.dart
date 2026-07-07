@@ -376,11 +376,18 @@ class IMController extends GetxController with IMCallback, OpenIMLive {
 
   Future logout() async {
     try {
-      final status = await OpenIM.iMManager.getLoginStatus();
+      // dawn 2026-07-07 修复"点退出登录一直转圈"：大群(3万人)登录后 SDK 仍在增量同步，
+      // 原生 getLoginStatus/logout 可能长时间阻塞导致登出流程永不返回、Loading 永不消失。
+      // 给两处 SDK 调用加超时：超时按"已登出"处理，保证上层能继续清凭据并回登录页。
+      final status = await OpenIM.iMManager
+          .getLoginStatus()
+          .timeout(const Duration(seconds: 5), onTimeout: () => 0);
       if (status == 1) {
         return true;
       }
-      return OpenIM.iMManager.logout();
+      return await OpenIM.iMManager
+          .logout()
+          .timeout(const Duration(seconds: 8), onTimeout: () => true);
     } on PlatformException catch (e) {
       if (e.code == '10006') return true;
       rethrow;
