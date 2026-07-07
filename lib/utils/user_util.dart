@@ -30,30 +30,45 @@ class UserUtil {
             .timeout(const Duration(seconds: 5), onTimeout: () => false);
       } catch (_) {}
 
+      // dawn 2026-07-07 关键：try/catch 只能兜异常，兜不住【卡死(await 永不返回)】。原实现里
+      // clearSecurityData/clearAllLuckMoneyStatuses/removeLoginCertificate 都没有超时，任一步在
+      // 异常设备上 SharedPreferences/原生通道卡住，整个退出仍会一直转圈。故【每一步都加超时】，
+      // 保证 logout 总能在有限时间内推进到"清凭据 + 回登录页"。
       // 清除RSA相关数据
       try {
-        await securityService.clearSecurityData();
+        await securityService
+            .clearSecurityData()
+            .timeout(const Duration(seconds: 3));
       } catch (e) {
-        LogUtil.e('UserUtil', '清除安全数据失败(继续登出): $e');
+        LogUtil.e('UserUtil', '清除安全数据失败/超时(继续登出): $e');
       }
 
       // 清理所有红包状态
       try {
-        await LuckMoneyStatusManager.clearAllLuckMoneyStatuses();
+        await LuckMoneyStatusManager.clearAllLuckMoneyStatuses()
+            .timeout(const Duration(seconds: 3));
       } catch (_) {}
 
       // 执行 SDK 登出：加超时兜底，避免大群同步期间原生 logout 阻塞卡死整个退出流程。
       try {
         final imLogic = Get.find<IMController>();
-        await imLogic.logout().timeout(const Duration(seconds: 10));
+        await imLogic.logout().timeout(const Duration(seconds: 8));
       } catch (e) {
         LogUtil.e('UserUtil', 'SDK 登出超时/失败(继续回登录页): $e');
       }
 
-      // 以下清理即使失败也不能挡住"回登录页"，逐个容错。
+      // 清登录凭据：这一步决定下次启动能否停在登录页(splash 据 userID/imToken 判断自动登录)，
+      // 必须尽力完成；加超时并重试一次，避免卡死也避免漏清导致"退了又自动登回去"。
       try {
-        await DataSp.removeLoginCertificate();
-      } catch (_) {}
+        await DataSp.removeLoginCertificate()
+            ?.timeout(const Duration(seconds: 3));
+      } catch (e) {
+        LogUtil.e('UserUtil', '清登录凭据失败/超时，重试一次: $e');
+        try {
+          await DataSp.removeLoginCertificate()
+              ?.timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
       try {
         orgController.resetOrg();
       } catch (_) {}

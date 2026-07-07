@@ -385,9 +385,16 @@ class IMController extends GetxController with IMCallback, OpenIMLive {
       if (status == 1) {
         return true;
       }
-      return await OpenIM.iMManager
-          .logout()
-          .timeout(const Duration(seconds: 8), onTimeout: () => true);
+      return await OpenIM.iMManager.logout().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          // dawn 2026-07-07 超时不能"假装登出成功就不管了"：原生 logout 若被大群同步阻塞而超时，
+          // SDK 内部 isLogined/token 不会被清，会话残留 → 下次登录因"已登录"跳过原生 login、绑定到旧账号，
+          // 表现为"退出登录没用"。这里让原生 logout 在后台继续重试(不阻塞 UI)，尽力把会话真正清掉。
+          OpenIM.iMManager.logout().catchError((_) {});
+          return true;
+        },
+      );
     } on PlatformException catch (e) {
       if (e.code == '10006') return true;
       rethrow;

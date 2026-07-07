@@ -3700,9 +3700,16 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     _closingInvalidGroupConversation = true;
     // dawn 2026-07-07 修复"3万人大群进去空白(235(0)、无消息)"：大群冷同步/成员增量同步抖动时，
     // SDK 可能推来【不真实】的退群/被踢事件；若据此 deleteConversationAndDeleteAllMsg，会把刚从服务端
-    // 补拉到的整屏消息一并清空 → 群聊空白。销毁前再确认一次是否真的不在群：仍在群、或查询异常，都
-    // 保守放弃销毁+退出，绝不误清空有效大群。(skip 回放只挡了 BehaviorSubject 的旧事件，真实抖动事件
-    // 仍需这层校验兜底。)
+    // 补拉到的整屏消息一并清空 → 群聊空白。销毁前做两道兜底，任一命中都保守放弃销毁+退出：
+    //  ① 当前已有消息在显示 → 一定是有效会话(该设备本地成员缓存异常时 isJoinedGroup 会误判 false，
+    //     所以【不能只信 isJoinedGroup】，"有消息在显示"是对这类坏设备最可靠的判据)。
+    //  ② 本地仍在群，或查询异常。
+    // 绝不误清空有效大群。(skip 回放只挡 BehaviorSubject 旧事件；真实抖动事件靠这层兜底。)
+    if (messageList.isNotEmpty) {
+      _closingInvalidGroupConversation = false;
+      ILogger.d('[ChatLogic] 退群/被踢事件($reason)但当前有消息在显示，忽略销毁(疑似大群同步抖动误报)');
+      return;
+    }
     try {
       final stillJoined = await OpenIM.iMManager.groupManager
           .isJoinedGroup(groupID: groupID!);
@@ -3967,7 +3974,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
   /// 将服务端 PullMessageBySeqs 返回的单条 MsgData（Map）转为 SDK Message 并写入本地
   Future<Message?> _insertServerMsgToLocal(
-      Map<String, dynamic> raw, String groupID) async {
+      Map<String, dynamic> raw, String groupID,
+      {bool bypassDedup = false}) async {
     if (!_serverRawBelongsToGroup(raw, groupID)) {
       ILogger.w(
           '[群聊补拉] 跳过非当前群消息 expected=$groupID rawGroupID=${raw['groupID']} recvID=${raw['recvID']} clientMsgID=${raw['clientMsgID']}');
@@ -3981,7 +3989,10 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
           '[群聊补拉] 跳过非当前会话消息 currentGroupID=${this.groupID} msgGroupID=${msg.groupID} clientMsgID=${msg.clientMsgID}');
       return null;
     }
-    if (_hasServerPulledMessage(msg)) {
+    // dawn 2026-07-07 bypassDedup：首屏兜底补拉时不受"已补拉"去重集拦截，保证本次一定拿到消息用于直渲染。
+    // 否则并发的另一处补拉(ready 同步)先把这页记入去重集，这里就会全部返回 null → 本页拿不到消息 → 空白。
+    // 可见列表本身按 clientMsgID 去重，重复渲染由列表层兜住，不会重复显示。
+    if (!bypassDedup && _hasServerPulledMessage(msg)) {
       return null;
     }
     final sendID = raw['sendID'] as String? ?? '';
@@ -4109,6 +4120,7 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     int? endSeq,
     int count = 20,
     List<Message>? insertedMessages,
+    bool bypassDedup = false,
   }) async {
     final userID = OpenIM.iMManager.userID;
     if (userID == null || userID.isEmpty) return (0, true);
@@ -4175,7 +4187,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         skipped++;
         continue;
       }
-      final msg = await _insertServerMsgToLocal(m, groupID);
+      final msg =
+          await _insertServerMsgToLocal(m, groupID, bypassDedup: bypassDedup);
       if (msg == null) {
         skipped++;
         continue;
@@ -4397,16 +4410,48 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       final groupID = conversationInfo.groupID ?? '';
       final endSeq = startMsg?.seq != null ? (startMsg!.seq! - 1) : null;
       final oldFirst = startMsg;
+      // dawn 2026-07-07 同时收集补拉到的消息，用于本地读回失败时的兜底直渲染。
+      final pulledMessages = <Message>[];
+      final wasFirstLoad = _isFirstLoad;
       final (inserted, isEnd) = await _pullGroupHistoryFromServer(
         conversationID: conversationID,
         groupID: groupID,
         endSeq: endSeq,
         count: _isFirstLoad ? _initialHistoryPageSize : _pageSize,
+        insertedMessages: pulledMessages,
+        // dawn 2026-07-07 首屏兜底补拉绕过"已补拉"去重集：否则并发的 ready 同步先记了这页，
+        // 这里就一条都拿不到 → 空白。绕过后本页一定拿到消息用于直渲染，重复由列表层按 clientMsgID 去重。
+        bypassDedup: wasFirstLoad,
       );
       serverPulledIsEnd = isEnd;
       didServerPull = true;
       if (inserted > 0) {
         result = await _fetchHistoryMessages(oldFirst);
+      }
+      // dawn 2026-07-07 修复"3万人大群永久空白(235(0))"：部分设备本地 SDK 库处于异常状态，
+      // insertGroupMessageToLocalStorage 写入后 getAdvancedHistoryMessageList 读回仍为空；且并发的
+      // _syncLatestGroupPageFromServer 会把这页记入"已补拉"去重集，导致后续所有补拉判定"已拉取"而跳过
+      // → 消息永远显示不出来（服务端明明有、也返回了）。兜底：本地读回为空但本次补拉确有消息时，
+      // 直接用补拉到的消息渲染，不依赖不可靠的本地读回。(不再限定 inserted>0：并发去重可能使 inserted 为 0，
+      // 但因 bypassDedup 本页 pulledMessages 仍有内容。同群健康设备本地读回正常，走上面的 result 分支，不受影响。)
+      if ((result.messageList == null || result.messageList!.isEmpty) &&
+          pulledMessages.isNotEmpty) {
+        _ensureGroupHistoryCutoff(pulledMessages);
+        final display = _applyGroupHistoryWindow(
+          _sortMessagesBySendTimeAsc(_filterMessagesForChat(pulledMessages)),
+        );
+        if (display.isNotEmpty) {
+          await _prepareRevokeSilentFlagsForMessages(display);
+          customChatListViewController.insertAllToBottom(display);
+          firstLoadEmpty.value = false;
+          if (_isFirstLoad) {
+            _isFirstLoad = false;
+            _getGroupInfoAfterLoadMessage();
+            _clearUnreadCount();
+          }
+          enabledTopLoad.value = serverPulledIsEnd != true;
+          return serverPulledIsEnd != true;
+        }
       }
     }
     if (searchMessage == null &&
