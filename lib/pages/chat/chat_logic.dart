@@ -478,16 +478,14 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     return _isOfficialOrgRole(role);
   }
 
-  // dawn 2026-07-06 "官方账号撤回不提示"只在【本群官方(群主/群管理员) 撤"别人"的消息】时静默：
-  // ① 官方身份按【群角色】判定(不再用组织角色/业务员，否则普通成员恰是业务员也被静默)；
-  // ② 自己撤自己的一律显示"撤回了一条消息"(含群主/官方本人)——self-revoke = 撤回者==源消息发送者。
+  // dawn 2026-07-07 "官方账号撤回全静默"(用户确认)：只要撤回者是【本群官方(群主/群管理员,群角色)】，
+  // 无论撤【别人】还是撤【自己】的消息，都不显示"撤回了一条消息"提示。
+  // 之前有一条 self-revoke 例外(官方撤自己的仍显示提示)，用户反馈"官方撤回不该有提示"，故去掉该例外。
+  // 官方身份按【群角色】判定(不用组织角色/业务员，否则普通成员恰是业务员也被误静默)。普通群众无撤回权限、
+  // 团队长若非本群群主/管理员则不算官方(其撤回仍会显示提示)——与"官方=群角色"口径一致。
+  // sourceSendID 参数保留(调用方仍传入)，当前判定不再使用。
   bool _isSilentOfficialRevoke(String? revokerID, String? sourceSendID) {
     if (revokerID == null || revokerID.isEmpty) return false;
-    if (sourceSendID != null &&
-        sourceSendID.isNotEmpty &&
-        revokerID == sourceSendID) {
-      return false; // 自己撤自己的：显示提示
-    }
     return _isGroupOwnerOrAdmin(revokerID);
   }
 
@@ -921,7 +919,17 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
     });
 
-    joinedGroupDeletedSub = imLogic.joinedGroupDeletedSubject.listen((event) {
+    // dawn 2026-07-07 修复"退群→被重新拉回→点群聊立即被弹出(表现为闪退)"：
+    // joinedGroupDeletedSubject / memberDeletedSubject 都是 BehaviorSubject，订阅时会【回放】
+    // 上一次的退群/被踢事件。若我之前退过/被踢过这个群、之后又被拉回，打开会话订阅的那一刻会回放
+    // 那条【旧】事件，命中当前 groupID → 触发 _closeInvalidGroupConversation(删会话 + Get.back())，
+    // 用户看到的就是"进去直接闪退出来"。onReady 里的 _isJoinedGroup() 是异步的，赛跑输给同步回放的关闭。
+    // 修复：订阅时若 subject 已有缓存值(hasValue)则 skip(1) 丢弃这条回放，只对订阅【之后】新到达的
+    // 真实退群/被踢事件做销毁；无缓存值时(首次)不 skip，保证首个真实事件仍生效。
+    final joinedGroupDeletedStream = imLogic.joinedGroupDeletedSubject.hasValue
+        ? imLogic.joinedGroupDeletedSubject.stream.skip(1)
+        : imLogic.joinedGroupDeletedSubject.stream;
+    joinedGroupDeletedSub = joinedGroupDeletedStream.listen((event) {
       if (event.groupID == groupID) {
         isInGroup.value = false;
         inputCtrl.clear();
@@ -936,7 +944,11 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       }
     });
 
-    memberDelSub = imLogic.memberDeletedSubject.listen((info) {
+    // 同理跳过 memberDeletedSubject 的回放，避免旧的"被踢"事件在重进群时误触发销毁。
+    final memberDeletedStream = imLogic.memberDeletedSubject.hasValue
+        ? imLogic.memberDeletedSubject.stream.skip(1)
+        : imLogic.memberDeletedSubject.stream;
+    memberDelSub = memberDeletedStream.listen((info) {
       if (info.groupID == groupID && info.userID == OpenIM.iMManager.userID) {
         isInGroup.value = false;
         inputCtrl.clear();
