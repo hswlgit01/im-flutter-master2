@@ -3698,6 +3698,24 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   Future<void> _closeInvalidGroupConversation(String reason) async {
     if (!isGroupChat || _closingInvalidGroupConversation) return;
     _closingInvalidGroupConversation = true;
+    // dawn 2026-07-07 修复"3万人大群进去空白(235(0)、无消息)"：大群冷同步/成员增量同步抖动时，
+    // SDK 可能推来【不真实】的退群/被踢事件；若据此 deleteConversationAndDeleteAllMsg，会把刚从服务端
+    // 补拉到的整屏消息一并清空 → 群聊空白。销毁前再确认一次是否真的不在群：仍在群、或查询异常，都
+    // 保守放弃销毁+退出，绝不误清空有效大群。(skip 回放只挡了 BehaviorSubject 的旧事件，真实抖动事件
+    // 仍需这层校验兜底。)
+    try {
+      final stillJoined = await OpenIM.iMManager.groupManager
+          .isJoinedGroup(groupID: groupID!);
+      if (stillJoined) {
+        _closingInvalidGroupConversation = false;
+        ILogger.d('[ChatLogic] 收到退群/被踢事件($reason)但本地仍在群，忽略销毁');
+        return;
+      }
+    } catch (e) {
+      _closingInvalidGroupConversation = false;
+      ILogger.d('[ChatLogic] 退群/被踢事件($reason)校验成员身份异常，保守不销毁: $e');
+      return;
+    }
     final conversationID = conversationInfo.conversationID;
     inputCtrl.clear();
     try {
