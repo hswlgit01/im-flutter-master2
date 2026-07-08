@@ -1359,29 +1359,40 @@ class IMUtils {
         _downloadingFiles.add(fileKey);
         Logger.print('开始下载文件...');
         
+        // dawn 2026-07-08 修复"下载时疯狂闪屏"：dio 的 onProgress 每收到一个数据块就回调(每秒几十次)，
+        // 之前每次都 EasyLoading.show/showProgress → 加载弹窗被反复重建、动画反复重播 → 疯狂闪屏。
+        // 改为节流刷新：有总大小时【只在百分比变化时】刷新(整程最多约 100 次)；无总大小时【最多每 600ms】刷一次。
+        int lastUiUpdateMs = 0;
+        String lastUiText = '';
         try {
           await HttpUtil.download(
             UrlConverter.convertMediaUrl(elem.sourceUrl!),
             cachePath: savePath,
             onProgress: (count, total) {
+              final nowMs = DateTime.now().millisecondsSinceEpoch;
               if (total > 0) {
                 final progress = count / total;
                 final progressPercent = (progress * 100).round();
-                Logger.print('下载进度: $progressPercent%');
-
-                // 显示下载进度
+                final text = StrRes.downloadingProgress(progressPercent);
+                // 百分比没变就不刷新，避免每个数据块都触发 showProgress 导致闪屏
+                if (text == lastUiText) return;
+                lastUiText = text;
+                lastUiUpdateMs = nowMs;
                 EasyLoading.showProgress(
                   progress,
-                  status: StrRes.downloadingProgress(progressPercent),
+                  status: text,
                   maskType: EasyLoadingMaskType.black,
                 );
               } else {
-                // dawn 2026-07-06 修复"大文件点开一直卡在正在处理文件"：服务器未返回 Content-Length
-                // 时 total<=0，原来不更新任何进度，看着像卡死。改为按已下载字节数显示，明确还在下载中。
+                // 服务器未返回 Content-Length 时 total<=0：按已下载字节数显示，明确还在下载中。
+                // 最多每 600ms 刷一次，避免频繁 show 造成闪屏。
+                if (nowMs - lastUiUpdateMs < 600) return;
                 final mb = (count / 1024 / 1024).toStringAsFixed(1);
-                Logger.print('下载中(无总大小): ${mb}MB');
+                final text = '正在下载 ${mb}MB...';
+                lastUiText = text;
+                lastUiUpdateMs = nowMs;
                 EasyLoading.show(
-                  status: '正在下载 ${mb}MB...',
+                  status: text,
                   maskType: EasyLoadingMaskType.black,
                 );
               }
