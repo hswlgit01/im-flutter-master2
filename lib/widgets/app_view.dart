@@ -54,6 +54,10 @@ class _AppViewState extends State<AppView> with WidgetsBindingObserver {
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(AppLogUploader.instance.flush(reason: state.name));
+    } else if (state == AppLifecycleState.resumed) {
+      // dawn 2026-07-08 最近操作时间：App 每次回到前台也上报一次，让"最近操作时间"更实时，
+      // 不只依赖首次进主页(home onReady)那一次。未登录时接口会静默失败，无副作用。
+      Apis.reportOperation();
     }
   }
 

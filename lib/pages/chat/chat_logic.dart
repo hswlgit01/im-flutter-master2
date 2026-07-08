@@ -431,10 +431,9 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       final users = await Apis.getUserFullInfo(userIDList: [peerUserID]);
       final user = users?.firstOrNull;
       peerTitleCertified.value = _isOfficialOrgRole(user?.orgRole);
-      // 优先用最近操作时间；无操作记录时回退到最近登录时间，避免空白。
-      final ts = (user?.lastOperationTime != null && user!.lastOperationTime! > 0)
-          ? user.lastOperationTime
-          : user?.lastLoginTime;
+      // dawn 2026-07-08 按第17业务说明：单聊头部【只显示"最近操作时间"】，不再回退到"最近登录时间"
+      // (客户明确不要登录时间)。对方还没在新版上报过操作时间时，显示"暂无记录"，绝不显示登录时间。
+      final ts = user?.lastOperationTime;
       if (ts == null || ts <= 0) {
         lastLoginTimeText.value = '最近操作：暂无记录';
         return;
