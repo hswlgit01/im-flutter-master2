@@ -1295,7 +1295,69 @@ class IMUtils {
   // }
   // 静态变量用于跟踪正在下载的文件
   static final Set<String> _downloadingFiles = {};
-  
+
+  // dawn 2026-07-08 修复"下载过程中背景还有点闪"：之前用 EasyLoading.show/showProgress 反复刷新，
+  // 每次都重建遮罩层、且文案变宽/变窄让居中弹窗尺寸抖动 → 背景闪。改为【只弹一次、固定尺寸、文案响应式更新】：
+  // 弹窗只创建一次，进度回调只改这个 RxString，Obx 只重建里面的一行文字，遮罩不重建、弹窗不缩放 → 不闪。
+  static final RxString _downloadStatus = ''.obs;
+  static bool _downloadOverlayOpen = false;
+
+  static void _showDownloadOverlay(String initialStatus) {
+    _downloadStatus.value = initialStatus;
+    if (_downloadOverlayOpen) return;
+    _downloadOverlayOpen = true;
+    Get.dialog(
+      Center(
+        child: Container(
+          width: 150,
+          height: 150,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xE0000000),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 40,
+                height: 40,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 130,
+                child: Obx(
+                  () => Text(
+                    _downloadStatus.value,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      barrierDismissible: false,
+      barrierColor: const Color(0x66000000),
+    );
+  }
+
+  static void _dismissDownloadOverlay() {
+    if (!_downloadOverlayOpen) return;
+    _downloadOverlayOpen = false;
+    if (Get.isDialogOpen ?? false) {
+      Get.back();
+    }
+  }
+
+
   // dawn 2026-06-26 文件传输损坏修复：校验文件大小与消息声明大小一致。
   // 截断/损坏的文件(大小不符)不复用缓存、不当成功打开，避免 APK"解析软件包时出现问题"。
   static Future<bool> _fileSizeMatches(String path, int? expectedSize) async {
@@ -1358,10 +1420,12 @@ class IMUtils {
         // 标记为正在下载
         _downloadingFiles.add(fileKey);
         Logger.print('开始下载文件...');
-        
-        // dawn 2026-07-08 修复"下载时疯狂闪屏"：dio 的 onProgress 每收到一个数据块就回调(每秒几十次)，
-        // 之前每次都 EasyLoading.show/showProgress → 加载弹窗被反复重建、动画反复重播 → 疯狂闪屏。
-        // 改为节流刷新：有总大小时【只在百分比变化时】刷新(整程最多约 100 次)；无总大小时【最多每 600ms】刷一次。
+
+        // dawn 2026-07-08 用固定尺寸的响应式弹窗显示下载进度(替代反复 EasyLoading.show/showProgress)，
+        // 彻底消除"下载过程中背景还有点闪"：弹窗只创建一次，进度回调只更新 _downloadStatus(Obx 只重建那行文字)，
+        // 遮罩不重建、弹窗不缩放 → 不闪。纯文本更新仍做轻节流，避免无意义的高频重建。
+        EasyLoading.dismiss();
+        _showDownloadOverlay('正在下载...');
         int lastUiUpdateMs = 0;
         String lastUiText = '';
         try {
@@ -1371,30 +1435,19 @@ class IMUtils {
             onProgress: (count, total) {
               final nowMs = DateTime.now().millisecondsSinceEpoch;
               if (total > 0) {
-                final progress = count / total;
-                final progressPercent = (progress * 100).round();
+                final progressPercent = ((count / total) * 100).round();
                 final text = StrRes.downloadingProgress(progressPercent);
-                // 百分比没变就不刷新，避免每个数据块都触发 showProgress 导致闪屏
-                if (text == lastUiText) return;
+                if (text == lastUiText) return; // 百分比没变不刷新
                 lastUiText = text;
-                lastUiUpdateMs = nowMs;
-                EasyLoading.showProgress(
-                  progress,
-                  status: text,
-                  maskType: EasyLoadingMaskType.black,
-                );
+                _downloadStatus.value = text;
               } else {
-                // 服务器未返回 Content-Length 时 total<=0：按已下载字节数显示，明确还在下载中。
-                // 最多每 600ms 刷一次，避免频繁 show 造成闪屏。
-                if (nowMs - lastUiUpdateMs < 600) return;
+                // 服务器未返回 Content-Length：按已下载 MB 显示，最多每 300ms 更新一次文案
+                if (nowMs - lastUiUpdateMs < 300) return;
+                lastUiUpdateMs = nowMs;
                 final mb = (count / 1024 / 1024).toStringAsFixed(1);
                 final text = '正在下载 ${mb}MB...';
                 lastUiText = text;
-                lastUiUpdateMs = nowMs;
-                EasyLoading.show(
-                  status: text,
-                  maskType: EasyLoadingMaskType.black,
-                );
+                _downloadStatus.value = text;
               }
             },
           );
@@ -1403,8 +1456,7 @@ class IMUtils {
               await _fileSizeMatches(savePath, elem.fileSize)) {
             file = File(savePath);
             Logger.print('文件下载完成且大小校验通过: $savePath');
-            // 下载完成后立即隐藏进度
-            EasyLoading.dismiss();
+            _dismissDownloadOverlay();
           } else {
             // dawn 2026-06-26 下载不完整(大小与声明不符)：删除损坏文件并报错，避免被当成功打开导致"解析软件包出现问题"。
             final existed = await File(savePath).exists();
@@ -1417,6 +1469,7 @@ class IMUtils {
             }
             Logger.print(
                 '文件下载不完整: 存在=$existed 实际大小=$actualLen 声明大小=${elem.fileSize}');
+            _dismissDownloadOverlay();
             EasyLoading.showError(
               StrRes.downloadFailed,
               duration: const Duration(seconds: 2),
@@ -1426,6 +1479,7 @@ class IMUtils {
           }
         } catch (e) {
           Logger.print('文件下载失败: $e');
+          _dismissDownloadOverlay();
           EasyLoading.showError(
             StrRes.downloadFailed,
             duration: const Duration(seconds: 2),
@@ -1433,7 +1487,8 @@ class IMUtils {
           );
           return;
         } finally {
-          // 无论成功失败都要移除下载标记
+          // 无论成功失败都要移除下载标记并兜底关掉进度弹窗
+          _dismissDownloadOverlay();
           _downloadingFiles.remove(fileKey);
         }
       } else {
