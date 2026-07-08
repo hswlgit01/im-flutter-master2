@@ -385,16 +385,13 @@ class IMController extends GetxController with IMCallback, OpenIMLive {
       if (status == 1) {
         return true;
       }
-      return await OpenIM.iMManager.logout().timeout(
-        const Duration(seconds: 8),
-        onTimeout: () {
-          // dawn 2026-07-07 超时不能"假装登出成功就不管了"：原生 logout 若被大群同步阻塞而超时，
-          // SDK 内部 isLogined/token 不会被清，会话残留 → 下次登录因"已登录"跳过原生 login、绑定到旧账号，
-          // 表现为"退出登录没用"。这里让原生 logout 在后台继续重试(不阻塞 UI)，尽力把会话真正清掉。
-          OpenIM.iMManager.logout().catchError((_) {});
-          return true;
-        },
-      );
+      // dawn 2026-07-08 只超时、不再后台重试 logout。之前的后台重试(onTimeout 里再调一次
+      // OpenIM.iMManager.logout())会与随后的重新登录竞态：重试晚到时把刚登录好的会话又登出，
+      // SDK 停在"resource initialization incomplete(10004)"→ 所有 SDK 调用报错 → 进群整屏白屏。
+      // 超时按"已登出"返回即可；真正的会话清理交由重新登录时的 SDK 自身状态机处理。
+      return await OpenIM.iMManager
+          .logout()
+          .timeout(const Duration(seconds: 8), onTimeout: () => true);
     } on PlatformException catch (e) {
       if (e.code == '10006') return true;
       rethrow;

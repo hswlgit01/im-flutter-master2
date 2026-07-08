@@ -1992,6 +1992,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
   }
 
   initMessageList() async {
+    app_log.LogUtil.i('ChatLogic',
+        'DIAG0708 initMessageList isGroup=$isGroupChat conv=${conversationInfo.conversationID} gid=$groupID');
     if (searchMessage != null) {
       final topMessageRes = await _fetchHistoryMessages(searchMessage);
       final bottomMessageRes =
@@ -2031,8 +2033,14 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     // 非搜索：仅拉一页（本地或群聊服务端最近一页），上滑时 onScrollToTopLoad 再按需拉更早历史
     // dawn 2026-06-29 首屏也消费返回值同步顶部加载开关：小群/一屏装得下时返回 false → 关闭顶部加载，
     // 否则列表组件内部 _topHasMore 永远为 true 导致顶部一直转圈。(codex 协同定位)
-    final hasMoreTop = await onScrollToTopLoad();
-    enabledTopLoad.value = hasMoreTop;
+    // dawn 2026-07-08 首屏加载整段 try 兜底：任何一步(SDK 未就绪抛 10004 等)异常都【不能】中断后续，
+    // 否则下面的 isReadyToShow 永不置 true → 消息区 Opacity 0 永久白屏。异常也走 postFrame 让页面渲染。
+    try {
+      final hasMoreTop = await onScrollToTopLoad();
+      enabledTopLoad.value = hasMoreTop;
+    } catch (e) {
+      ILogger.w('[initMessageList] 首屏加载异常(继续渲染页面): $e');
+    }
     // 客户端(dev-20260630)：首屏后补齐撤回详情。
     _applyPendingRevokeDetails();
     // dawn 2026-06-21 新增官方人员标识：首屏消息渲染后异步补全认证图标，不阻塞进会话。
@@ -4346,19 +4354,36 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     final pageSize = _isFirstLoad && searchMessage == null
         ? _initialHistoryPageSize
         : _pageSize;
-    return OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
-      conversationID: conversationInfo.conversationID,
-      count: pageSize,
-      startMsg: startMsg,
-    );
+    // dawn 2026-07-08 修复"3万群整屏白屏"根因：大账号登录后 SDK 资源仍在初始化/增量同步，
+    // getAdvancedHistoryMessageList 会抛 PlatformException(10004 Resource initialization incomplete)。
+    // 该异常原本【未捕获】→ onScrollToTopLoad 抛出 → initMessageList 里 `await onScrollToTopLoad()`
+    // 未 try 而中断 → 既不走服务端补拉(HTTP，绕过 SDK)、又永不置 isReadyToShow=true → 消息区 Opacity 0
+    // 永久白屏(标题/输入框仍在，正是现象)。现在【吞掉 SDK 异常返回空页】，让本地读回为空 →
+    // onScrollToTopLoad 继续走服务端 HTTP 补拉并直渲染。isEnd:false 保证不被当成"到底"。
+    try {
+      return await OpenIM.iMManager.messageManager.getAdvancedHistoryMessageList(
+        conversationID: conversationInfo.conversationID,
+        count: pageSize,
+        startMsg: startMsg,
+      );
+    } catch (e) {
+      ILogger.w('[群聊首屏] getAdvancedHistoryMessageList 失败(SDK未就绪?)，回退服务端补拉: $e');
+      return AdvancedMessage(messageList: [], isEnd: false);
+    }
   }
 
-  Future<AdvancedMessage> _fetchReverseHistoryMessages(Message? startMsg) {
-    return OpenIM.iMManager.messageManager.getAdvancedHistoryMessageListReverse(
-      conversationID: conversationInfo.conversationID,
-      count: _pageSize,
-      startMsg: startMsg,
-    );
+  Future<AdvancedMessage> _fetchReverseHistoryMessages(Message? startMsg) async {
+    try {
+      return await OpenIM.iMManager.messageManager
+          .getAdvancedHistoryMessageListReverse(
+        conversationID: conversationInfo.conversationID,
+        count: _pageSize,
+        startMsg: startMsg,
+      );
+    } catch (e) {
+      ILogger.w('[群聊首屏] getAdvancedHistoryMessageListReverse 失败: $e');
+      return AdvancedMessage(messageList: [], isEnd: false);
+    }
   }
 
   Future<bool> onScrollToBottomLoad() async {
@@ -4425,6 +4450,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
       );
       serverPulledIsEnd = isEnd;
       didServerPull = true;
+      app_log.LogUtil.i('ChatLogic',
+          'DIAG0708 serverPull gid=$groupID inserted=$inserted isEnd=$isEnd pulled=${pulledMessages.length}');
       if (inserted > 0) {
         result = await _fetchHistoryMessages(oldFirst);
       }
@@ -4440,6 +4467,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
         final display = _applyGroupHistoryWindow(
           _sortMessagesBySendTimeAsc(_filterMessagesForChat(pulledMessages)),
         );
+        app_log.LogUtil.i('ChatLogic',
+            'DIAG0708 fallback render display=${display.length} (直渲染服务端补拉消息)');
         if (display.isNotEmpty) {
           await _prepareRevokeSilentFlagsForMessages(display);
           customChatListViewController.insertAllToBottom(display);
@@ -4456,6 +4485,8 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
     }
     if (searchMessage == null &&
         (result.messageList == null || result.messageList!.isEmpty)) {
+      app_log.LogUtil.i('ChatLogic',
+          'DIAG0708 blank-return isGroup=$isGroupChat firstLoad=$_isFirstLoad didServerPull=$didServerPull (本地空+补拉也没渲染)');
       if (_isFirstLoad) {
         firstLoadEmpty.value = true;
         _getGroupInfoAfterLoadMessage();
