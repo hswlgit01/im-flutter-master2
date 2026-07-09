@@ -78,16 +78,17 @@ class LiveUtils {
   /// 我被邀请通话，一开始就存在roomID
   static bool isSameRoom(CallEvent event, String? roomID) {
     var signalingInfo = event.data;
-    var opUserID = signalingInfo.userID;
-    var invitation = signalingInfo.invitation!;
-    // var inviterUserID = invitation.inviterUserID;
-    // var inviteeUserIDList = invitation.inviteeUserIDList;
-    // var groupID = invitation.groupID;
-    // var roomID = invitation.roomID;
-    // var timeout = invitation.timeout;
-    // var mediaType = invitation.mediaType;
-    // var sessionType = invitation.sessionType;
-    // var platformID = invitation.platformID;
+    var invitation = signalingInfo.invitation;
+    if (invitation == null) {
+      Logger.print('${event.state}--当前房间：$roomID--信令 invitation 为空，放行以关界面');
+      return true;
+    }
+    // dawn 2026-07-09 本端 roomID 尚未绑定（拨号中）时不要过滤掉 cancel/hangup，
+    // 否则关界面/停铃信号被 sameRoomSignalStream 丢掉，对端一直卡在通话页。
+    if (roomID == null || roomID.isEmpty) {
+      Logger.print('${event.state}--当前房间为空，放行信令 room=${invitation.roomID}');
+      return true;
+    }
     Logger.print('${event.state}--当前房间：$roomID--信令来自：${invitation.roomID}');
     return roomID == invitation.roomID;
   }

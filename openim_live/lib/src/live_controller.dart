@@ -195,23 +195,29 @@ mixin OpenIMLive {
               onRoomDisconnected: () => onRoomDisconnected(event.data),
             );
           } else if (event.state == CallState.beRejected) {
-            Logger.print('[OpenIMLive] 📞 收到拒绝信令，停止声音');
+            // dawn 2026-07-09 修"A 拒接/挂断后 B 仍振铃"：拒接信令必须停铃+关界面，
+            // 不能只 insert 消息记录，否则对端一直停在来电页。
+            Logger.print('[OpenIMLive] 📞 收到拒绝信令，停止声音并关闭界面');
             insertSignalingMessageSubject.add(event);
             _stopSound();
-            _beCalledEvent = null; // 清除缓存的通话事件
+            _beCalledEvent = null;
+            _forceCloseCallUI(event.data);
           } else if (event.state == CallState.beHangup) {
-            Logger.print('[OpenIMLive] 📞 收到挂断信令，停止声音');
+            // dawn 2026-07-09 修"A 挂断后 B 依然在打/不显示拒接"：
+            // 原先 beHangup 只 _stopSound，不 close 界面。主叫在 connecting/calling
+            // 时点挂断发的是 callingHungup(204) 而不是 cancel(203)，被叫收 beHangup
+            // 后铃声可能停了但 UI 仍显示"等待接听/来电"，外观就是一直在打。
+            Logger.print('[OpenIMLive] 📞 收到挂断信令，停止声音并关闭界面');
+            insertSignalingMessageSubject.add(event);
             _stopSound();
-            _beCalledEvent = null; // 清除缓存的通话事件
+            _beCalledEvent = null;
+            _forceCloseCallUI(event.data);
           } else if (event.state == CallState.beCanceled) {
             Logger.print('[OpenIMLive] 📞 收到取消信令，停止声音并关闭界面');
             insertSignalingMessageSubject.add(event);
             _stopSound();
             _beCalledEvent = null; // 清除缓存的通话事件
-            // 如果通话界面已经打开，关闭它
-            if (event.data.invitation?.roomID != null) {
-              OpenIMLiveClient().closeByRoomID(event.data.invitation!.roomID!);
-            }
+            _forceCloseCallUI(event.data);
           } else if (event.state == CallState.beAccepted) {
             Logger.print('[OpenIMLive] 📞 收到接受信令，停止声音');
             _stopSound();
@@ -498,9 +504,25 @@ mixin OpenIMLive {
       }),
     );
 
-    OpenIM.iMManager.messageManager
-        .sendMessage(message: message, offlinePushInfo: offlinePush, userID: recvUserID, isOnlineOnly: false);
+    // dawn 2026-07-09 await 发送，避免界面已关掉但 cancel 信令还没发出去
+    try {
+      await OpenIM.iMManager.messageManager
+          .sendMessage(message: message, offlinePushInfo: offlinePush, userID: recvUserID, isOnlineOnly: false);
+    } catch (e) {
+      Logger.print('[OpenIMLive] 发送取消信令失败: $e');
+    }
     return true;
+  }
+
+  /// 强制关闭通话 UI（拒接 / 取消 / 挂断 共用）
+  void _forceCloseCallUI(SignalingInfo info) {
+    final roomID = info.invitation?.roomID;
+    if (roomID != null && roomID.isNotEmpty) {
+      OpenIMLiveClient().closeByRoomID(roomID);
+    } else {
+      // roomID 对不上时也兜底关掉，避免对端卡在来电页
+      OpenIMLiveClient().close();
+    }
   }
 
   onTimeoutCancelled(SignalingInfo signaling) async {
@@ -529,33 +551,53 @@ mixin OpenIMLive {
 
   onTapHangup(SignalingInfo signaling, int duration, bool isPositive) async {
     if (isPositive) {
-      final data = {'customType': CustomMessageType.callingHungup, 'data': signaling.invitation!.toJson()};
-      final message = await OpenIM.iMManager.messageManager
-          .createCustomMessage(data: jsonEncode(data), extension: '', description: '');
       final recvUserID = signaling.invitation!.inviterUserID == OpenIM.iMManager.userID
           ? signaling.invitation!.inviteeUserIDList!.first
           : signaling.invitation!.inviterUserID;
 
-      // 创建离线推送信息，确保后台也能收到挂断信令
+      // dawn 2026-07-09 未接通时挂断应发 cancel/reject，而不是 hungup：
+      // 被叫侧 UI 对 hungup 处理历史上有漏关界面；cancel/reject 语义也更正确。
+      // duration==0 视为尚未真正通话（仍在等待接听）。
+      final notConnected = duration <= 0;
+      final isInviter = signaling.invitation!.inviterUserID == OpenIM.iMManager.userID;
+      final customType = notConnected
+          ? (isInviter ? CustomMessageType.callingCancel : CustomMessageType.callingReject)
+          : CustomMessageType.callingHungup;
+
+      final data = {'customType': customType, 'data': signaling.invitation!.toJson()};
+      final message = await OpenIM.iMManager.messageManager
+          .createCustomMessage(data: jsonEncode(data), extension: '', description: '');
+
       final offlinePush = OfflinePushInfo(
-        title: '通话已结束',
-        desc: '对方已挂断',
+        title: notConnected ? (isInviter ? '通话已取消' : '通话已拒绝') : '通话已结束',
+        desc: notConnected ? (isInviter ? '对方取消了通话' : '对方拒绝了您的通话') : '对方已挂断',
         ex: jsonEncode({
-          'type': 'call_hangup',
+          'type': notConnected ? (isInviter ? 'call_cancel' : 'call_reject') : 'call_hangup',
           'roomID': signaling.invitation!.roomID,
         }),
       );
 
-      OpenIM.iMManager.messageManager
-          .sendMessage(message: message, offlinePushInfo: offlinePush, userID: recvUserID, isOnlineOnly: false);
+      try {
+        await OpenIM.iMManager.messageManager
+            .sendMessage(message: message, offlinePushInfo: offlinePush, userID: recvUserID, isOnlineOnly: false);
+      } catch (e) {
+        Logger.print('[OpenIMLive] 发送挂断/取消信令失败: $e');
+      }
     }
     _stopSound();
 
     insertSignalingMessageSubject.add(CallEvent(
-      CallState.hangup,
+      notConnectedHangupState(isPositive, duration, signaling),
       signaling,
       fields: duration,
     ));
+  }
+
+  /// 未接通的主动挂断按 cancel/reject 记会话，已接通才记 hangup
+  CallState notConnectedHangupState(bool isPositive, int duration, SignalingInfo signaling) {
+    if (!isPositive || duration > 0) return CallState.hangup;
+    final isInviter = signaling.invitation?.inviterUserID == OpenIM.iMManager.userID;
+    return isInviter ? CallState.cancel : CallState.reject;
   }
 
   onBusyLine() {

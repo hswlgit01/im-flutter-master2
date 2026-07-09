@@ -115,7 +115,10 @@ abstract class SignalState<T extends SignalView> extends State<T> {
       callStateSubject.add(event.state);
     }
 
-    if (event.state == CallState.beRejected || event.state == CallState.beCanceled) {
+    // dawn 2026-07-09 补 beHangup：对端主动挂断/未接通取消 都要关本端通话页
+    if (event.state == CallState.beRejected ||
+        event.state == CallState.beCanceled ||
+        event.state == CallState.beHangup) {
       widget.onClose?.call();
     } else if (event.state == CallState.otherReject || event.state == CallState.otherAccepted) {
       if (existParticipants()) {
