@@ -56,14 +56,14 @@ class _SingleRoomViewState extends SignalState<SingleRoomView> {
   }
 
   @override
-  Future<void> connect() async {
+  Future<bool> connect() async {
     final url = certificate.liveURL!;
     final token = certificate.token!;
     final busyLineUsers = certificate.busyLineUserIDList ?? [];
     if (busyLineUsers.isNotEmpty) {
       widget.onBusyLine?.call();
       widget.onClose?.call();
-      return;
+      return false;
     }
     // Try to connect to a room
     // This will throw an Exception if it fails for any reason.
@@ -79,7 +79,8 @@ class _SingleRoomViewState extends SignalState<SingleRoomView> {
           roomOptions: RoomOptions(
               dynacast: true,
               adaptiveStream: true,
-              defaultCameraCaptureOptions: const CameraCaptureOptions(params: VideoParametersPresets.h720_169),
+              defaultCameraCaptureOptions: const CameraCaptureOptions(
+                  params: VideoParametersPresets.h720_169),
               defaultVideoPublishOptions: VideoPublishOptions(
                   simulcast: true,
                   videoCodec: 'VP9',
@@ -87,7 +88,7 @@ class _SingleRoomViewState extends SignalState<SingleRoomView> {
                     maxBitrate: 5 * 1000 * 1000,
                     maxFramerate: 15,
                   ))));
-      if (!mounted) return;
+      if (!mounted) return false;
       _room?.addListener(_onRoomDidUpdate);
       if (null != _listener) _setUpListeners();
       if (null != _room) roomDidUpdateSubject.add(_room!);
@@ -98,8 +99,10 @@ class _SingleRoomViewState extends SignalState<SingleRoomView> {
       WidgetsBindingCompatible.instance?.addPostFrameCallback((_) {
         _publish();
       });
+      return true;
     } catch (error, stackTrace) {
-      widget.onError?.call(error, stackTrace);
+      Logger.print('connect LiveKit room failed: $error $stackTrace');
+      rethrow;
     }
   }
 

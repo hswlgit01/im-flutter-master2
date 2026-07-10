@@ -70,6 +70,7 @@ abstract class SignalState<T extends SignalView> extends State<T> {
   int duration = 0;
   bool enabledMicrophone = true;
   bool enabledSpeaker = true;
+  bool _pickupInProgress = false;
 
   ParticipantTrack? remoteParticipantTrack;
   ParticipantTrack? localParticipantTrack;
@@ -93,7 +94,8 @@ abstract class SignalState<T extends SignalView> extends State<T> {
   }
 
   /// 过滤其他房间的信令
-  Stream<CallEvent> get sameRoomSignalStream => widget.callEventSubject.stream.where((event) => LiveUtils.isSameRoom(event, roomID));
+  Stream<CallEvent> get sameRoomSignalStream => widget.callEventSubject.stream
+      .where((event) => LiveUtils.isSameRoom(event, roomID));
 
   _onUpdateUserInfo(UserInfo? info) {
     if (!mounted && null != info) return;
@@ -120,12 +122,15 @@ abstract class SignalState<T extends SignalView> extends State<T> {
         event.state == CallState.beCanceled ||
         event.state == CallState.beHangup) {
       widget.onClose?.call();
-    } else if (event.state == CallState.otherReject || event.state == CallState.otherAccepted) {
+    } else if (event.state == CallState.otherReject ||
+        event.state == CallState.otherAccepted) {
       if (existParticipants()) {
         return;
       }
       widget.onClose?.call();
-      IMViews.showToast(sprintf(StrRes.otherCallHandle, [event.state == CallState.otherReject ? StrRes.rejectCall : StrRes.accept]));
+      IMViews.showToast(sprintf(StrRes.otherCallHandle, [
+        event.state == CallState.otherReject ? StrRes.rejectCall : StrRes.accept
+      ]));
     } else if (event.state == CallState.timeout) {
       widget.onClose?.call();
     } else if (event.state == CallState.beAccepted) {
@@ -148,10 +153,17 @@ abstract class SignalState<T extends SignalView> extends State<T> {
   /// 发起者在对方为进入房间都是 等待状态
   onDail() async {
     if (widget.initState == CallState.call) {
-      // callStateSubject.add(CallState.connecting);
-      certificate = await widget.onDial!.call();
-      widget.onBindRoomID?.call(roomID = certificate.roomID!);
-      await connect();
+      try {
+        // callStateSubject.add(CallState.connecting);
+        certificate = await widget.onDial!.call();
+        if (!mounted) return;
+        widget.onBindRoomID?.call(roomID = certificate.roomID!);
+        final connected = await connect();
+        if (!connected) await _notifyDialFailed();
+      } catch (error, stackTrace) {
+        await _notifyDialFailed();
+        if (mounted) widget.onError?.call(error, stackTrace);
+      }
     }
   }
 
@@ -162,19 +174,52 @@ abstract class SignalState<T extends SignalView> extends State<T> {
   }
 
   onTapPickup() async {
+    if (_pickupInProgress || callState == CallState.calling) return;
+    _pickupInProgress = true;
     Logger.print('------------onTapPickup---------连接中--------');
     callStateSubject.add(CallState.connecting);
-    certificate = await widget.onTapPickup!.call();
-    widget.onBindRoomID?.call(roomID = certificate.roomID!);
-    await connect();
-    callStateSubject.add(CallState.calling);
-    widget.onStartCalling?.call();
-    Logger.print('------------onTapPickup---------连接成功--------');
+    try {
+      certificate = await widget.onTapPickup!.call();
+      if (!mounted) return;
+      widget.onBindRoomID?.call(roomID = certificate.roomID!);
+      final connected = await connect();
+      if (!connected) {
+        await _notifyPickupFailed();
+        return;
+      }
+      if (!mounted) return;
+      callStateSubject.add(CallState.calling);
+      widget.onStartCalling?.call();
+      Logger.print('------------onTapPickup---------连接成功--------');
+    } catch (error, stackTrace) {
+      await _notifyPickupFailed();
+      if (mounted) widget.onError?.call(error, stackTrace);
+    } finally {
+      _pickupInProgress = false;
+    }
+  }
+
+  Future<void> _notifyPickupFailed() async {
+    try {
+      await widget.onTapReject?.call();
+    } catch (error, stackTrace) {
+      Logger.print('send pickup failure signal error: $error $stackTrace');
+    }
+  }
+
+  Future<void> _notifyDialFailed() async {
+    try {
+      await widget.onTapCancel?.call();
+    } catch (error, stackTrace) {
+      Logger.print('send dial failure signal error: $error $stackTrace');
+    }
   }
 
   /// [isPositive] 人为挂断行为
   onTapHangup(bool isPositive) async {
-    await widget.onTapHangup?.call(duration, isPositive).whenComplete(() => /*isPositive ? {} : */ widget.onClose?.call());
+    await widget.onTapHangup
+        ?.call(duration, isPositive)
+        .whenComplete(() => /*isPositive ? {} : */ widget.onClose?.call());
   }
 
   onTapCancel() async {
@@ -224,7 +269,7 @@ abstract class SignalState<T extends SignalView> extends State<T> {
     });
   }
 
-  Future<void> connect();
+  Future<bool> connect();
 
   bool existParticipants();
 
@@ -247,7 +292,9 @@ abstract class SignalState<T extends SignalView> extends State<T> {
                   //   ..width = 1.sw
                   //   ..height = 1.sh,
                   if (null != remoteParticipantTrack)
-                    ParticipantWidget.widgetFor(smallScreenIsRemote ? remoteParticipantTrack! : localParticipantTrack!),
+                    ParticipantWidget.widgetFor(smallScreenIsRemote
+                        ? remoteParticipantTrack!
+                        : localParticipantTrack!),
 
                   if (null != localParticipantTrack)
                     Positioned(
@@ -257,7 +304,9 @@ abstract class SignalState<T extends SignalView> extends State<T> {
                         child: SizedBox(
                           width: 120.w,
                           height: 180.h,
-                          child: ParticipantWidget.widgetFor(smallScreenIsRemote ? localParticipantTrack! : remoteParticipantTrack!),
+                          child: ParticipantWidget.widgetFor(smallScreenIsRemote
+                              ? localParticipantTrack!
+                              : remoteParticipantTrack!),
                         ),
                         onTap: () {
                           if (remoteParticipantTrack != null) {

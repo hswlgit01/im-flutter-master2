@@ -19,13 +19,21 @@ mixin OpenIMLive {
   final signalingSubject = PublishSubject<CallEvent>();
 
   // 通话通知回调（由外部实现）
-  Future<void> Function(String title, String body, String payload)? onShowCallNotification;
+  Future<void> Function(String title, String body, String payload)?
+      onShowCallNotification;
 
   void invitationCancelled(SignalingInfo info) {
     signalingSubject.add(CallEvent(CallState.beCanceled, info));
   }
 
   void inviteeAccepted(SignalingInfo info) {
+    final roomID = info.invitation?.roomID;
+    final currentRoomID = OpenIMLiveClient().currentRoomID;
+    if (roomID == null || roomID.isEmpty || currentRoomID != roomID) {
+      Logger.print(
+          '[OpenIMLive] ignore stale/mismatched accept: current=$currentRoomID event=$roomID');
+      return;
+    }
     signalingSubject.add(CallEvent(CallState.beAccepted, info));
   }
 
@@ -105,7 +113,8 @@ mixin OpenIMLive {
     _signalingListener();
     _insertSignalingMessageListener();
     backgroundSubject.listen((background) {
-      Logger.print('[OpenIMLive] 📱 收到后台状态变更: $_isRunningBackground -> $background');
+      Logger.print(
+          '[OpenIMLive] 📱 收到后台状态变更: $_isRunningBackground -> $background');
       _isRunningBackground = background;
       Logger.print('[OpenIMLive] ✅ 后台状态已更新: $_isRunningBackground');
       if (!_isRunningBackground) {
@@ -127,22 +136,28 @@ mixin OpenIMLive {
     });
   }
 
-  Stream<CallEvent> get _stream => signalingSubject.stream /*.where((event) => LiveClient.dispatchSignaling(event))*/;
+  Stream<CallEvent> get _stream => signalingSubject
+      .stream /*.where((event) => LiveClient.dispatchSignaling(event))*/;
 
   _signalingListener() => _stream.listen(
         (event) async {
           _beCalledEvent = null;
           if (event.state == CallState.beCalled) {
             Logger.print('[OpenIMLive] ========== 收到通话邀请 ==========');
-            Logger.print('[OpenIMLive] _isRunningBackground=$_isRunningBackground');
+            Logger.print(
+                '[OpenIMLive] _isRunningBackground=$_isRunningBackground');
 
             // 播放来电铃声（前台和后台都播放）
             _playSound();
 
             final mediaType = event.data.invitation?.mediaType ?? 'video';
-            final sessionType = event.data.invitation?.sessionType ?? ConversationType.single;
-            final callType = mediaType == 'audio' ? CallType.audio : CallType.video;
-            final callObj = sessionType == ConversationType.single ? CallObj.single : CallObj.group;
+            final sessionType =
+                event.data.invitation?.sessionType ?? ConversationType.single;
+            final callType =
+                mediaType == 'audio' ? CallType.audio : CallType.video;
+            final callObj = sessionType == ConversationType.single
+                ? CallObj.single
+                : CallObj.group;
 
             // 如果在后台，显示系统通知
             if (Platform.isAndroid && _isRunningBackground) {
@@ -222,7 +237,8 @@ mixin OpenIMLive {
             Logger.print('[OpenIMLive] 📞 收到接受信令，停止声音');
             _stopSound();
             _beCalledEvent = null; // 清除缓存的通话事件
-          } else if (event.state == CallState.otherReject || event.state == CallState.otherAccepted) {
+          } else if (event.state == CallState.otherReject ||
+              event.state == CallState.otherAccepted) {
             _stopSound();
           } else if (event.state == CallState.timeout) {
             insertSignalingMessageSubject.add(event);
@@ -278,6 +294,7 @@ mixin OpenIMLive {
     OpenIMLiveClient().start(
       Get.overlayContext!,
       callEventSubject: signalingSubject,
+      roomID: signal.invitation!.roomID,
       inviterUserID: inviterUserID,
       groupID: groupID,
       inviteeUserIDList: inviteeUserIDList,
@@ -313,7 +330,7 @@ mixin OpenIMLive {
     OpenIMLiveClient().close();
     _stopSound();
     if (error is PlatformException) {
-      if (int.parse(error.code) == SDKErrorCode.hasBeenBlocked) {
+      if (int.tryParse(error.code) == SDKErrorCode.hasBeenBlocked) {
         IMViews.showToast(StrRes.callFail);
         return;
       }
@@ -324,7 +341,8 @@ mixin OpenIMLive {
   onRoomDisconnected(SignalingInfo signalingInfo) {}
 
   /// 显示通话系统通知（后台时使用）
-  Future<void> _showCallNotification(SignalingInfo signaling, String mediaType) async {
+  Future<void> _showCallNotification(
+      SignalingInfo signaling, String mediaType) async {
     try {
       // 检查回调是否设置
       if (onShowCallNotification == null) {
@@ -342,7 +360,8 @@ mixin OpenIMLive {
       // 获取用户信息（昵称）
       String callerName = inviterUserID;
       try {
-        final userInfo = await OpenIM.iMManager.userManager.getUsersInfo(userIDList: [inviterUserID]);
+        final userInfo = await OpenIM.iMManager.userManager
+            .getUsersInfo(userIDList: [inviterUserID]);
         if (userInfo.isNotEmpty && userInfo.first.nickname != null) {
           callerName = userInfo.first.nickname!;
         }
@@ -353,14 +372,18 @@ mixin OpenIMLive {
       // 准备通知内容
       final isVideo = mediaType == 'video';
       final title = StrRes.offlineCallMessage; // "你收到了一条通话邀请消息"
-      final hintTemplate = isVideo ? StrRes.whoInvitedVideoCallHint : StrRes.whoInvitedVoiceCallHint;
+      final hintTemplate = isVideo
+          ? StrRes.whoInvitedVideoCallHint
+          : StrRes.whoInvitedVoiceCallHint;
       final body = sprintf(hintTemplate, [callerName]);
-      final payload = "call://${signaling.invitation?.roomID}/$inviterUserID/$mediaType";
+      final payload =
+          "call://${signaling.invitation?.roomID}/$inviterUserID/$mediaType";
 
       // 调用外部回调显示通知
       await onShowCallNotification!(title, body, payload);
 
-      Logger.print('[OpenIMLive] ✅ 已调用通话通知回调: $callerName (${isVideo ? "视频" : "语音"})');
+      Logger.print(
+          '[OpenIMLive] ✅ 已调用通话通知回调: $callerName (${isVideo ? "视频" : "语音"})');
     } catch (e, stackTrace) {
       Logger.print('[OpenIMLive] ❌ 显示通话系统通知失败: $e');
       Logger.print('[OpenIMLive] 堆栈: $stackTrace');
@@ -368,19 +391,30 @@ mixin OpenIMLive {
   }
 
   Future<SignalingCertificate> onDialSingle(SignalingInfo signaling) async {
-    final data = {'customType': CustomMessageType.callingInvite, 'data': signaling.invitation!.toJson()};
-    final message = await OpenIM.iMManager.messageManager
-        .createCustomMessage(data: jsonEncode(data), extension: '', description: '');
+    // Do not ring the callee until this device has a usable RTC credential.
+    // Otherwise a media-service outage creates a call the inviter can never
+    // join or cancel reliably.
+    final certificate = await Apis.getTokenForRTC(
+        signaling.invitation!.roomID!, OpenIM.iMManager.userID);
+
+    final data = {
+      'customType': CustomMessageType.callingInvite,
+      'data': signaling.invitation!.toJson()
+    };
+    final message = await OpenIM.iMManager.messageManager.createCustomMessage(
+        data: jsonEncode(data), extension: '', description: '');
 
     // 配置离线推送，支持后台唤醒
-    final inviterUserID = signaling.invitation!.inviterUserID ?? OpenIM.iMManager.userID;
+    final inviterUserID =
+        signaling.invitation!.inviterUserID ?? OpenIM.iMManager.userID;
     final mediaType = signaling.invitation!.mediaType ?? 'video';
     final isVideo = mediaType == 'video';
 
     // 获取发起者昵称
     String callerName = inviterUserID;
     try {
-      final userInfoList = await OpenIM.iMManager.userManager.getUsersInfo(userIDList: [inviterUserID]);
+      final userInfoList = await OpenIM.iMManager.userManager
+          .getUsersInfo(userIDList: [inviterUserID]);
       if (userInfoList.isNotEmpty && userInfoList.first.nickname != null) {
         callerName = userInfoList.first.nickname!;
       }
@@ -389,7 +423,9 @@ mixin OpenIMLive {
     }
 
     final pushTitle = StrRes.offlineCallMessage; // "你收到了一条通话邀请消息"
-    final hintTemplate = isVideo ? StrRes.whoInvitedVideoCallHint : StrRes.whoInvitedVoiceCallHint;
+    final hintTemplate = isVideo
+        ? StrRes.whoInvitedVideoCallHint
+        : StrRes.whoInvitedVoiceCallHint;
     final pushContent = sprintf(hintTemplate, [callerName]);
 
     final offlinePush = OfflinePushInfo(
@@ -405,12 +441,11 @@ mixin OpenIMLive {
       iOSBadgeCount: true,
     );
 
-    OpenIM.iMManager.messageManager.sendMessage(
+    await OpenIM.iMManager.messageManager.sendMessage(
         message: message,
         offlinePushInfo: offlinePush,
         userID: signaling.invitation!.inviteeUserIDList!.first,
         isOnlineOnly: false); // 改为 false，支持离线推送
-    final certificate = await Apis.getTokenForRTC(signaling.invitation!.roomID!, OpenIM.iMManager.userID);
 
     return certificate;
   }
@@ -420,27 +455,45 @@ mixin OpenIMLive {
     _autoPickup = false;
     _stopSound();
 
-    final data = {'customType': CustomMessageType.callingAccept, 'data': signaling.invitation!.toJson()};
-    final message = await OpenIM.iMManager.messageManager
-        .createCustomMessage(data: jsonEncode(data), extension: '', description: '');
-    OpenIM.iMManager.messageManager.sendMessage(
-        message: message,
-        offlinePushInfo: OfflinePushInfo(),
-        userID: signaling.invitation!.inviterUserID,
-        isOnlineOnly: true);
-    final certificate = await Apis.getTokenForRTC(signaling.invitation!.roomID!, OpenIM.iMManager.userID);
+    // Obtain a usable RTC credential before telling the caller that the call
+    // has been accepted. Otherwise a LiveKit outage leaves the caller in an
+    // accepted state while the callee can never enter the room.
+    final certificate = await Apis.getTokenForRTC(
+      signaling.invitation!.roomID!,
+      OpenIM.iMManager.userID,
+    );
+
+    final data = {
+      'customType': CustomMessageType.callingAccept,
+      'data': signaling.invitation!.toJson()
+    };
+    final message = await OpenIM.iMManager.messageManager.createCustomMessage(
+        data: jsonEncode(data), extension: '', description: '');
+    // Use the reliable message path like reject/cancel/hangup. Receivers apply
+    // both room and age checks before dispatching 201, so an offline replay
+    // cannot affect a newer call. If room connection fails, call_state sends
+    // a durable reject immediately to release the caller.
+    await OpenIM.iMManager.messageManager.sendMessage(
+      message: message,
+      offlinePushInfo: OfflinePushInfo(),
+      userID: signaling.invitation!.inviterUserID,
+      isOnlineOnly: false,
+    );
 
     /// 同步消息
     String source = Platform.isIOS ? 'ios' : 'android';
     final syncData = {
       'customType': CustomMessageType.syncCallStatus,
-      'data': {
-        'state': 'accept',
-        'source': source
-      },
+      'data': {'state': 'accept', 'source': source},
     };
-    final syncMessage = await OpenIM.iMManager.messageManager.createCustomMessage(data: jsonEncode(syncData), extension: '', description: '');
-    OpenIM.iMManager.messageManager.sendMessage(message: syncMessage, offlinePushInfo: OfflinePushInfo(), userID: OpenIM.iMManager.userID, isOnlineOnly: true);
+    final syncMessage = await OpenIM.iMManager.messageManager
+        .createCustomMessage(
+            data: jsonEncode(syncData), extension: '', description: '');
+    OpenIM.iMManager.messageManager.sendMessage(
+        message: syncMessage,
+        offlinePushInfo: OfflinePushInfo(),
+        userID: OpenIM.iMManager.userID,
+        isOnlineOnly: true);
 
     return certificate;
   }
@@ -449,12 +502,16 @@ mixin OpenIMLive {
     _stopSound();
     insertSignalingMessageSubject.add(CallEvent(CallState.reject, signaling));
 
-    final data = {'customType': CustomMessageType.callingReject, 'data': signaling.invitation!.toJson()};
-    final message = await OpenIM.iMManager.messageManager
-        .createCustomMessage(data: jsonEncode(data), extension: '', description: '');
-    final recvUserID = signaling.invitation!.inviterUserID == OpenIM.iMManager.userID
-        ? signaling.invitation!.inviteeUserIDList!.first
-        : signaling.invitation!.inviterUserID;
+    final data = {
+      'customType': CustomMessageType.callingReject,
+      'data': signaling.invitation!.toJson()
+    };
+    final message = await OpenIM.iMManager.messageManager.createCustomMessage(
+        data: jsonEncode(data), extension: '', description: '');
+    final recvUserID =
+        signaling.invitation!.inviterUserID == OpenIM.iMManager.userID
+            ? signaling.invitation!.inviteeUserIDList!.first
+            : signaling.invitation!.inviterUserID;
 
     /// 同步消息
     String source = Platform.isIOS ? 'ios' : 'android';
@@ -465,8 +522,14 @@ mixin OpenIMLive {
         'source': source,
       },
     };
-    final syncMessage = await OpenIM.iMManager.messageManager.createCustomMessage(data: jsonEncode(syncData), extension: '', description: '');
-    OpenIM.iMManager.messageManager.sendMessage(message: syncMessage, offlinePushInfo: OfflinePushInfo(), userID: OpenIM.iMManager.userID, isOnlineOnly: true);
+    final syncMessage = await OpenIM.iMManager.messageManager
+        .createCustomMessage(
+            data: jsonEncode(syncData), extension: '', description: '');
+    OpenIM.iMManager.messageManager.sendMessage(
+        message: syncMessage,
+        offlinePushInfo: OfflinePushInfo(),
+        userID: OpenIM.iMManager.userID,
+        isOnlineOnly: true);
 
     // 创建离线推送信息，确保后台也能收到拒绝信令
     final offlinePush = OfflinePushInfo(
@@ -478,21 +541,27 @@ mixin OpenIMLive {
       }),
     );
 
-    return OpenIM.iMManager.messageManager
-        .sendMessage(message: message, offlinePushInfo: offlinePush, userID: recvUserID, isOnlineOnly: false);
-
+    return OpenIM.iMManager.messageManager.sendMessage(
+        message: message,
+        offlinePushInfo: offlinePush,
+        userID: recvUserID,
+        isOnlineOnly: false);
   }
 
   onTapCancel(SignalingInfo signaling) async {
     _stopSound();
     insertSignalingMessageSubject.add(CallEvent(CallState.cancel, signaling));
 
-    final data = {'customType': CustomMessageType.callingCancel, 'data': signaling.invitation!.toJson()};
-    final message = await OpenIM.iMManager.messageManager
-        .createCustomMessage(data: jsonEncode(data), extension: '', description: '');
-    final recvUserID = signaling.invitation!.inviterUserID == OpenIM.iMManager.userID
-        ? signaling.invitation!.inviteeUserIDList!.first
-        : signaling.invitation!.inviterUserID;
+    final data = {
+      'customType': CustomMessageType.callingCancel,
+      'data': signaling.invitation!.toJson()
+    };
+    final message = await OpenIM.iMManager.messageManager.createCustomMessage(
+        data: jsonEncode(data), extension: '', description: '');
+    final recvUserID =
+        signaling.invitation!.inviterUserID == OpenIM.iMManager.userID
+            ? signaling.invitation!.inviteeUserIDList!.first
+            : signaling.invitation!.inviterUserID;
 
     // 创建离线推送信息，确保后台也能收到取消信令
     final offlinePush = OfflinePushInfo(
@@ -506,8 +575,11 @@ mixin OpenIMLive {
 
     // dawn 2026-07-09 await 发送，避免界面已关掉但 cancel 信令还没发出去
     try {
-      await OpenIM.iMManager.messageManager
-          .sendMessage(message: message, offlinePushInfo: offlinePush, userID: recvUserID, isOnlineOnly: false);
+      await OpenIM.iMManager.messageManager.sendMessage(
+          message: message,
+          offlinePushInfo: offlinePush,
+          userID: recvUserID,
+          isOnlineOnly: false);
     } catch (e) {
       Logger.print('[OpenIMLive] 发送取消信令失败: $e');
     }
@@ -526,9 +598,12 @@ mixin OpenIMLive {
   }
 
   onTimeoutCancelled(SignalingInfo signaling) async {
-    final data = {'customType': CustomMessageType.callingCancel, 'data': signaling.invitation!.toJson()};
-    final message = await OpenIM.iMManager.messageManager
-        .createCustomMessage(data: jsonEncode(data), extension: '', description: '');
+    final data = {
+      'customType': CustomMessageType.callingCancel,
+      'data': signaling.invitation!.toJson()
+    };
+    final message = await OpenIM.iMManager.messageManager.createCustomMessage(
+        data: jsonEncode(data), extension: '', description: '');
 
     // 创建离线推送信息，确保后台也能收到超时取消信令
     final offlinePush = OfflinePushInfo(
@@ -551,35 +626,47 @@ mixin OpenIMLive {
 
   onTapHangup(SignalingInfo signaling, int duration, bool isPositive) async {
     if (isPositive) {
-      final recvUserID = signaling.invitation!.inviterUserID == OpenIM.iMManager.userID
-          ? signaling.invitation!.inviteeUserIDList!.first
-          : signaling.invitation!.inviterUserID;
+      final recvUserID =
+          signaling.invitation!.inviterUserID == OpenIM.iMManager.userID
+              ? signaling.invitation!.inviteeUserIDList!.first
+              : signaling.invitation!.inviterUserID;
 
       // dawn 2026-07-09 未接通时挂断应发 cancel/reject，而不是 hungup：
       // 被叫侧 UI 对 hungup 处理历史上有漏关界面；cancel/reject 语义也更正确。
       // duration==0 视为尚未真正通话（仍在等待接听）。
       final notConnected = duration <= 0;
-      final isInviter = signaling.invitation!.inviterUserID == OpenIM.iMManager.userID;
+      final isInviter =
+          signaling.invitation!.inviterUserID == OpenIM.iMManager.userID;
       final customType = notConnected
-          ? (isInviter ? CustomMessageType.callingCancel : CustomMessageType.callingReject)
+          ? (isInviter
+              ? CustomMessageType.callingCancel
+              : CustomMessageType.callingReject)
           : CustomMessageType.callingHungup;
 
-      final data = {'customType': customType, 'data': signaling.invitation!.toJson()};
-      final message = await OpenIM.iMManager.messageManager
-          .createCustomMessage(data: jsonEncode(data), extension: '', description: '');
+      final data = {
+        'customType': customType,
+        'data': signaling.invitation!.toJson()
+      };
+      final message = await OpenIM.iMManager.messageManager.createCustomMessage(
+          data: jsonEncode(data), extension: '', description: '');
 
       final offlinePush = OfflinePushInfo(
         title: notConnected ? (isInviter ? '通话已取消' : '通话已拒绝') : '通话已结束',
         desc: notConnected ? (isInviter ? '对方取消了通话' : '对方拒绝了您的通话') : '对方已挂断',
         ex: jsonEncode({
-          'type': notConnected ? (isInviter ? 'call_cancel' : 'call_reject') : 'call_hangup',
+          'type': notConnected
+              ? (isInviter ? 'call_cancel' : 'call_reject')
+              : 'call_hangup',
           'roomID': signaling.invitation!.roomID,
         }),
       );
 
       try {
-        await OpenIM.iMManager.messageManager
-            .sendMessage(message: message, offlinePushInfo: offlinePush, userID: recvUserID, isOnlineOnly: false);
+        await OpenIM.iMManager.messageManager.sendMessage(
+            message: message,
+            offlinePushInfo: offlinePush,
+            userID: recvUserID,
+            isOnlineOnly: false);
       } catch (e) {
         Logger.print('[OpenIMLive] 发送挂断/取消信令失败: $e');
       }
@@ -594,9 +681,11 @@ mixin OpenIMLive {
   }
 
   /// 未接通的主动挂断按 cancel/reject 记会话，已接通才记 hangup
-  CallState notConnectedHangupState(bool isPositive, int duration, SignalingInfo signaling) {
+  CallState notConnectedHangupState(
+      bool isPositive, int duration, SignalingInfo signaling) {
     if (!isPositive || duration > 0) return CallState.hangup;
-    final isInviter = signaling.invitation?.inviterUserID == OpenIM.iMManager.userID;
+    final isInviter =
+        signaling.invitation?.inviterUserID == OpenIM.iMManager.userID;
     return isInviter ? CallState.cancel : CallState.reject;
   }
 
@@ -636,7 +725,8 @@ mixin OpenIMLive {
     return list.firstOrNull;
   }
 
-  Future<List<GroupMembersInfo>> onSyncGroupMemberInfo(groupID, userIDList) async {
+  Future<List<GroupMembersInfo>> onSyncGroupMemberInfo(
+      groupID, userIDList) async {
     var list = await OpenIM.iMManager.groupManager.getGroupMembersInfo(
       groupID: groupID,
       userIDList: userIDList,
@@ -691,7 +781,8 @@ mixin OpenIMLive {
           offlinePushInfo: OfflinePushInfo(),
           userID: receiverID,
         );
-        onSignalingMessage?.call(SignalingMessageEvent(msg, 1, receiverID, null));
+        onSignalingMessage
+            ?.call(SignalingMessageEvent(msg, 1, receiverID, null));
       }
     })();
   }
@@ -712,7 +803,9 @@ class SignalingMessageEvent {
 
   bool get isSingleChat => sessionType == ConversationType.single;
 
-  bool get isGroupChat => sessionType == ConversationType.group || sessionType == ConversationType.superGroup;
+  bool get isGroupChat =>
+      sessionType == ConversationType.group ||
+      sessionType == ConversationType.superGroup;
 }
 
 extension MessageMangerExt on MessageManager {

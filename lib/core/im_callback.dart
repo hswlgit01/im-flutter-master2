@@ -40,11 +40,13 @@ mixin IMCallback {
   // dawn 2026-07-04 修复"实时收不到消息(要退出会话再进来才收到)"：onRecvNewMessage 是【单个可覆盖】回调，
   // 聊天页(设/清)与通知页(设)互相覆盖，导致聊天页的实时收消息处理被通知页覆盖 → 聊天页收不到新消息。
   // 改为按 owner 注册的多监听器，各自独立互不覆盖。
-  final Map<Object, FutureOr<void> Function(Message msg)> _recvNewMessageListeners = {};
+  final Map<Object, FutureOr<void> Function(Message msg)>
+      _recvNewMessageListeners = {};
   void addRecvNewMessageListener(
       Object owner, FutureOr<void> Function(Message msg) listener) {
     _recvNewMessageListeners[owner] = listener;
   }
+
   void removeRecvNewMessageListener(Object owner) {
     _recvNewMessageListeners.remove(owner);
   }
@@ -237,6 +239,14 @@ mixin IMCallback {
     return (now - sendTime).abs() <= const Duration(minutes: 10).inMilliseconds;
   }
 
+  bool _isFreshCallAccept(Message message) {
+    final sendTime = message.sendTime;
+    if (sendTime == null || sendTime <= 0) return false;
+    final age = DateTime.now().millisecondsSinceEpoch - sendTime;
+    return age >= -const Duration(seconds: 30).inMilliseconds &&
+        age <= const Duration(minutes: 2).inMilliseconds;
+  }
+
   void _promptLatestMessagesFromConversations(
       List<ConversationInfo> list, String reason) {
     // dawn 2026-05-23 修复离线文件消息登录后无提示：登录同步/前台补刷也可能只拿到会话 latestMsg，不一定触发离线消息回调。
@@ -399,6 +409,10 @@ mixin IMCallback {
               break;
             case 201: // callingAccept
               Logger.print('[IMCallback] 处理通话接受信令(callingAccept)');
+              if (!_isFreshCallAccept(msg)) {
+                Logger.print('[IMCallback] 忽略过期的通话接受信令');
+                break;
+              }
               (this as dynamic).inviteeAccepted(signaling);
               break;
             case 202: // callingReject
@@ -823,6 +837,10 @@ mixin IMCallback {
               break;
             case 201: // callingAccept
               print('[IMCallback] 处理离线通话接受信令(callingAccept)');
+              if (!_isFreshCallAccept(msg)) {
+                print('[IMCallback] 忽略过期的离线通话接受信令');
+                break;
+              }
               (this as dynamic).inviteeAccepted(signaling);
               break;
             case 202: // callingReject
