@@ -71,7 +71,7 @@ class MuteSetupLogic extends GetxController {
 
         // 1208 = OfficialAccountProtected
         if (errorCode == 1208 || errorCode == '1208') {
-          IMViews.showToast('此用户为官方客服，无法禁言');
+          IMViews.showToast('该用户已开启官方账号保护，无法禁言');
           return;
         }
       } catch (_) {}

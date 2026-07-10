@@ -1281,15 +1281,15 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5Jbp/I9SdFBfd1e4aC+t7prpRQD+b8Imig8N
   /// [userID] - 要检查的用户ID
   /// 返回用户是否受保护，受保护的用户不能被发起音视频通话、踢出群组、禁言
   Future<bool> checkUserHasProtection(String userID) async {
-    try {
-      final data = await HttpUtil.get(
-        '${Urls.checkUserProtection}?user_id=$userID',
-        showErrorToast: false,
-        options: Apis.chatTokenOptions,
-      );
-      return data?['has_protection'] ?? false;
-    } catch (e) {
-      return false;
+    final data = await HttpUtil.get(
+      '${Urls.checkUserProtection}?user_id=$userID',
+      showErrorToast: false,
+      options: Apis.chatTokenOptions,
+    );
+    final hasProtection = data?['has_protection'];
+    if (hasProtection is! bool) {
+      throw StateError('Invalid user protection response');
     }
+    return hasProtection;
   }
 }

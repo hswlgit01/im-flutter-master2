@@ -481,7 +481,7 @@ class GroupSetupLogic extends GetxController {
 
           // 1208 = OfficialAccountProtected
           if (errorCode == 1208 || errorCode == '1208') {
-            IMViews.showToast('此用户为官方客服，无法移出');
+            IMViews.showToast('该用户已开启官方账号保护，无法移出');
             return;
           }
         } catch (_) {}

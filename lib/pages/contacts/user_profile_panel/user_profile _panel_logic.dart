@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:get/get.dart';
+import 'package:openim/core/api_service.dart' as core;
 import 'package:openim/core/controller/org_controller.dart';
 import 'package:openim/routes/app_navigator.dart';
 import 'package:openim_common/openim_common.dart';
@@ -339,12 +340,27 @@ class UserProfilePanelLogic extends GetxController {
     );
   }
 
-  void toCall() {
+  Future<void> toCall() async {
+    final userID = userInfo.value.userID;
+    if (userID == null) return;
+
+    bool hasProtection;
+    try {
+      hasProtection = await core.ApiService().checkUserHasProtection(userID);
+    } catch (_) {
+      IMViews.showToast('暂时无法验证账号保护状态，请稍后重试');
+      return;
+    }
+    if (hasProtection) {
+      IMViews.showToast('该用户已开启官方账号保护，暂不支持通话');
+      return;
+    }
+
     IMViews.openIMCallSheet(userInfo.value.showName, (index) {
       imLogic.call(
         callObj: CallObj.single,
         callType: index == 0 ? CallType.audio : CallType.video,
-        inviteeUserIDList: [userInfo.value.userID!],
+        inviteeUserIDList: [userID],
       );
     });
   }

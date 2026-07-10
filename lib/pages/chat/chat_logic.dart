@@ -3900,10 +3900,16 @@ class ChatLogic extends SuperController with WidgetsBindingObserver {
 
     // 检查对方是否拥有官方账号保护权限
     if (isSingleChat && userID != null) {
-      final hasProtection =
-          await core.ApiService().checkUserHasProtection(userID!);
+      bool hasProtection;
+      try {
+        hasProtection = await core.ApiService().checkUserHasProtection(userID!);
+      } catch (e) {
+        app_log.LogUtil.e('ChatLogic', '检查官方账号保护失败', e);
+        IMViews.showToast('暂时无法验证账号保护状态，请稍后重试');
+        return;
+      }
       if (hasProtection) {
-        IMViews.showToast('此用户为官方客服，暂不支持通话');
+        IMViews.showToast('该用户已开启官方账号保护，暂不支持通话');
         return;
       }
     }
