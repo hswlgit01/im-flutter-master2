@@ -4,6 +4,7 @@ import 'package:openim_common/openim_common.dart';
 
 import '../contacts/contacts_view.dart';
 import '../conversation/conversation_view.dart';
+import '../discover/discover_view.dart';
 import '../mine/mine_view.dart';
 import 'home_logic.dart';
 
@@ -26,6 +27,7 @@ class _HomePageState extends State<HomePage> {
     _pages = [
       ConversationPage(openParentDrawer: () {}),
       ContactsPage(),
+      DiscoverPage(),
       const MinePage(),
     ];
   }
@@ -103,6 +105,11 @@ class _HomePageState extends State<HomePage> {
                 unselectedImgRes: ImageRes.homeTab2Nor,
                 label: StrRes.contacts,
                 count: logic.unhandledCount.value,
+              ),
+              _buildBottomItem(
+                selectedImgRes: ImageRes.homeTab3Sel,
+                unselectedImgRes: ImageRes.homeTab3Nor,
+                label: StrRes.workbench,
               ),
               _buildBottomItem(
                 selectedImgRes: ImageRes.homeTab4Sel,
