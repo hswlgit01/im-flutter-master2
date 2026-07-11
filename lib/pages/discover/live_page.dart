@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
-import 'package:openim/core/controller/org_controller.dart';
 import 'package:openim/pages/discover/Live/meeting_view.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -25,14 +24,13 @@ class _LivePageState extends State<LivePage> {
   final TextEditingController _searchController = TextEditingController();
   final imLogic = Get.find<IMController>();
   final apiService = core.ApiService();
-  final orgController = Get.find<OrgController>();
-  
+
   // 直播列表相关
   List<Map<String, dynamic>> _allLiveStreams = [];
   List<Map<String, dynamic>> _filteredLiveStreams = [];
   final ScrollController _scrollController = ScrollController();
   bool _isSearching = false;
-  
+
   // 添加分页相关变量
   int _currentPage = 1;
   final int _pageSize = 20;
@@ -66,9 +64,9 @@ class _LivePageState extends State<LivePage> {
   void _onScroll() {
     // 如果正在加载、没有更多数据或者在搜索模式，则不触发加载更多
     if (_loadingStreams || !_hasMoreData || _isSearching) return;
-    
+
     // 检测是否滚动到接近底部（距离底部200像素时开始加载）
-    if (_scrollController.position.pixels >= 
+    if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       _loadMoreData();
     }
@@ -77,7 +75,7 @@ class _LivePageState extends State<LivePage> {
   // 加载更多数据
   Future<void> _loadMoreData() async {
     if (_loadingStreams || !_hasMoreData || _isSearching) return;
-    
+
     ILogger.d('LivePage', '加载更多数据，当前页：$_currentPage');
     _currentPage++;
     await _loadLiveStreams();
@@ -100,7 +98,7 @@ class _LivePageState extends State<LivePage> {
 
     try {
       ILogger.d('LivePage', '搜索直播列表，关键词：$keyword');
-      
+
       final result = await apiService.livestreamStatisticsList(
         page: 1,
         page_size: 100, // 搜索时增加页面大小
@@ -109,21 +107,23 @@ class _LivePageState extends State<LivePage> {
 
       if (result != null && result['data'] != null) {
         final List<dynamic> streamData = result['data'] ?? [];
-        
+
         ILogger.d('LivePage', '搜索到 ${streamData.length} 条数据');
-        
+
         setState(() {
-          _filteredLiveStreams = streamData.map((item) => {
-            'id': item['id']?.toString() ?? '',
-            'title': item['nickname'] ?? StrRes.liveUntitledStream,
-            'host': item['user']?['nickname'] ?? StrRes.liveUnknownHost,
-            'viewers': _parseIntSafely(item['total_users']) ?? 0,
-            'thumbnail':  item['cover'] ,
-            'status': item['status'] ?? 'live',
-            'room_name': item['room_name'] ?? '',
-            'start_time': item['start_time'],
-            'end_time': item['end_time'],
-          }).toList();
+          _filteredLiveStreams = streamData
+              .map((item) => {
+                    'id': item['id']?.toString() ?? '',
+                    'title': item['nickname'] ?? StrRes.liveUntitledStream,
+                    'host': item['user']?['nickname'] ?? StrRes.liveUnknownHost,
+                    'viewers': _parseIntSafely(item['total_users']) ?? 0,
+                    'thumbnail': item['cover'],
+                    'status': item['status'] ?? 'live',
+                    'room_name': item['room_name'] ?? '',
+                    'start_time': item['start_time'],
+                    'end_time': item['end_time'],
+                  })
+              .toList();
         });
       } else {
         setState(() {
@@ -154,10 +154,10 @@ class _LivePageState extends State<LivePage> {
           final host = (stream['host'] ?? '').toLowerCase();
           final roomName = (stream['room_name'] ?? '').toLowerCase();
           final searchQuery = query.toLowerCase();
-          
+
           return title.contains(searchQuery) ||
-                 host.contains(searchQuery) ||
-                 roomName.contains(searchQuery);
+              host.contains(searchQuery) ||
+              roomName.contains(searchQuery);
         }).toList();
       }
     });
@@ -180,7 +180,7 @@ class _LivePageState extends State<LivePage> {
 
     try {
       ILogger.d('LivePage', '加载直播列表，页数：$_currentPage，刷新：$refresh');
-      
+
       final result = await apiService.livestreamStatisticsList(
         page: _currentPage,
         page_size: _pageSize,
@@ -190,21 +190,23 @@ class _LivePageState extends State<LivePage> {
       if (result != null && result['data'] != null) {
         final List<dynamic> streamData = result['data'] ?? [];
         final total = result['total'] ?? 0;
-        
+
         ILogger.d('LivePage', '获取到 ${streamData.length} 条数据，总数：$total');
-        
+
         // 转换数据格式
-        final newStreams = streamData.map((item) => {
-          'id': item['id']?.toString() ?? '',
-          'title': item['nickname'] ?? StrRes.liveUntitledStream,
-          'host': item['user']?['nickname'] ?? StrRes.liveUnknownHost,
-          'viewers': _parseIntSafely(item['total_users']) ?? 0,
-          'thumbnail':  item['cover'] ,
-          'status': item['status'] ?? 'live',
-          'room_name': item['room_name'] ?? '',
-          'start_time': item['start_time'],
-          'end_time': item['end_time'],
-        }).toList();
+        final newStreams = streamData
+            .map((item) => {
+                  'id': item['id']?.toString() ?? '',
+                  'title': item['nickname'] ?? StrRes.liveUntitledStream,
+                  'host': item['user']?['nickname'] ?? StrRes.liveUnknownHost,
+                  'viewers': _parseIntSafely(item['total_users']) ?? 0,
+                  'thumbnail': item['cover'],
+                  'status': item['status'] ?? 'live',
+                  'room_name': item['room_name'] ?? '',
+                  'start_time': item['start_time'],
+                  'end_time': item['end_time'],
+                })
+            .toList();
 
         setState(() {
           if (refresh || _currentPage == 1) {
@@ -214,13 +216,14 @@ class _LivePageState extends State<LivePage> {
             // 加载更多时，追加数据
             _allLiveStreams.addAll(newStreams);
           }
-          
+
           // 检查是否还有更多数据
           final currentTotal = _allLiveStreams.length;
           _hasMoreData = currentTotal < total && newStreams.isNotEmpty;
-          
-          ILogger.d('LivePage', '当前总数：$currentTotal，服务器总数：$total，还有更多：$_hasMoreData');
-          
+
+          ILogger.d(
+              'LivePage', '当前总数：$currentTotal，服务器总数：$total，还有更多：$_hasMoreData');
+
           // 如果不在搜索模式，更新过滤列表
           if (!_isSearching) {
             _filteredLiveStreams = List.from(_allLiveStreams);
@@ -391,10 +394,13 @@ class _LivePageState extends State<LivePage> {
                     controller: _roomIdController,
                     decoration: InputDecoration(
                       hintText: StrRes.liveEnterRoomID,
-                      prefixIcon: Icon(Icons.meeting_room, color: Colors.red, size: 20),
+                      prefixIcon:
+                          Icon(Icons.meeting_room, color: Colors.red, size: 20),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(vertical: 15, horizontal: 16),
-                      hintStyle: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                      contentPadding:
+                          EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+                      hintStyle:
+                          TextStyle(fontSize: 14, color: Colors.grey.shade500),
                     ),
                     style: TextStyle(fontSize: 14),
                     keyboardType: TextInputType.text,
@@ -411,7 +417,8 @@ class _LivePageState extends State<LivePage> {
                       Expanded(
                         child: Text(
                           StrRes.liveRoomIDHint,
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                          style: TextStyle(
+                              color: Colors.grey.shade600, fontSize: 12),
                         ),
                       ),
                     ],
@@ -501,8 +508,8 @@ class _LivePageState extends State<LivePage> {
                                 width: 18,
                                 height: 18,
                                 child: CircularProgressIndicator(
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                   strokeWidth: 2,
                                 ),
                               )
@@ -568,15 +575,16 @@ class _LivePageState extends State<LivePage> {
                             stream['thumbnail'],
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) {
-                              return Icon(Icons.live_tv, color: Colors.white, size: 32);
+                              return Icon(Icons.live_tv,
+                                  color: Colors.white, size: 32);
                             },
                           ),
                         )
                       : Icon(Icons.live_tv, color: Colors.white, size: 32),
                 ),
-                
+
                 SizedBox(width: 16),
-                
+
                 // 直播信息
                 Expanded(
                   child: Column(
@@ -593,9 +601,9 @@ class _LivePageState extends State<LivePage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      
+
                       SizedBox(height: 6),
-                      
+
                       // 主播名称
                       Text(
                         stream['host'] ?? StrRes.liveUnknownHost,
@@ -606,15 +614,16 @@ class _LivePageState extends State<LivePage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      
+
                       SizedBox(height: 10),
-                      
+
                       // 观看人数和状态
                       Row(
                         children: [
                           // 直播状态
                           Container(
-                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.red,
                               borderRadius: BorderRadius.circular(4),
@@ -622,7 +631,8 @@ class _LivePageState extends State<LivePage> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.circle, color: Colors.white, size: 8),
+                                Icon(Icons.circle,
+                                    color: Colors.white, size: 8),
                                 SizedBox(width: 4),
                                 Text(
                                   'LIVE',
@@ -635,13 +645,14 @@ class _LivePageState extends State<LivePage> {
                               ],
                             ),
                           ),
-                          
+
                           SizedBox(width: 12),
-                          
+
                           // 观看人数
                           Row(
                             children: [
-                              Icon(Icons.visibility, color: Colors.grey.shade500, size: 14),
+                              Icon(Icons.visibility,
+                                  color: Colors.grey.shade500, size: 14),
                               SizedBox(width: 4),
                               Text(
                                 _formatViewerCount(stream['viewers'] ?? 0),
@@ -657,7 +668,7 @@ class _LivePageState extends State<LivePage> {
                     ],
                   ),
                 ),
-                
+
                 // 进入按钮
                 Container(
                   padding: EdgeInsets.all(8),
@@ -701,7 +712,7 @@ class _LivePageState extends State<LivePage> {
     } else if (count is double) {
       viewerCount = count.toInt();
     }
-    
+
     if (viewerCount < 1000) {
       return viewerCount.toString();
     } else if (viewerCount < 10000) {
@@ -737,7 +748,8 @@ class _LivePageState extends State<LivePage> {
               ),
               child: Icon(Icons.refresh, color: Colors.red, size: 20),
             ),
-            onPressed: _loadingStreams ? null : () => _loadLiveStreams(refresh: true),
+            onPressed:
+                _loadingStreams ? null : () => _loadLiveStreams(refresh: true),
           ),
         ],
       ),
@@ -761,35 +773,33 @@ class _LivePageState extends State<LivePage> {
             child: Row(
               children: [
                 // 创建直播按钮
-                if (orgController.currentOrgRoles.contains("livestream"))
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        minimumSize: Size(0, 48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        elevation: 2,
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      minimumSize: Size(0, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      onPressed: () {
-                        Get.to(() => CreateStreamView());
-                      },
-                      icon: Icon(Icons.add_circle_outline, size: 20),
-                      label: Text(
-                        StrRes.liveCreate,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      elevation: 2,
+                    ),
+                    onPressed: () {
+                      Get.to(() => CreateStreamView());
+                    },
+                    icon: Icon(Icons.add_circle_outline, size: 20),
+                    label: Text(
+                      StrRes.liveCreate,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                
-                if (orgController.currentOrgRoles.contains("livestream"))
-                  SizedBox(width: 12),
-                
+                ),
+
+                SizedBox(width: 12),
+
                 // 加入直播按钮
                 Expanded(
                   child: ElevatedButton.icon(
@@ -880,7 +890,8 @@ class _LivePageState extends State<LivePage> {
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  Icon(Icons.search_outlined, color: Colors.grey.shade600, size: 16),
+                  Icon(Icons.search_outlined,
+                      color: Colors.grey.shade600, size: 16),
                   SizedBox(width: 8),
                   Text(
                     StrRes.liveSearchResults(_filteredLiveStreams.length),
@@ -962,14 +973,18 @@ class _LivePageState extends State<LivePage> {
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
-                                _isSearching ? Icons.search_off : Icons.live_tv_outlined,
+                                _isSearching
+                                    ? Icons.search_off
+                                    : Icons.live_tv_outlined,
                                 size: 48,
                                 color: Colors.grey.shade400,
                               ),
                             ),
                             SizedBox(height: 16),
                             Text(
-                              _isSearching ? StrRes.liveNoStreamsFound : StrRes.liveNoStreams,
+                              _isSearching
+                                  ? StrRes.liveNoStreamsFound
+                                  : StrRes.liveNoStreams,
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Colors.grey.shade600,
@@ -978,9 +993,9 @@ class _LivePageState extends State<LivePage> {
                             ),
                             SizedBox(height: 8),
                             Text(
-                              _isSearching 
-                                                  ? StrRes.liveTryDifferentKeywords
-                : StrRes.liveCreateOrJoinHint,
+                              _isSearching
+                                  ? StrRes.liveTryDifferentKeywords
+                                  : StrRes.liveCreateOrJoinHint,
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey.shade500,
@@ -996,13 +1011,15 @@ class _LivePageState extends State<LivePage> {
                           controller: _scrollController,
                           physics: AlwaysScrollableScrollPhysics(),
                           padding: EdgeInsets.only(bottom: 16),
-                          itemCount: _filteredLiveStreams.length + (_hasMoreData || _loadingStreams ? 1 : 0),
+                          itemCount: _filteredLiveStreams.length +
+                              (_hasMoreData || _loadingStreams ? 1 : 0),
                           itemBuilder: (context, index) {
                             // 如果是最后一项且需要显示加载指示器
                             if (index == _filteredLiveStreams.length) {
                               return _buildLoadMoreIndicator();
                             }
-                            return _buildLiveStreamItem(_filteredLiveStreams[index]);
+                            return _buildLiveStreamItem(
+                                _filteredLiveStreams[index]);
                           },
                         ),
                       ),
