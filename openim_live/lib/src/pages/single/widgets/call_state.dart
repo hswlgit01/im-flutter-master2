@@ -155,6 +155,9 @@ abstract class SignalState<T extends SignalView> extends State<T> {
   onDail() async {
     if (widget.initState == CallState.call) {
       try {
+        await TRTCCallSession.ensurePermissions(
+          videoCall: widget.callType == CallType.video,
+        );
         // callStateSubject.add(CallState.connecting);
         certificate = await widget.onDial!.call();
         if (!mounted) return;
@@ -180,6 +183,9 @@ abstract class SignalState<T extends SignalView> extends State<T> {
     Logger.print('------------onTapPickup---------连接中--------');
     callStateSubject.add(CallState.connecting);
     try {
+      await TRTCCallSession.ensurePermissions(
+        videoCall: widget.callType == CallType.video,
+      );
       certificate = await widget.onTapPickup!.call();
       if (!mounted) return;
       widget.onBindRoomID?.call(roomID = certificate.roomID!);

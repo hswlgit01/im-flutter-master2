@@ -335,6 +335,11 @@ mixin OpenIMLive {
         return;
       }
     }
+    final errorText = '$error';
+    if (errorText.contains('权限')) {
+      IMViews.showToast(errorText.replaceFirst('Bad state: ', ''));
+      return;
+    }
     IMViews.showToast(StrRes.networkError);
   }
 

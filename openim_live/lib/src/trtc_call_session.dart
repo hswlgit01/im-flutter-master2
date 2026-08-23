@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:openim_common/openim_common.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud_def.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud_listener.dart';
@@ -38,6 +39,21 @@ class TRTCCallSession extends ChangeNotifier {
   static Future<TRTCCallSession> create({required bool videoCall}) async {
     final cloud = await TRTCCloud.sharedInstance();
     return TRTCCallSession._(cloud, videoCall);
+  }
+
+  static Future<void> ensurePermissions({required bool videoCall}) async {
+    final permissions = <Permission>[
+      Permission.microphone,
+      if (videoCall) Permission.camera,
+    ];
+    final statuses = await permissions.request();
+    final denied = statuses.entries
+        .where((entry) => !entry.value.isGranted)
+        .map((entry) => entry.key == Permission.camera ? '摄像头' : '麦克风')
+        .toList();
+    if (denied.isNotEmpty) {
+      throw StateError('请允许${denied.join('、')}权限后重试');
+    }
   }
 
   Future<void> enter(SignalingCertificate certificate) async {
