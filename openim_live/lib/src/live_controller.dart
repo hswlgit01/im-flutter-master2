@@ -327,6 +327,7 @@ mixin OpenIMLive {
 
   onError(error, stack) {
     Logger.print('onError=====> $error $stack');
+    unawaited(_reportRTCError(error, stack));
     OpenIMLiveClient().close();
     _stopSound();
     if (error is PlatformException) {
@@ -340,7 +341,46 @@ mixin OpenIMLive {
       IMViews.showToast(errorText.replaceFirst('Bad state: ', ''));
       return;
     }
-    IMViews.showToast(StrRes.networkError);
+    final compactError = errorText.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final visibleError = compactError.length > 180
+        ? compactError.substring(0, 180)
+        : compactError;
+    IMViews.showToast('TRTC错误：$visibleError');
+  }
+
+  Future<void> _reportRTCError(dynamic error, dynamic stack) async {
+    try {
+      final batchID = const Uuid().v4();
+      await HttpUtil.post(
+        Urls.appLogUpload,
+        showErrorToast: false,
+        options: Apis.chatTokenOptions,
+        data: {
+          'batch_id': batchID,
+          'reason': 'rtc_error',
+          'device_id': DataSp.getDeviceID(),
+          'platform': Platform.isAndroid ? 2 : 1,
+          'system_type': Platform.operatingSystem,
+          'app_version': '',
+          'session_id': batchID,
+          'logs': [
+            {
+              'level': 'ERROR',
+              'tag': 'TRTC',
+              'message': '$error',
+              'stack': '$stack',
+              'client_time': DateTime.now().millisecondsSinceEpoch,
+              'extra': {
+                'user_id': OpenIM.iMManager.userID,
+                'room_id': OpenIMLiveClient().currentRoomID ?? '',
+              },
+            },
+          ],
+        },
+      );
+    } catch (_) {
+      // Diagnostics must never interfere with the call failure path.
+    }
   }
 
   onRoomDisconnected(SignalingInfo signalingInfo) {}
