@@ -455,7 +455,8 @@ class Apis {
   /// dawn 2026-07-04 最近操作时间：客户端每次打开 APP 上报当前操作时间(失败静默，不影响使用)。
   static Future<void> reportOperation() async {
     try {
-      await HttpUtil.post(Urls.reportOperation, data: {}, options: chatTokenOptions);
+      await HttpUtil.post(Urls.reportOperation,
+          data: {}, options: chatTokenOptions);
     } catch (e) {
       Logger.print('reportOperation error: $e');
     }
@@ -592,11 +593,16 @@ class Apis {
       );
       final map = Map<String, dynamic>.from(value as Map);
       final signaling = SignalingCertificate.fromJson(map)..roomID = roomID;
-      if (signaling.token == null || signaling.token!.isEmpty) {
-        throw StateError('RTC token 为空');
+      if (signaling.provider != 'trtc') {
+        throw StateError('服务端尚未切换到 TRTC');
       }
-      if (signaling.liveURL == null || signaling.liveURL!.isEmpty) {
-        throw StateError('没有可用的 LiveKit 服务地址（serverUrl）');
+      if (signaling.sdkAppID == null ||
+          signaling.sdkAppID! <= 0 ||
+          signaling.userSig == null ||
+          signaling.userSig!.isEmpty ||
+          signaling.userID == null ||
+          signaling.userID!.isEmpty) {
+        throw StateError('TRTC 凭证不完整');
       }
       return signaling;
     } catch (e, s) {

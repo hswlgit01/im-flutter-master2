@@ -14,8 +14,12 @@ class SignalingInfo {
   });
 
   SignalingInfo.fromJson(Map<String, dynamic> json) {
-    invitation = json['invitation'] == null ? null : InvitationInfo.fromJson(json['invitation']);
-    offlinePushInfo = json['offlinePushInfo'] == null ? null : OfflinePushInfo.fromJson(json['offlinePushInfo']);
+    invitation = json['invitation'] == null
+        ? null
+        : InvitationInfo.fromJson(json['invitation']);
+    offlinePushInfo = json['offlinePushInfo'] == null
+        ? null
+        : OfflinePushInfo.fromJson(json['offlinePushInfo']);
     userID = json['userID'] ?? invitation?.inviterUserID;
   }
 
@@ -46,7 +50,14 @@ class InvitationInfo {
   int? platformID;
 
   InvitationInfo(
-      {this.inviterUserID, this.inviteeUserIDList, this.groupID, this.roomID, this.timeout, this.mediaType, this.sessionType, this.platformID});
+      {this.inviterUserID,
+      this.inviteeUserIDList,
+      this.groupID,
+      this.roomID,
+      this.timeout,
+      this.mediaType,
+      this.sessionType,
+      this.platformID});
 
   InvitationInfo.fromJson(Map<String, dynamic> json) {
     inviterUserID = json['inviterUserID'];
@@ -74,34 +85,62 @@ class InvitationInfo {
 }
 
 class SignalingCertificate {
+  String? provider;
+
   String? token;
 
   String? roomID;
 
   String? liveURL;
 
+  int? sdkAppID;
+
+  String? userSig;
+
+  String? userID;
+
+  int? expiresAt;
+
   List<String>? busyLineUserIDList;
 
   SignalingCertificate({
+    this.provider,
     this.token,
     this.roomID,
     this.liveURL,
+    this.sdkAppID,
+    this.userSig,
+    this.userID,
+    this.expiresAt,
     this.busyLineUserIDList,
   });
 
   SignalingCertificate.fromJson(Map<String, dynamic> json) {
     // 兼容直连 JSON（Go 默认大写字段名）与 apiresp data（小写 camelCase）
+    provider = (json['provider'] ?? json['Provider'])?.toString().toLowerCase();
     token = json['token']?.toString() ?? json['Token']?.toString();
-    roomID = json['roomID']?.toString();
+    roomID = json['roomID']?.toString() ?? json['RoomID']?.toString();
     liveURL = json['serverUrl']?.toString() ?? json['ServerUrl']?.toString();
+    sdkAppID =
+        int.tryParse((json['sdkAppId'] ?? json['SdkAppId'] ?? '').toString());
+    userSig = json['userSig']?.toString() ?? json['UserSig']?.toString();
+    userID = json['userID']?.toString() ?? json['UserID']?.toString();
+    expiresAt =
+        int.tryParse((json['expiresAt'] ?? json['ExpiresAt'] ?? '').toString());
+    provider ??= sdkAppID != null && sdkAppID! > 0 ? 'trtc' : 'livekit';
     busyLineUserIDList = json['busyLineUserIDList']?.cast<String>();
   }
 
   Map<String, dynamic> toJson() {
     final data = Map<String, dynamic>();
+    data['provider'] = this.provider;
     data['token'] = this.token;
     data['roomID'] = this.roomID;
     data['serverUrl'] = this.liveURL;
+    data['sdkAppId'] = this.sdkAppID;
+    data['userSig'] = this.userSig;
+    data['userID'] = this.userID;
+    data['expiresAt'] = this.expiresAt;
     data['busyLineUserIDList'] = this.busyLineUserIDList;
     return data;
   }
@@ -125,7 +164,9 @@ class RoomCallingInfo {
   });
 
   RoomCallingInfo.fromJson(Map<String, dynamic> json) {
-    invitation = json['invitation'] != null ? InvitationInfo.fromJson(json['invitation']) : null;
+    invitation = json['invitation'] != null
+        ? InvitationInfo.fromJson(json['invitation'])
+        : null;
     if (json['participant'] != null) {
       participant = <Participant>[];
       json['participant'].forEach((v) {
@@ -162,9 +203,14 @@ class Participant {
   Participant({this.groupInfo, this.groupMemberInfo, this.userInfo});
 
   Participant.fromJson(Map<String, dynamic> json) {
-    groupInfo = json['groupInfo'] != null ? GroupInfo.fromJson(json['groupInfo']) : null;
-    groupMemberInfo = json['groupMemberInfo'] != null ? GroupMembersInfo.fromJson(json['groupMemberInfo']) : null;
-    userInfo = json['userInfo'] != null ? UserInfo.fromJson(json['userInfo']) : null;
+    groupInfo = json['groupInfo'] != null
+        ? GroupInfo.fromJson(json['groupInfo'])
+        : null;
+    groupMemberInfo = json['groupMemberInfo'] != null
+        ? GroupMembersInfo.fromJson(json['groupMemberInfo'])
+        : null;
+    userInfo =
+        json['userInfo'] != null ? UserInfo.fromJson(json['userInfo']) : null;
   }
 
   Map<String, dynamic> toJson() {

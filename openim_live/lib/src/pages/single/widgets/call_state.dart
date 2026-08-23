@@ -3,13 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_openim_sdk/flutter_openim_sdk.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:livekit_client/livekit_client.dart';
 import 'package:openim_common/openim_common.dart';
 import 'package:openim_live/src/utils/live_utils.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:sprintf/sprintf.dart';
 
 import '../../../../openim_live.dart';
+import '../../../trtc_call_session.dart';
 import '../../../widgets/small_window.dart';
 import 'controls.dart';
 import 'participant.dart';
@@ -60,7 +60,7 @@ abstract class SignalView extends StatefulWidget {
 
 abstract class SignalState<T extends SignalView> extends State<T> {
   final callStateSubject = BehaviorSubject<CallState>();
-  final roomDidUpdateSubject = PublishSubject<Room>();
+  final roomDidUpdateSubject = PublishSubject<TRTCCallSession>();
   late CallState callState;
   late SignalingCertificate certificate;
   String? roomID;
@@ -89,6 +89,7 @@ abstract class SignalState<T extends SignalView> extends State<T> {
   @override
   void dispose() {
     callStateSubject.close();
+    roomDidUpdateSubject.close();
     callEventSub?.cancel();
     super.dispose();
   }

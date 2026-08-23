@@ -125,6 +125,10 @@ android {
     packagingOptions {
       // other options here
 
+        // Tencent RTC and other media plugins can both package LiteAV. Keep a
+        // single copy per ABI as required by the TRTC Flutter integration guide.
+        pickFirst 'lib/**/libliteavsdk.so'
+
       /* Fix for ffmpeg-kit-react-native START */
         pickFirst 'lib/arm64-v8a/libgojni.so'
         pickFirst 'lib/armeabi-v7a/libgojni.so'

@@ -9,6 +9,10 @@
 
 # Add any project specific keep options here:
 
+# Tencent RTC SDK uses JNI/reflection entry points that must survive release
+# shrinking and obfuscation.
+-keep class com.tencent.** { *; }
+
 #指定代码的压缩级别
 -optimizationpasses 5
 

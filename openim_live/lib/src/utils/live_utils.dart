@@ -1,5 +1,3 @@
-import 'package:collection/collection.dart';
-import 'package:livekit_client/livekit_client.dart';
 import 'package:openim_common/openim_common.dart';
 
 import '../../openim_live.dart';
@@ -45,33 +43,6 @@ class LiveUtils {
       return '${m < 10 ? '0$m' : m}:${s < 10 ? '0$s' : s}';
     }
     return "${h < 10 ? '0$h' : h}:${m < 10 ? '0$m' : m}:${s < 10 ? '0$s' : s}";
-  }
-
-  static VideoTrack? activeVideoTrack(RemoteParticipant participant) {
-    for (final trackPublication in participant.videoTrackPublications) {
-      Logger.print(
-          'video track ${trackPublication.sid} subscribed ${trackPublication.subscribed} muted ${trackPublication.muted}');
-      if (trackPublication.subscribed && !trackPublication.muted) {
-        return trackPublication.track;
-      }
-    }
-    return null;
-  }
-
-  /// 剔除房间观察者
-  static List<RemoteParticipant> removeObserver(String roomID, Room room) {
-    return room.remoteParticipants.values.where((element) {
-      Logger.print(
-          'removeObserver roomID:$roomID  userID:${element.identity}   ${roomID == element.identity}');
-      return roomID != element.identity;
-    }).toList();
-  }
-
-  /// 单聊获取真正通话的对象
-  static RemoteParticipant? getRemoteParticipant(String? roomID, Room? room) {
-    return room?.remoteParticipants.values
-        .where((element) => roomID != element.identity)
-        .firstOrNull;
   }
 
   /// 我主动发起通话，一开始roomID为null，拨号成功返回roomID

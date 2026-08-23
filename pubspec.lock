@@ -2518,6 +2518,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.9.3"
+  tencent_rtc_sdk:
+    dependency: transitive
+    description:
+      name: tencent_rtc_sdk
+      sha256: "67b0958cd90131217fbcbdaaf191c8931742fd5134d84271be5d963f25812545"
+      url: "https://pub.dev"
+    source: hosted
+    version: "13.4.2"
   term_glyph:
     dependency: transitive
     description:
