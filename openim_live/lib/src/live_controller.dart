@@ -13,10 +13,35 @@ import 'package:sprintf/sprintf.dart';
 import 'package:uuid/uuid.dart';
 
 import '../openim_live.dart';
+import 'call_setup_optimizer.dart';
 
 /// 信令
 mixin OpenIMLive {
   final signalingSubject = PublishSubject<CallEvent>();
+
+  late final IncomingRTCCredentialPrefetcher _incomingRTCCredentials =
+      IncomingRTCCredentialPrefetcher(
+    Apis.getTokenForRTC,
+    onPrefetchError: (error, stackTrace) {
+      Logger.print(
+          '[OpenIMLive] incoming RTC credential prefetch failed: $error $stackTrace');
+    },
+  );
+
+  late final FastReliableSignalDispatcher _acceptSignalDispatcher =
+      FastReliableSignalDispatcher(
+    onDeliveryError: (channel, error, stackTrace) {
+      Logger.print(
+          '[OpenIMLive] accept signal $channel delivery failed: $error $stackTrace');
+    },
+    onFastPathTimeout: () {
+      Logger.print(
+          '[OpenIMLive] accept online signal exceeded fast-path grace; media setup continues');
+    },
+  );
+
+  final RecentRoomSignalDeduplicator _acceptedSignalRooms =
+      RecentRoomSignalDeduplicator();
 
   // 通话通知回调（由外部实现）
   Future<void> Function(String title, String body, String payload)?
@@ -34,6 +59,11 @@ mixin OpenIMLive {
           '[OpenIMLive] ignore stale/mismatched accept: current=$currentRoomID event=$roomID');
       return;
     }
+    if (!_acceptedSignalRooms.shouldProcess(roomID)) {
+      Logger.print(
+          '[OpenIMLive] ignore duplicate accept signal for room=$roomID');
+      return;
+    }
     signalingSubject.add(CallEvent(CallState.beAccepted, info));
   }
 
@@ -42,6 +72,19 @@ mixin OpenIMLive {
   }
 
   void receiveNewInvitation(SignalingInfo info) {
+    final invitation = info.invitation;
+    final roomID = invitation?.roomID;
+    final userID = OpenIM.iMManager.userID;
+    if (roomID != null &&
+        roomID.isNotEmpty &&
+        userID.isNotEmpty &&
+        !isBusy &&
+        invitation?.sessionType == ConversationType.single) {
+      // Start before notification/UI work so most users have a credential by
+      // the time they tap Accept. The prefetcher absorbs errors and retries on
+      // pickup, so this never disrupts ringing.
+      unawaited(_incomingRTCCredentials.prefetch(roomID, userID));
+    }
     signalingSubject.add(CallEvent(CallState.beCalled, info));
   }
 
@@ -69,6 +112,10 @@ mixin OpenIMLive {
       _stopSound();
 
       // 清空被叫事件
+      final beCalledEvent = _beCalledEvent;
+      if (beCalledEvent != null) {
+        _discardIncomingRTCCredential(beCalledEvent.data);
+      }
       _beCalledEvent = null;
 
       // 重置自动接听
@@ -106,6 +153,8 @@ mixin OpenIMLive {
     backgroundSubject.close();
     roomParticipantDisconnectedSubject.close();
     roomParticipantConnectedSubject.close();
+    _incomingRTCCredentials.clear();
+    _acceptedSignalRooms.clear();
     _stopSound();
   }
 
@@ -213,6 +262,7 @@ mixin OpenIMLive {
             // dawn 2026-07-09 修"A 拒接/挂断后 B 仍振铃"：拒接信令必须停铃+关界面，
             // 不能只 insert 消息记录，否则对端一直停在来电页。
             Logger.print('[OpenIMLive] 📞 收到拒绝信令，停止声音并关闭界面');
+            _discardIncomingRTCCredential(event.data);
             insertSignalingMessageSubject.add(event);
             _stopSound();
             _beCalledEvent = null;
@@ -223,12 +273,14 @@ mixin OpenIMLive {
             // 时点挂断发的是 callingHungup(204) 而不是 cancel(203)，被叫收 beHangup
             // 后铃声可能停了但 UI 仍显示"等待接听/来电"，外观就是一直在打。
             Logger.print('[OpenIMLive] 📞 收到挂断信令，停止声音并关闭界面');
+            _discardIncomingRTCCredential(event.data);
             insertSignalingMessageSubject.add(event);
             _stopSound();
             _beCalledEvent = null;
             _forceCloseCallUI(event.data);
           } else if (event.state == CallState.beCanceled) {
             Logger.print('[OpenIMLive] 📞 收到取消信令，停止声音并关闭界面');
+            _discardIncomingRTCCredential(event.data);
             insertSignalingMessageSubject.add(event);
             _stopSound();
             _beCalledEvent = null; // 清除缓存的通话事件
@@ -241,6 +293,7 @@ mixin OpenIMLive {
               event.state == CallState.otherAccepted) {
             _stopSound();
           } else if (event.state == CallState.timeout) {
+            _discardIncomingRTCCredential(event.data);
             insertSignalingMessageSubject.add(event);
 
             _stopSound();
@@ -500,32 +553,63 @@ mixin OpenIMLive {
     _autoPickup = false;
     _stopSound();
 
-    // Obtain a usable RTC credential before telling the caller that the call
-    // has been accepted. Otherwise a LiveKit outage leaves the caller in an
-    // accepted state while the callee can never enter the room.
-    final certificate = await Apis.getTokenForRTC(
-      signaling.invitation!.roomID!,
-      OpenIM.iMManager.userID,
+    final roomID = signaling.invitation!.roomID!;
+    final userID = OpenIM.iMManager.userID;
+    // Usually resolves immediately because receiveNewInvitation started this
+    // request while the phone was ringing. A failed/stuck prefetch is retried.
+    final certificate =
+        await _incomingRTCCredentials.takeOrLoad(roomID, userID);
+
+    final encodedAccept = jsonEncode({
+      'customType': CustomMessageType.callingAccept,
+      'data': Map<String, dynamic>.from(signaling.invitation!.toJson()),
+    });
+    final inviterUserID = signaling.invitation!.inviterUserID!;
+
+    // Online-only delivery is latency-sensitive and gets a short grace period.
+    // The durable copy is queued separately and never blocks TRTC room setup.
+    await _acceptSignalDispatcher.dispatch(
+      sendFast: () => _sendAcceptSignal(
+        encodedAccept,
+        inviterUserID,
+        onlineOnly: true,
+      ),
+      sendReliable: () => _sendAcceptSignal(
+        encodedAccept,
+        inviterUserID,
+        onlineOnly: false,
+      ),
     );
 
-    final data = {
-      'customType': CustomMessageType.callingAccept,
-      'data': signaling.invitation!.toJson()
-    };
+    // Multi-device status sync is best-effort and must not delay pickup. Some
+    // OpenIM deployments reject online-only self messages with error 1002.
+    unawaited(_sendAcceptSyncSignal().catchError((error, stackTrace) {
+      Logger.print(
+          '[OpenIMLive] accept device-sync signal failed: $error $stackTrace');
+    }));
+
+    return certificate;
+  }
+
+  Future<void> _sendAcceptSignal(
+    String encodedAccept,
+    String inviterUserID, {
+    required bool onlineOnly,
+  }) async {
     final message = await OpenIM.iMManager.messageManager.createCustomMessage(
-        data: jsonEncode(data), extension: '', description: '');
-    // Use the reliable message path like reject/cancel/hangup. Receivers apply
-    // both room and age checks before dispatching 201, so an offline replay
-    // cannot affect a newer call. If room connection fails, call_state sends
-    // a durable reject immediately to release the caller.
+      data: encodedAccept,
+      extension: '',
+      description: '',
+    );
     await OpenIM.iMManager.messageManager.sendMessage(
       message: message,
       offlinePushInfo: OfflinePushInfo(),
-      userID: signaling.invitation!.inviterUserID,
-      isOnlineOnly: false,
+      userID: inviterUserID,
+      isOnlineOnly: onlineOnly,
     );
+  }
 
-    /// 同步消息
+  Future<void> _sendAcceptSyncSignal() async {
     String source = Platform.isIOS ? 'ios' : 'android';
     final syncData = {
       'customType': CustomMessageType.syncCallStatus,
@@ -534,17 +618,25 @@ mixin OpenIMLive {
     final syncMessage = await OpenIM.iMManager.messageManager
         .createCustomMessage(
             data: jsonEncode(syncData), extension: '', description: '');
-    OpenIM.iMManager.messageManager.sendMessage(
-        message: syncMessage,
-        offlinePushInfo: OfflinePushInfo(),
-        userID: OpenIM.iMManager.userID,
-        isOnlineOnly: true);
+    await OpenIM.iMManager.messageManager.sendMessage(
+      message: syncMessage,
+      offlinePushInfo: OfflinePushInfo(),
+      userID: OpenIM.iMManager.userID,
+      isOnlineOnly: true,
+    );
+  }
 
-    return certificate;
+  void _discardIncomingRTCCredential(SignalingInfo signaling) {
+    final roomID = signaling.invitation?.roomID;
+    final userID = OpenIM.iMManager.userID;
+    if (roomID != null && roomID.isNotEmpty && userID.isNotEmpty) {
+      _incomingRTCCredentials.discard(roomID, userID);
+    }
   }
 
   onTapReject(SignalingInfo signaling) async {
     _stopSound();
+    _discardIncomingRTCCredential(signaling);
     insertSignalingMessageSubject.add(CallEvent(CallState.reject, signaling));
 
     final data = {
@@ -744,6 +836,10 @@ mixin OpenIMLive {
   void handleCallCanceled() {
     Logger.print('[OpenIMLive] 📞 处理通话取消记录，停止声音并清除缓存');
     _stopSound();
+    final beCalledEvent = _beCalledEvent;
+    if (beCalledEvent != null) {
+      _discardIncomingRTCCredential(beCalledEvent.data);
+    }
     _beCalledEvent = null;
     // 尝试关闭通话界面
     try {
