@@ -528,8 +528,11 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
           if (widget.rule.maxAmount != null)
             _buildRuleItem(
                 '2. ${StrRes.singleTransaction}${widget.rule.maxAmount!.toStringAsFixed(2)}${StrRes.maxWithdrawal}'),
+          if ((widget.rule.amountStep ?? 0) > 0)
+            _buildRuleItem(
+                '3. 提现金额必须是 ${widget.rule.amountStep!.toStringAsFixed(0)} 的整数倍'),
           _buildRuleItem(
-              '3. ${StrRes.withdrawalInstructions} 1-3 ${StrRes.businessDays}'),
+              '${(widget.rule.amountStep ?? 0) > 0 ? '4' : '3'}. ${StrRes.withdrawalInstructions} 1-3 ${StrRes.businessDays}'),
         ],
       ),
     );
@@ -981,8 +984,9 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
     final amount = double.tryParse(_amountController.text) ?? 0;
     final totalBalance = num.parse(
         logic.walletController.balanceDetail.value?.totalBalanceUsd ?? "0");
-    final isAmountValid =
-        amount >= (widget.rule.minAmount ?? 0) && amount <= totalBalance;
+    final isAmountValid = amount >= (widget.rule.minAmount ?? 0) &&
+        amount <= totalBalance &&
+        _isAmountStepValid(amount);
     final isAccountSelected = _selectedAccount != null;
     final isPhotoReady = _handheldIdCardPhotoFile != null ||
         (_handheldIdCardPhotoUrl?.isNotEmpty == true);
@@ -1059,6 +1063,20 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
     }
   }
 
+  /// 提现金额是否满足步长要求（步长为空或 <=0 表示不限制）。
+  ///
+  /// 与服务端 SubmitWithdrawal 保持同一套算法：换算成「整数分」再取模，
+  /// 而不是直接 amount % step。amount 由文本解析而来，可能带极小表示误差，
+  /// 先四舍五入到分可以把这类误差归一化掉，避免把用户本意合法的金额判为非法。
+  bool _isAmountStepValid(double amount) {
+    final step = widget.rule.amountStep;
+    if (step == null || step <= 0) return true;
+    final amountCents = (amount * 100).round();
+    final stepCents = (step * 100).round();
+    if (stepCents <= 0) return true;
+    return amountCents % stepCents == 0;
+  }
+
   // 提交提现申请
   void _submitWithdrawal() async {
     final amount = double.parse(_amountController.text);
@@ -1066,6 +1084,13 @@ class _WithdrawalPageState extends State<WithdrawalPage> {
     // 验证金额
     if (amount < (widget.rule.minAmount ?? 0)) {
       IMViews.showToast('${StrRes.minWithdrawal}${widget.rule.minAmount}');
+      return;
+    }
+    // 步长校验（例：只能整百提）。服务端同样会校验，这里是为了让用户
+    // 在点提交前就知道，而不是提交后被拒。
+    if (!_isAmountStepValid(amount)) {
+      final step = widget.rule.amountStep!;
+      IMViews.showToast('提现金额必须是 ${step.toStringAsFixed(0)} 的整数倍');
       return;
     }
 

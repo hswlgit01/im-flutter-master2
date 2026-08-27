@@ -5,6 +5,9 @@ class WithdrawalRule {
   bool? isEnabled; // 是否启用提现功能
   double? minAmount; // 最小提现金额
   double? maxAmount; // 最大提现金额
+  // 提现金额步长：提现额必须是该值的整数倍，0 或 null 表示不限制。
+  // 例：amountStep=100 且 minAmount=200，即「200 起步且只能整百」。
+  double? amountStep;
   double? feeRate; // 手续费率 (百分比)
   double? feeFixed; // 固定手续费
   bool? needRealName; // 是否需要实名认证
@@ -15,6 +18,7 @@ class WithdrawalRule {
     this.isEnabled,
     this.minAmount,
     this.maxAmount,
+    this.amountStep,
     this.feeRate,
     this.feeFixed,
     this.needRealName,
@@ -27,6 +31,8 @@ class WithdrawalRule {
       isEnabled: json['isEnabled'] ?? false,
       minAmount: (json['minAmount'] as num?)?.toDouble(),
       maxAmount: (json['maxAmount'] as num?)?.toDouble(),
+      // 老后端不返回该字段时为 null，视为不限制步长
+      amountStep: (json['amountStep'] as num?)?.toDouble(),
       feeRate: (json['feeRate'] as num?)?.toDouble(),
       feeFixed: (json['feeFixed'] as num?)?.toDouble(),
       needRealName: json['needRealName'],
@@ -43,6 +49,7 @@ class WithdrawalRule {
       'isEnabled': isEnabled,
       'minAmount': minAmount,
       'maxAmount': maxAmount,
+      'amountStep': amountStep,
       'feeRate': feeRate,
       'feeFixed': feeFixed,
       'needRealName': needRealName,
